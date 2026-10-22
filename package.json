@@ -1,0 +1,31 @@
+{
+  "name": "synthetic-office",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "CnC 에이전트(Claude·Codex·ARIA) 상태를 3D 블록 오피스와 목록형 상황판으로 보여주는 로컬 서버",
+  "engines": {
+    "node": ">=22.18"
+  },
+  "scripts": {
+    "test": "node --test \"test/**/*.test.ts\"",
+    "typecheck": "tsc --noEmit",
+    "build:web": "vite build",
+    "start": "node src/server/main.ts",
+    "install:office": "node scripts/install.ts",
+    "uninstall:office": "node scripts/uninstall.ts"
+  },
+  "dependencies": {
+    "qrcode": "^1.5.4",
+    "three": "^0.186.1",
+    "ws": "^8.22.0"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.5",
+    "@types/qrcode": "^1.5.6",
+    "@types/three": "^0.186.0",
+    "@types/ws": "^8.18.2",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.5"
+  }
+}
