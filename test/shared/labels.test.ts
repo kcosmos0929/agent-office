@@ -12,7 +12,8 @@ test('상태 묶음', () => {
 });
 
 test('문구', () => {
-  assert.equal(STATUS_LABEL.permission, '❗ 승인 필요');
+  // 픽셀 글꼴이 ❗를 흑백 네모로 그려서, 그림 문자(VS16)로 고정
+  assert.equal(STATUS_LABEL.permission, '❗\uFE0F 승인 필요');
   assert.equal(STATUS_LABEL.done, '✅ 끝남 · 내 차례');
   assert.equal(STATUS_LABEL.thinking, '💭 생각 중');
   assert.equal(STATUS_LABEL.reading, '📖 읽는 중');

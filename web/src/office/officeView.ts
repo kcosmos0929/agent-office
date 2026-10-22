@@ -37,11 +37,12 @@ export class OfficeView implements OfficeHost {
 
   constructor(container: HTMLElement) {
     this.container = container;
-    this.renderer = new THREE.WebGLRenderer({ antialias: true });
-    this.renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+    this.renderer = new THREE.WebGLRenderer({ antialias: false });
+    const px = Number(new URLSearchParams(location.search).get('px') ?? 3);
+    this.renderer.setPixelRatio(1 / Math.max(1, px)); // 픽셀 스타일: 낮은 해상도로 그리고 CSS로 또렷하게 키움(?px=2~4)
     this.renderer.setClearColor('#F4EFE8');
     this.renderer.shadowMap.enabled = true;
-    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    this.renderer.shadowMap.type = THREE.BasicShadowMap;
     container.appendChild(this.renderer.domElement);
 
     this.labels = new CSS2DRenderer();

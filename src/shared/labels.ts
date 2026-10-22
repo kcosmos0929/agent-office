@@ -1,7 +1,7 @@
 import type { Group, Status } from './types.ts';
 
 export const STATUS_LABEL: Record<Status, string> = {
-  permission: '❗ 승인 필요',
+  permission: '❗\uFE0F 승인 필요', // \uFE0F: 그림 문자로 고정(픽셀 글꼴의 흑백 ❗ 대신)
   done: '✅ 끝남 · 내 차례',
   thinking: '💭 생각 중',
   reading: '📖 읽는 중',

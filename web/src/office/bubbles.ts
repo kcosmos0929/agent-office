@@ -2,8 +2,14 @@
 import { groupOf, KIND_COLOR, STATUS_LABEL, WAIT_COLOR } from '../../../src/shared/labels.ts';
 import type { Agent } from '../../../src/shared/types.ts';
 
-export function bubbleText(a: Pick<Agent, 'status' | 'project'>): string {
-  return `${STATUS_LABEL[a.status]} · ${a.project}`;
+/** 머리 위 말풍선: 상태만 짧게 (이웃 캐릭터를 덜 가리게) */
+export function bubbleText(a: Pick<Agent, 'status'>): string {
+  return STATUS_LABEL[a.status];
+}
+
+/** 발밑 이름표: 프로젝트 이름 */
+export function nameplateText(a: Pick<Agent, 'project'>): string {
+  return a.project;
 }
 
 export function bubbleTone(a: Pick<Agent, 'status'>): { bg: string; fg: string } {

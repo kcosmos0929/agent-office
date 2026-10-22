@@ -1,9 +1,9 @@
 // 사무실 장면(바닥·벽·창·유리 칸막이·가구). 모두 코드로 만든 상자들 — 그림 파일 없음. 색은 시안 A.
 import * as THREE from 'three';
+import { CSS2DObject } from 'three/examples/jsm/renderers/CSS2DRenderer.js';
 import { DESK_COLS, DESK_D, DESK_W, DESK_YS, MEETING_TABLE, ROOMS, meetingSpot } from './layout.ts';
 
 export const WALL_H = 2.4;
-const FONT = "-apple-system, 'Apple SD Gothic Neo', sans-serif";
 
 const materials = new Map<string, THREE.Material>();
 function mat(color: string, opts: THREE.MeshLambertMaterialParameters = {}): THREE.Material {
@@ -22,24 +22,20 @@ export function block(x0: number, y0: number, w: number, d: number, h0: number, 
   m.position.set(x0 + w / 2, h0 + h / 2, y0 + d / 2);
   m.castShadow = !opts.transparent;
   m.receiveShadow = true;
+  // 픽셀아트 느낌의 외곽선(한 단계 어두운 색)
+  const edge = new THREE.LineSegments(new THREE.EdgesGeometry(m.geometry), new THREE.LineBasicMaterial({ color: new THREE.Color(color).multiplyScalar(0.55), transparent: true, opacity: opts.transparent ? 0.5 : 0.9 }));
+  m.add(edge);
   return m;
 }
 
-function floorLabel(text: string, color: string, x: number, y: number): THREE.Mesh {
-  const canvas = document.createElement('canvas');
-  canvas.width = 512;
-  canvas.height = 64;
-  const ctx = canvas.getContext('2d')!;
-  ctx.font = `800 40px ${FONT}`;
-  ctx.fillStyle = color;
-  ctx.letterSpacing = '4px';
-  ctx.fillText(text, 4, 46);
-  const tex = new THREE.CanvasTexture(canvas);
-  tex.colorSpace = THREE.SRGBColorSpace;
-  const plane = new THREE.Mesh(new THREE.PlaneGeometry(3.2, 0.4), new THREE.MeshBasicMaterial({ map: tex, transparent: true }));
-  plane.rotation.x = -Math.PI / 2;
-  plane.position.set(x + 1.6, 0.05, y);
-  return plane;
+/** 방 이름: 픽셀로 줄이면 흐려져서 화면 글자(HTML)로 바닥에 띄운다 */
+function roomLabel(text: string, x: number, y: number): CSS2DObject {
+  const el = document.createElement('div');
+  el.className = 'room-label';
+  el.textContent = text;
+  const label = new CSS2DObject(el);
+  label.position.set(x, 0.05, y);
+  return label;
 }
 
 export type OfficeScene = { group: THREE.Group; deskScreens: THREE.Mesh[] };
@@ -112,10 +108,11 @@ export function buildOffice(): OfficeScene {
   }
 
   // 바닥 방 이름
-  g.add(floorLabel(ROOMS.claude.label, '#7A6652', 0.3, 4.55));
-  g.add(floorLabel(ROOMS.codex.label, '#4E6E67', 6.25, 4.55));
-  g.add(floorLabel(ROOMS.aria.label, '#7D6A93', 0.3, 9.7));
-  g.add(floorLabel(ROOMS.meeting.label, '#8A7A68', 5.0, 9.7));
+  // 방 이름 (각 방 앞쪽 가장자리 근처)
+  g.add(roomLabel(ROOMS.claude.label, 1.9, 4.6));
+  g.add(roomLabel(ROOMS.codex.label, 7.6, 4.6));
+  g.add(roomLabel(ROOMS.aria.label, 1.6, 9.6));
+  g.add(roomLabel(ROOMS.meeting.label, 6.6, 9.6));
 
   return { group: g, deskScreens };
 }

@@ -25,7 +25,7 @@ test('renderList: <script> 제목이 글자로 들어가고 순서는 sortForBoa
   assert.deepEqual(rows.map((r) => r.getAttribute('data-agent')), ['p', 'd', 'w']);
   assert.ok(root.all().every((e) => e.tagName !== 'script'));
   assert.equal(rows[0].byClass('name')[0].textContent, '<script>alert(1)</script>');
-  assert.equal(rows[0].byClass('state')[0].textContent, '❗ 승인 필요');
+  assert.equal(rows[0].byClass('state')[0].textContent, '❗\uFE0F 승인 필요');
   assert.equal(rows[0].byClass('time')[0].textContent, '10분째');
   assert.ok(rows[0].className.includes('urgent'));
   assert.ok(rows[1].className.includes('waiting'));

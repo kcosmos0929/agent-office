@@ -101,7 +101,9 @@ function lazyOffice(container: HTMLElement): OfficeHost {
   let view: OfficeHost | null = null;
   let last: Snapshot | null = null;
   let disposed = false;
-  void import('./office/officeView.ts').then(({ OfficeView }) => {
+  // 픽셀 글꼴을 먼저 받아야 TV(캔버스) 글자가 그 글꼴로 그려진다
+  const fonts = ['16px Galmuri11', '16px GalmuriMono11', '16px Galmuri14'].map((f) => document.fonts.load(f));
+  void Promise.all(fonts).catch(() => null).then(() => import('./office/officeView.ts')).then(({ OfficeView }) => {
     if (disposed) return;
     view = new OfficeView(container);
     if (last) view.update(last);

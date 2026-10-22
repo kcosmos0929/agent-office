@@ -3,7 +3,7 @@ import * as THREE from 'three';
 import { CSS2DObject } from 'three/examples/jsm/renderers/CSS2DRenderer.js';
 import { HAT_COLORS, KIND_COLOR, WAIT_COLOR, groupOf } from '../../../src/shared/labels.ts';
 import type { Agent, Snapshot } from '../../../src/shared/types.ts';
-import { makeBubble } from './bubbles.ts';
+import { makeBubble, nameplateText } from './bubbles.ts';
 import { createCharacter, setPose } from './character.ts';
 import { DOOR, meetingSpot, pathTo, seatPosition, type Point } from './layout.ts';
 import { poseFor, type Pose } from './pose.ts';
@@ -15,6 +15,7 @@ const SCREEN = { off: '#3A404C', work: '#FFD9C7', wait: '#FFE7B3', done: '#D7F0D
 type Actor = {
   group: THREE.Group;
   label: CSS2DObject | null;
+  plate: CSS2DObject | null;
   bubble: ReturnType<typeof makeBubble> | null;
   ring: THREE.Mesh | null;
   path: Point[];
@@ -59,6 +60,7 @@ export class Cast {
       }
       actor.agent = a;
       actor.bubble?.set(a);
+      if (actor.plate && actor.plate.element.textContent !== nameplateText(a)) actor.plate.element.textContent = nameplateText(a);
       if (actor.ring) actor.ring.visible = a.status === 'permission';
 
       for (const sub of a.subagents) {
@@ -138,20 +140,26 @@ export class Cast {
     group.position.set(DOOR.x, 0.04, DOOR.y);
     this.scene.add(group);
     let label: CSS2DObject | null = null;
+    let plate: CSS2DObject | null = null;
     let bubble: ReturnType<typeof makeBubble> | null = null;
     let ring: THREE.Mesh | null = null;
     if (!isSub) {
       bubble = makeBubble(document);
       label = new CSS2DObject(bubble.el);
-      label.position.set(0, 1.45, 0);
+      label.position.set(0, 1.3, 0);
       group.add(label);
+      const plateEl = document.createElement('div');
+      plateEl.className = 'nameplate';
+      plate = new CSS2DObject(plateEl);
+      plate.position.set(0, 0, 0.3);
+      group.add(plate);
       ring = new THREE.Mesh(new THREE.RingGeometry(0.34, 0.44, 40), new THREE.MeshBasicMaterial({ color: WAIT_COLOR, transparent: true, opacity: 1, side: THREE.DoubleSide }));
       ring.rotation.x = -Math.PI / 2;
       ring.position.y = 0.02;
       ring.visible = false;
       group.add(ring);
     }
-    const actor: Actor = { group, label, bubble, ring, path: [{ x: DOOR.x, y: DOOR.y }], leaving: false, agent: null, isSub, pose: 'stand' };
+    const actor: Actor = { group, label, plate, bubble, ring, path: [{ x: DOOR.x, y: DOOR.y }], leaving: false, agent: null, isSub, pose: 'stand' };
     this.actors.set(id, actor);
     return actor;
   }
@@ -166,6 +174,7 @@ export class Cast {
 
   private remove(id: string, actor: Actor): void {
     if (actor.label) actor.label.element.remove();
+    if (actor.plate) actor.plate.element.remove();
     this.scene.remove(actor.group);
     this.actors.delete(id);
   }
