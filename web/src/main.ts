@@ -96,5 +96,26 @@ export async function start(makeOffice: OfficeFactory | null): Promise<void> {
   render();
 }
 
-// Task 11에서 3D 오피스 팩토리를 넘긴다
-void start(null);
+/** three.js는 무거우니 오피스 화면이 필요할 때만 불러온다(폰 목록형은 안 받음) */
+function lazyOffice(container: HTMLElement): OfficeHost {
+  let view: OfficeHost | null = null;
+  let last: Snapshot | null = null;
+  let disposed = false;
+  void import('./office/officeView.ts').then(({ OfficeView }) => {
+    if (disposed) return;
+    view = new OfficeView(container);
+    if (last) view.update(last);
+  });
+  return {
+    update(s) {
+      last = s;
+      view?.update(s);
+    },
+    dispose() {
+      disposed = true;
+      view?.dispose();
+    },
+  };
+}
+
+void start(lazyOffice);

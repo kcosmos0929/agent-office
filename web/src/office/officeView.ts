@@ -1,0 +1,132 @@
+// 3D 오피스 화면: 렌더러·카메라(아이소메트릭 고정, 확대·축소만)·장면·TV·렌더 속도 조절.
+import * as THREE from 'three';
+import { CSS2DRenderer } from 'three/examples/jsm/renderers/CSS2DRenderer.js';
+import type { Snapshot } from '../../../src/shared/types.ts';
+import type { OfficeHost } from '../main.ts';
+import { targetFps } from './fps.ts';
+import type { Pose } from './pose.ts';
+import { buildOffice, type OfficeScene } from './scene.ts';
+import { createTv } from './tv.ts';
+
+const TARGET = new THREE.Vector3(5, 0.7, 5);
+const VIEW_DIR = new THREE.Vector3(1, 0.82, 1).normalize();
+const FIT_W = 15.2; // 장면 폭(월드 단위)
+const FIT_H = 11.2; // 장면 높이
+
+export class OfficeView implements OfficeHost {
+  readonly renderer: THREE.WebGLRenderer;
+  readonly labels: CSS2DRenderer;
+  readonly scene = new THREE.Scene();
+  readonly camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 100);
+  readonly office: OfficeScene;
+  readonly container: HTMLElement;
+  frames = 0;
+  protected poses: Pose[] = [];
+  private readonly tv = createTv();
+  private readonly resizeObserver: ResizeObserver;
+  private timer: ReturnType<typeof setTimeout> | null = null;
+  private raf = 0;
+  private disposed = false;
+  private zoom = 1;
+
+  constructor(container: HTMLElement) {
+    this.container = container;
+    this.renderer = new THREE.WebGLRenderer({ antialias: true });
+    this.renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+    this.renderer.setClearColor('#F4EFE8');
+    this.renderer.shadowMap.enabled = true;
+    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    container.appendChild(this.renderer.domElement);
+
+    this.labels = new CSS2DRenderer();
+    Object.assign(this.labels.domElement.style, { position: 'absolute', inset: '0', pointerEvents: 'none' });
+    container.appendChild(this.labels.domElement);
+
+    this.scene.add(new THREE.HemisphereLight('#FFFFFF', '#E8DCCB', 2.2));
+    const sun = new THREE.DirectionalLight('#FFF6E8', 1.6);
+    sun.position.set(1, 12, 9);
+    sun.target.position.set(5, 0, 5);
+    sun.castShadow = true;
+    sun.shadow.mapSize.set(1024, 1024);
+    Object.assign(sun.shadow.camera, { left: -9, right: 9, top: 9, bottom: -9, near: 1, far: 30 });
+    sun.shadow.radius = 4;
+    this.scene.add(sun, sun.target);
+
+    this.office = buildOffice();
+    this.scene.add(this.office.group, this.tv.group);
+
+    this.camera.position.copy(TARGET).addScaledVector(VIEW_DIR, 30);
+    this.camera.lookAt(TARGET);
+
+    this.renderer.domElement.addEventListener('wheel', (e) => {
+      e.preventDefault();
+      this.zoom = Math.min(2.5, Math.max(0.6, this.zoom * (e.deltaY > 0 ? 0.92 : 1.08)));
+      this.fit();
+      this.invalidate();
+    }, { passive: false });
+
+    this.resizeObserver = new ResizeObserver(() => {
+      this.fit();
+      this.invalidate();
+    });
+    this.resizeObserver.observe(container);
+    document.addEventListener('visibilitychange', this.onVisibility);
+    this.fit();
+    (globalThis as { __soView?: OfficeView }).__soView = this; // 화면 확인용 손잡이
+    this.invalidate();
+  }
+
+  update(s: Snapshot): void {
+    this.tv.update(s.usage, s.now);
+    this.invalidate();
+  }
+
+  dispose(): void {
+    this.disposed = true;
+    if (this.timer) clearTimeout(this.timer);
+    cancelAnimationFrame(this.raf);
+    this.resizeObserver.disconnect();
+    document.removeEventListener('visibilitychange', this.onVisibility);
+    this.renderer.dispose();
+    this.container.replaceChildren();
+  }
+
+  /** 매 프레임 움직임(하위 클래스·캐릭터가 씀) */
+  protected animate(_t: number): void {}
+
+  /** 지금 바로 한 번 그리고, 그 뒤 속도 조절 루프를 다시 잡는다 */
+  protected invalidate(): void {
+    if (this.disposed) return;
+    if (this.timer) clearTimeout(this.timer);
+    cancelAnimationFrame(this.raf);
+    this.raf = requestAnimationFrame((t) => this.frame(t));
+  }
+
+  private frame(t: number): void {
+    if (this.disposed) return;
+    this.animate(t);
+    this.renderer.render(this.scene, this.camera);
+    this.labels.render(this.scene, this.camera);
+    this.frames++;
+    const fps = targetFps(this.poses, document.hidden);
+    if (fps === 0) return;
+    this.timer = setTimeout(() => {
+      this.raf = requestAnimationFrame((tt) => this.frame(tt));
+    }, 1000 / fps);
+  }
+
+  private onVisibility = () => {
+    if (!document.hidden) this.invalidate();
+  };
+
+  private fit(): void {
+    const w = this.container.clientWidth || innerWidth;
+    const h = this.container.clientHeight || innerHeight;
+    this.renderer.setSize(w, h);
+    this.labels.setSize(w, h);
+    const aspect = w / h;
+    const halfH = Math.max(FIT_H / 2, FIT_W / aspect / 2) / this.zoom;
+    Object.assign(this.camera, { left: -halfH * aspect, right: halfH * aspect, top: halfH, bottom: -halfH });
+    this.camera.updateProjectionMatrix();
+  }
+}
