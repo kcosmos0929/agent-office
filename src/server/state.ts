@@ -17,8 +17,10 @@ type Entry = {
   agent: Agent;
   openTools: Set<string>;
   transcriptPath: string | null;
-  /** 하위 에이전트가 낸 권한 요청이면 그 id */
-  permissionFrom: string | null;
+  /** 메인 대화가 승인을 기다리는 중 */
+  waitingMain: boolean;
+  /** 승인을 기다리는 하위 에이전트들 (여럿이 동시에 기다릴 수 있음) */
+  waitingSubs: Set<string>;
 };
 
 export class OfficeState {
@@ -104,7 +106,7 @@ export class OfficeState {
       seat: firstFree(used.map((a) => a.seat), -1),
       subagents: [],
     };
-    const entry: Entry = { agent, openTools: new Set(), transcriptPath: null, permissionFrom: null };
+    const entry: Entry = { agent, openTools: new Set(), transcriptPath: null, waitingMain: false, waitingSubs: new Set() };
     this.entries.set(e.sessionId, entry);
     if (e.type === 'session-start') {
       agent.status = 'done';
@@ -123,8 +125,7 @@ export class OfficeState {
         }
         return;
       case 'prompt':
-        entry.openTools.clear();
-        entry.permissionFrom = null;
+        this.clearWork(entry);
         this.setStatus(a, 'thinking', e.at);
         a.detail = null;
         return;
@@ -137,20 +138,23 @@ export class OfficeState {
       case 'tool-end':
         entry.openTools.delete(e.toolUseId);
         if (a.status === 'done' || a.status === 'idle' || a.status === 'gone') return;
-        if (entry.openTools.size === 0) {
-          entry.permissionFrom = null;
+        if (entry.openTools.size > 0) return;
+        // 메인 도구가 모두 끝남 = 메인 승인 대기도 끝남(승인 요청엔 도구 id가 없어 도구별로는 못 가린다)
+        entry.waitingMain = false;
+        if (a.status === 'permission') {
+          this.resolveWaiting(entry, e.at);
+        } else {
           this.setStatus(a, 'thinking', e.at);
           a.detail = null;
         }
         return;
       case 'permission':
-        entry.permissionFrom = null;
+        entry.waitingMain = true;
         this.setStatus(a, 'permission', e.at);
         a.detail = e.detail;
         return;
       case 'stop':
-        entry.openTools.clear();
-        entry.permissionFrom = null;
+        this.clearWork(entry);
         this.setStatus(a, 'done', e.at);
         a.detail = null;
         return;
@@ -159,11 +163,10 @@ export class OfficeState {
         return;
       case 'subagent-stop':
         a.subagents = a.subagents.filter((s) => s.id !== e.agentId);
-        if (entry.permissionFrom === e.agentId) this.clearSubagentPermission(entry, e.at);
+        if (entry.waitingSubs.delete(e.agentId)) this.resolveWaiting(entry, e.at);
         return;
       case 'session-end':
-        entry.openTools.clear();
-        entry.permissionFrom = null;
+        this.clearWork(entry);
         a.subagents = [];
         this.setStatus(a, 'gone', e.at);
         a.detail = null;
@@ -174,32 +177,37 @@ export class OfficeState {
       case 'idle':
         // 입력을 기다린다는 알림: 일하던 중이었다면(Stop 없이 끝난 차례) 내 차례로. 승인 대기는 건드리지 않는다
         if (groupOf(a.status) !== 'working') return;
-        entry.openTools.clear();
-        entry.permissionFrom = null;
+        this.clearWork(entry);
         this.setStatus(a, 'done', e.at);
         a.detail = null;
         return;
     }
   }
 
-  /** 하위 에이전트 안의 이벤트: 권한 요청만 부모 상태를 바꾼다 */
+  /** 하위 에이전트 안의 이벤트: 승인 요청과 그 승인된 도구의 끝만 부모 상태에 영향 */
   private applySubagentEvent(entry: Entry, e: OfficeEvent, subagentId: string): void {
     const a = entry.agent;
     if (e.type === 'permission') {
-      entry.permissionFrom = subagentId;
+      entry.waitingSubs.add(subagentId);
       this.setStatus(a, 'permission', e.at);
       a.detail = e.detail;
-    } else if (e.type === 'tool-end' && entry.permissionFrom === subagentId) {
-      // 승인된 하위 에이전트의 도구가 끝났다 → 부모는 다시 도우미 작업 중
-      this.clearSubagentPermission(entry, e.at);
+    } else if (e.type === 'tool-end' && entry.waitingSubs.delete(subagentId)) {
+      this.resolveWaiting(entry, e.at);
     }
   }
 
-  private clearSubagentPermission(entry: Entry, at: number): void {
-    entry.permissionFrom = null;
-    if (entry.agent.status !== 'permission') return;
-    this.setStatus(entry.agent, entry.openTools.size > 0 ? 'delegating' : 'thinking', at);
-    entry.agent.detail = null;
+  /** 기다리는 곳이 하나도 안 남았을 때만 승인 필요를 푼다 */
+  private resolveWaiting(entry: Entry, at: number): void {
+    const a = entry.agent;
+    if (a.status !== 'permission' || entry.waitingMain || entry.waitingSubs.size > 0) return;
+    this.setStatus(a, entry.openTools.size > 0 ? 'delegating' : 'thinking', at);
+    a.detail = null;
+  }
+
+  private clearWork(entry: Entry): void {
+    entry.openTools.clear();
+    entry.waitingMain = false;
+    entry.waitingSubs.clear();
   }
 
   private setStatus(a: Agent, s: Status, at: number): void {

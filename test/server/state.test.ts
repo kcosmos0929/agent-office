@@ -223,3 +223,37 @@ test('12시간 동안 아무 신호가 없으면(닫혔는데 종료 신호가 �
   st.apply(ev.start('s4', 12 * 60 * M + 1));
   assert.equal(st.snapshot(0).agents.find((a) => a.sessionId === 's4')!.hat, 0);
 });
+
+test('하위 에이전트 A·B가 동시에 승인을 기다리다 B가 먼저 끝나도 A가 남아 있으면 permission 유지', () => {
+  const st = make();
+  st.apply(ev.prompt('s1', 0));
+  st.apply(ev.tool('s1', 1, 'AG', 'delegating'));
+  st.apply(ev.subStart('s1', 2, 'a'));
+  st.apply(ev.subStart('s1', 3, 'b'));
+  st.apply(ev.tool('s1', 4, 'XA', 'running', 'a'));
+  st.apply(ev.perm('s1', 5, 'a'));
+  st.apply(ev.tool('s1', 6, 'XB', 'running', 'b'));
+  st.apply(ev.perm('s1', 7, 'b'));
+  st.apply(ev.end('s1', 8, 'XB', 'b'));
+  assert.equal(one(st).status, 'permission', 'A는 아직 기다리는 중');
+  st.apply(ev.subStop('s1', 9, 'b'));
+  assert.equal(one(st).status, 'permission');
+  st.apply(ev.end('s1', 10, 'XA', 'a'));
+  assert.equal(one(st).status, 'delegating', '모든 대기가 풀리면 도우미 작업 중으로');
+});
+
+test('메인 승인 대기 중에 하위 에이전트 승인이 오고 먼저 풀려도 메인 대기는 유지', () => {
+  const st = make();
+  st.apply(ev.prompt('s1', 0));
+  st.apply(ev.tool('s1', 1, 'AG', 'delegating'));
+  st.apply(ev.subStart('s1', 2, 'a'));
+  st.apply(ev.tool('s1', 3, 'M', 'running'));
+  st.apply(ev.perm('s1', 4));
+  st.apply(ev.tool('s1', 5, 'XA', 'running', 'a'));
+  st.apply(ev.perm('s1', 6, 'a'));
+  st.apply(ev.end('s1', 7, 'XA', 'a'));
+  assert.equal(one(st).status, 'permission', '메인 도구 승인은 아직');
+  st.apply(ev.end('s1', 8, 'M'));
+  st.apply(ev.end('s1', 9, 'AG'));
+  assert.equal(one(st).status, 'thinking');
+});
