@@ -102,12 +102,17 @@ export function hookToEvents(payload: unknown, now: number): OfficeEvent[] {
     case 'PreToolUse':
       return [{ ...base, type: 'tool-start', toolUseId: str(p.tool_use_id) ?? '', activity: classifyTool(tool), detail: summarizeToolInput(tool, p.tool_input) }];
     case 'PostToolUse':
-    case 'PostToolUseFailure':
       return [{ ...base, type: 'tool-end', toolUseId: str(p.tool_use_id) ?? '' }];
+    case 'PostToolUseFailure': {
+      const end: OfficeEvent = { ...base, type: 'tool-end', toolUseId: str(p.tool_use_id) ?? '' };
+      // 사용자가 도구 도중에 끊으면 Stop 훅이 오지 않는다 → 차례가 끝난 것으로
+      return p.is_interrupt === true ? [end, { ...base, type: 'stop' }] : [end];
+    }
     case 'PermissionRequest':
       return [{ ...base, type: 'permission', detail: summarizeToolInput(tool, p.tool_input) }];
     case 'Notification': {
       const kind = str(p.notification_type);
+      if (kind === 'idle_prompt') return [{ ...base, type: 'idle' }];
       if (!kind || !NEEDS_ME.has(kind)) return [];
       return [{ ...base, type: 'permission', detail: clip(str(p.message) ?? '') }];
     }

@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import http from 'node:http';
 import { WebSocket } from 'ws';
 import { startServer } from '../../src/server/http.ts';
 import { loadConfig } from '../../src/server/config.ts';
@@ -20,7 +21,7 @@ after(async () => { for (const c of closers) await c(); });
 
 async function boot(extra: Partial<Parameters<typeof startServer>[0]> = {}) {
   const config = loadConfig(home);
-  const state = new OfficeState({ idleMs: 30 * M, goneMs: 10 * M, stalledMs: 15 * M, resolveProject: () => '가로망 중심성' });
+  const state = new OfficeState({ idleMs: 30 * M, goneMs: 10 * M, stalledMs: 15 * M, forgetMs: 12 * 60 * M, resolveProject: () => '가로망 중심성' });
   const admin: string[] = [];
   const srv = await startServer({ config, token: TOKEN, state, staticDir, listenPort: 0, host: '127.0.0.1', onAdmin: (a) => admin.push(a), ...extra });
   closers.push(srv.close);
@@ -137,6 +138,60 @@ test('admin: 루프백 + X-SO-Admin 헤더 + 같은 출처만', async () => {
   assert.equal((await fetch(remote.url + '/api/admin/stop', { method: 'POST', headers: { 'x-so-admin': '1', cookie: 'so_token=' + TOKEN } })).status, 403);
 });
 
+function rawRequest(port: number, path: string, headers: Record<string, string>): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const req = http.request({ host: '127.0.0.1', port, path, headers }, (res) => { res.resume(); resolve(res.statusCode ?? 0); });
+    req.on('error', reject);
+    req.end();
+  });
+}
+
+test('DNS 리바인딩 차단: 이름 Host(IP·localhost가 아님)는 403, 토큰을 주는 lan-info도 막힘', async () => {
+  const { port } = await boot();
+  assert.equal(await rawRequest(port, '/api/lan-info', { host: 'attacker.example' }), 403);
+  assert.equal(await rawRequest(port, '/', { host: `evil.example:${port}` }), 403);
+  assert.equal(await rawRequest(port, '/healthz', { host: `localhost:${port}` }), 200);
+  assert.equal(await rawRequest(port, '/healthz', { host: `127.0.0.1:${port}` }), 200);
+  assert.equal(await rawRequest(port, '/healthz', { host: `[::1]:${port}` }), 200);
+});
+
+test('폰(LAN IP Host + 쿠키)은 그대로 접속', async () => {
+  const { port } = await boot({ isLoopback: () => false });
+  assert.equal(await rawRequest(port, '/', { host: `192.168.0.5:${port}`, cookie: 'so_token=' + TOKEN }), 200);
+});
+
+test('다른 사이트(Origin이 다른) WebSocket은 거절, 같은 출처·Origin 없음은 허용', async () => {
+  const { url, port } = await boot();
+  const evil = new WebSocket(url.replace('http', 'ws') + '/ws', { origin: 'https://evil.example' });
+  const code = await new Promise<number>((resolve) => {
+    evil.on('unexpected-response', (_req, res) => resolve(res.statusCode ?? 0));
+    evil.on('open', () => resolve(101));
+  });
+  assert.equal(code, 403);
+  const same = new WebSocket(url.replace('http', 'ws') + '/ws', { origin: `http://127.0.0.1:${port}` });
+  assert.ok((await nextSnapshot(same, () => true)).agents);
+  same.close();
+});
+
+test('잘못된 WebSocket 프레임·너무 큰 메시지에도 서버는 살아 있음', async () => {
+  const { url } = await boot();
+  const bad = new WebSocket(url.replace('http', 'ws') + '/ws');
+  await nextSnapshot(bad, () => true);
+  bad.on('error', () => {});
+  // 마스크된 텍스트 프레임, 내용 0xFF(UTF-8 아님)
+  (bad as unknown as { _socket: import('node:net').Socket })._socket.write(Buffer.from([0x81, 0x81, 0, 0, 0, 0, 0xff]));
+  const big = new WebSocket(url.replace('http', 'ws') + '/ws');
+  await nextSnapshot(big, () => true);
+  big.on('error', () => {});
+  big.send('x'.repeat(10_000));
+  await new Promise((r) => setTimeout(r, 300));
+  const r = await fetch(url + '/healthz');
+  assert.equal(await r.text(), 'ok');
+  const fresh = new WebSocket(url.replace('http', 'ws') + '/ws');
+  assert.ok((await nextSnapshot(fresh, () => true)).agents);
+  fresh.close();
+});
+
 test('loadConfig: 없으면 기본값 파일 생성', () => {
   const h = fs.mkdtempSync(path.join(os.tmpdir(), 'so-cfg-'));
   const c = loadConfig(h);
@@ -144,6 +199,7 @@ test('loadConfig: 없으면 기본값 파일 생성', () => {
   assert.equal(c.idleMinutes, 30);
   assert.equal(c.goneMinutes, 10);
   assert.equal(c.stalledMinutes, 15);
+  assert.equal(c.forgetHours, 12);
   assert.equal(c.softSound, true);
   assert.equal(c.wikiPath, path.join(os.homedir(), 'Documents', 'CnC Wiki'));
   assert.equal(c.projectNames['lst-seongsu'], '성수 LST');

@@ -23,6 +23,7 @@ async function main(): Promise<void> {
     idleMs: config.idleMinutes * MINUTE,
     goneMs: config.goneMinutes * MINUTE,
     stalledMs: config.stalledMinutes * MINUTE,
+    forgetMs: config.forgetHours * 60 * MINUTE,
     resolveProject: (cwd) => resolver(cwd),
   });
 

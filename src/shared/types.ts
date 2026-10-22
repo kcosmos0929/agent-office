@@ -20,6 +20,8 @@ export type OfficeEvent = EventBase & (
   | { type: 'prompt' }
   | { type: 'stop' }
   | { type: 'session-end' }
+  /** 입력을 기다린다는 알림(Stop 없이 끝난 차례 대비) */
+  | { type: 'idle' }
   | { type: 'tool-start'; toolUseId: string; activity: Activity; detail: string }
   | { type: 'tool-end'; toolUseId: string }
   | { type: 'permission'; detail: string }

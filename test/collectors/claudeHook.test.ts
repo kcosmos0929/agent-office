@@ -35,8 +35,9 @@ test('하위 에이전트 안의 권한 요청은 subagentId를 단다', () => {
   assert.equal(e.subagentId, 'a1');
 });
 
-test('Notification: idle_prompt는 무시, permission_prompt는 permission', () => {
-  assert.deepEqual(hookToEvents({ ...fx('notification'), notification_type: 'idle_prompt' }, 0), []);
+test('Notification: idle_prompt는 idle, 다른 알림은 무시, permission_prompt는 permission', () => {
+  assert.equal(hookToEvents({ ...fx('notification'), notification_type: 'idle_prompt' }, 0)[0].type, 'idle');
+  assert.deepEqual(hookToEvents({ ...fx('notification'), notification_type: 'auth_success' }, 0), []);
   const [e] = hookToEvents(fx('notification'), 0);
   assert.equal(e.type, 'permission');
   if (e.type !== 'permission') throw new Error('type');
@@ -116,4 +117,11 @@ test('summarizeToolInput 도구별', () => {
   assert.equal(summarizeToolInput('TodoWrite', {}), 'TodoWrite');
   assert.equal(summarizeToolInput('Bash', { command: 'ls\nrm x' }), 'Bash: ls');
   assert.equal(summarizeToolInput('WebFetch', { url: '잘못된 주소' }), 'WebFetch');
+});
+
+test('도구 실행 중 사용자가 끊으면(PostToolUseFailure is_interrupt) tool-end 다음 stop', () => {
+  const evs = hookToEvents({ ...fx('post-bash'), hook_event_name: 'PostToolUseFailure', is_interrupt: true }, 0);
+  assert.deepEqual(evs.map((e) => e.type), ['tool-end', 'stop']);
+  const normal = hookToEvents({ ...fx('post-bash'), hook_event_name: 'PostToolUseFailure', is_interrupt: false }, 0);
+  assert.deepEqual(normal.map((e) => e.type), ['tool-end']);
 });

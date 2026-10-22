@@ -3,6 +3,7 @@
 import { spawn } from 'node:child_process';
 import fs from 'node:fs';
 import http from 'node:http';
+import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
 import QRCode from 'qrcode';
@@ -51,6 +52,29 @@ function defaultAdmin(action: AdminAction): void {
     setTimeout(() => process.exit(0), 200); // launchd(KeepAlive)가 다시 켠다
   } else {
     spawn('launchctl', ['bootout', `gui/${process.getuid?.() ?? 501}/${SERVICE_LABEL}`], { detached: true, stdio: 'ignore' }).unref();
+  }
+}
+
+/** Host가 IP 숫자 주소나 localhost일 때만 받는다 — 이름으로 들어오는 DNS 리바인딩(다른 사이트가 이 서버를 자기 이름으로 부르기)을 막는다 */
+export function hostAllowed(host: string | undefined): boolean {
+  if (!host) return false;
+  let h = host.trim().toLowerCase();
+  if (h.startsWith('[')) {
+    const end = h.indexOf(']');
+    return end > 0 && net.isIPv6(h.slice(1, end));
+  }
+  h = h.replace(/:\d+$/, '');
+  return h === 'localhost' || net.isIPv4(h);
+}
+
+/** 브라우저 WebSocket은 출처 제한이 없어서 직접 막는다: Origin이 없거나(브라우저 아님) Host와 같은 출처만 */
+function originAllowed(req: http.IncomingMessage): boolean {
+  const origin = req.headers.origin;
+  if (!origin) return true;
+  try {
+    return new URL(origin).host === req.headers.host;
+  } catch {
+    return false;
   }
 }
 
@@ -216,6 +240,7 @@ export function startServer(opts: ServerOptions): Promise<RunningServer> {
   };
 
   const server = http.createServer((req, res) => {
+    if (!hostAllowed(req.headers.host)) return text(res, 403);
     const local = isLoopback(req.socket.remoteAddress ?? '');
     const url = new URL(req.url ?? '/', 'http://localhost');
     const run = req.method === 'POST' ? handlePost : req.method === 'GET' || req.method === 'HEAD' ? handleGet : null;
@@ -227,10 +252,16 @@ export function startServer(opts: ServerOptions): Promise<RunningServer> {
     });
   });
 
-  const wss = new WebSocketServer({ noServer: true });
+  // 화면은 서버에 메시지를 보내지 않는다 → 아주 작은 한도, 잘못된 프레임은 그 연결만 끊는다(서버는 계속)
+  const wss = new WebSocketServer({ noServer: true, maxPayload: 4096 });
   server.on('upgrade', (req, socket, head) => {
     const local = isLoopback(req.socket.remoteAddress ?? '');
     const url = new URL(req.url ?? '/', 'http://localhost');
+    if (!hostAllowed(req.headers.host) || !originAllowed(req)) {
+      socket.write('HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n');
+      socket.destroy();
+      return;
+    }
     if (url.pathname !== '/ws' || (!local && !tokenMatches(cookieToken(req), token))) {
       socket.write('HTTP/1.1 401 Unauthorized\r\nConnection: close\r\n\r\n');
       socket.destroy();
@@ -238,6 +269,7 @@ export function startServer(opts: ServerOptions): Promise<RunningServer> {
     }
     wss.handleUpgrade(req, socket, head, (ws) => {
       sockets.add(ws);
+      ws.on('error', () => ws.terminate());
       ws.on('close', () => sockets.delete(ws));
       send(ws);
     });

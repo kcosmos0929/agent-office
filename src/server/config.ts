@@ -11,6 +11,8 @@ export type Config = {
   idleMinutes: number;
   goneMinutes: number;
   stalledMinutes: number;
+  /** 이 시간 동안 신호가 없는 세션은 목록에서 정리 */
+  forgetHours: number;
   softSound: boolean;
   projectNames: Record<string, string>;
 };
@@ -22,6 +24,7 @@ function defaults(): Config {
     idleMinutes: 30,
     goneMinutes: 10,
     stalledMinutes: 15,
+    forgetHours: 12,
     softSound: true,
     projectNames: { ...DEFAULT_PROJECT_NAMES },
   };

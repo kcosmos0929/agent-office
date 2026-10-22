@@ -6,6 +6,8 @@ export type StateOptions = {
   idleMs: number;
   goneMs: number;
   stalledMs: number;
+  /** 이 시간 동안 아무 신호가 없으면 상태와 상관없이 정리(종료 신호 없이 닫힌 세션) */
+  forgetMs: number;
   resolveProject: (cwd: string) => string;
 };
 
@@ -51,7 +53,10 @@ export class OfficeState {
   tick(now: number): boolean {
     let changed = false;
     for (const [id, { agent: a }] of this.entries) {
-      if (a.status === 'done' && now - a.since >= this.opts.idleMs) {
+      if (now - a.lastEventAt >= this.opts.forgetMs) {
+        this.entries.delete(id);
+        changed = true;
+      } else if (a.status === 'done' && now - a.since >= this.opts.idleMs) {
         this.setStatus(a, 'idle', now);
         changed = true;
       } else if (a.status === 'thinking' && now - a.lastEventAt >= this.opts.stalledMs) {
@@ -165,6 +170,14 @@ export class OfficeState {
         return;
       case 'title':
         a.title = e.title;
+        return;
+      case 'idle':
+        // 입력을 기다린다는 알림: 일하던 중이었다면(Stop 없이 끝난 차례) 내 차례로. 승인 대기는 건드리지 않는다
+        if (groupOf(a.status) !== 'working') return;
+        entry.openTools.clear();
+        entry.permissionFrom = null;
+        this.setStatus(a, 'done', e.at);
+        a.detail = null;
         return;
     }
   }

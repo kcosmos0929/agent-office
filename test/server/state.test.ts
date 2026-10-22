@@ -7,7 +7,7 @@ import { M } from '../helpers.ts';
 const CWD = '/Users/seop/developer/street-centrality-bus';
 
 function make() {
-  return new OfficeState({ idleMs: 30 * M, goneMs: 10 * M, stalledMs: 15 * M, resolveProject: (cwd) => (cwd === CWD ? '가로망 중심성' : 'x') });
+  return new OfficeState({ idleMs: 30 * M, goneMs: 10 * M, stalledMs: 15 * M, forgetMs: 12 * 60 * M, resolveProject: (cwd) => (cwd === CWD ? '가로망 중심성' : 'x') });
 }
 
 type Ev = OfficeEvent;
@@ -189,4 +189,37 @@ test('setUsage: 바뀌면 true, 같으면 false', () => {
   assert.equal(st.setUsage({ ...u }), false);
   assert.deepEqual(st.snapshot(5).usage, u);
   assert.equal(st.snapshot(5).now, 5);
+});
+
+test('idle(입력 기다림 알림): 일하던 중·응답 없음이면 done, 승인 대기·done은 그대로', () => {
+  const idle = (s: string, at: number): Ev => ({ ...b(s, at), type: 'idle' });
+  const st = make();
+  st.apply(ev.prompt('s1', 0));
+  st.apply(ev.tool('s1', 1, 'A', 'editing'));
+  st.apply(idle('s1', 2));
+  assert.equal(one(st).status, 'done');
+  assert.equal(one(st).since, 2);
+  st.apply(ev.prompt('s1', 3));
+  st.tick(3 + 15 * M);
+  assert.equal(one(st).status, 'stalled');
+  st.apply(idle('s1', 4 + 15 * M));
+  assert.equal(one(st).status, 'done');
+  st.apply(ev.prompt('s1', 5 + 15 * M));
+  st.apply(ev.perm('s1', 6 + 15 * M));
+  st.apply(idle('s1', 7 + 15 * M));
+  assert.equal(one(st).status, 'permission');
+});
+
+test('12시간 동안 아무 신호가 없으면(닫혔는데 종료 신호가 없던 세션) 상태와 상관없이 정리하고 자리를 비움', () => {
+  const st = make();
+  st.apply(ev.stop('s1', 0));
+  st.apply(ev.prompt('s2', 0));
+  st.apply(ev.perm('s2', 0));
+  st.apply(ev.start('s3', 6 * 60 * M));
+  st.tick(12 * 60 * M - 1);
+  assert.equal(st.snapshot(0).agents.length, 3);
+  assert.equal(st.tick(12 * 60 * M), true);
+  assert.deepEqual(st.snapshot(0).agents.map((a) => a.sessionId), ['s3']);
+  st.apply(ev.start('s4', 12 * 60 * M + 1));
+  assert.equal(st.snapshot(0).agents.find((a) => a.sessionId === 's4')!.hat, 0);
 });
