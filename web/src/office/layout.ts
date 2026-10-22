@@ -16,19 +16,20 @@ export const DOOR: Point = { x: 7, y: 10 };
 /** Claude 작업실과 앞쪽 방들 사이 유리 칸막이(y=5)의 틈 */
 export const PARTITION_GAP: Point = { x: 3.1, y: 5 };
 
-/** 책상 8개: 2줄 × 4. 책상 x 중심과 줄의 책상 y(앞 가장자리) */
-export const DESK_X = [0.9, 2.3, 3.7, 5.1];
-export const DESK_ROWS = [0.8, 2.8];
-export const DESK_W = 1.15;
-export const DESK_D = 0.75;
+/** 책상 8개: 2열 × 4. 아이소메트릭 시점에서 앞 줄 책상이 캐릭터를 가리지 않도록 캐릭터는 책상의 +x 쪽(통로)에 선다 */
+export const DESK_COLS = [0.5, 3.0]; // 책상 x 시작
+export const DESK_YS = [0.55, 1.65, 2.75, 3.85]; // 책상 y 시작
+export const DESK_W = 0.75; // x 방향
+export const DESK_D = 0.85; // y 방향
 
 const WAITING_SPOT: Point = { x: 6.4, y: 9.3 };
 
-/** 0~7 → Claude 작업실 책상 앞 의자, 그 밖(-1 등) → 문 옆 대기 자리 */
+/** 0~7 → Claude 작업실 책상 옆 자리(두 열을 번갈아 채움), 그 밖(-1 등) → 문 옆 대기 자리 */
 export function seatPosition(seat: number): Point {
   if (seat < 0 || seat > 7) return WAITING_SPOT;
-  const row = seat < 4 ? 0 : 1;
-  return { x: DESK_X[seat % 4], y: DESK_ROWS[row] + DESK_D + 0.45 };
+  const col = seat % 2;
+  const row = Math.floor(seat / 2);
+  return { x: DESK_COLS[col] + DESK_W + 0.5, y: DESK_YS[row] + DESK_D / 2 };
 }
 
 /** 회의 테이블 */
@@ -50,5 +51,5 @@ export function pathTo(dest: Point): Point[] {
   const r = ROOMS.claude;
   const inClaude = dest.x > r.x0 && dest.x < r.x1 && dest.y > r.y0 && dest.y < r.y1;
   if (!inClaude) return [DOOR, dest];
-  return [DOOR, { x: PARTITION_GAP.x, y: 6.2 }, PARTITION_GAP, { x: PARTITION_GAP.x, y: Math.min(dest.y, 4.6) }, dest];
+  return [DOOR, { x: PARTITION_GAP.x, y: 6.2 }, PARTITION_GAP, { x: dest.x, y: 4.6 }, dest];
 }

@@ -85,3 +85,25 @@ html, body { margin: 0; height: 100%; background: var(--bg); }
 
 /* ---------- 오피스 ---------- */
 .office-host { position: fixed; inset: 0; }
+
+/* ---------- 말풍선·상세 카드 ---------- */
+.bubble {
+  font: 600 11px/1 -apple-system, 'Apple SD Gothic Neo', sans-serif; padding: 4px 9px; border-radius: 10px;
+  white-space: nowrap; box-shadow: 0 2px 6px rgba(0, 0, 0, 0.12); transform: translateY(-6px);
+}
+.bubble.urgent { animation: pulse 1.4s infinite; }
+@keyframes pulse { 0%, 100% { box-shadow: 0 0 0 0 rgba(245, 165, 36, 0.7); } 50% { box-shadow: 0 0 0 7px rgba(245, 165, 36, 0); } }
+.card {
+  position: absolute; z-index: 25; width: 240px; background: #fff; border-radius: 12px; padding: 12px 14px;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.18); font-size: 12px; line-height: 1.55; color: var(--ink);
+}
+.card-head { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--muted); }
+.card-swatch { width: 10px; height: 10px; border-radius: 3px; }
+.card-close { margin-left: auto; border: 0; background: none; cursor: pointer; color: var(--muted); font-size: 12px; }
+.card-title { font-size: 14px; font-weight: 800; margin: 2px 0 6px; }
+.card-pill { border-radius: 9px; padding: 1px 8px; font-weight: 700; }
+.card-state { color: var(--muted); }
+.card-detail { margin-top: 6px; font: 11px 'SF Mono', Menlo, monospace; background: #f6f2ec; border-radius: 6px; padding: 5px 7px; word-break: break-all; }
+.card-project { margin-top: 6px; color: var(--muted); }
+.card-project b { color: var(--ink); }
+.card-cwd { color: #a79c90; font-size: 11px; }

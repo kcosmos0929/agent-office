@@ -1,6 +1,6 @@
 // 사무실 장면(바닥·벽·창·유리 칸막이·가구). 모두 코드로 만든 상자들 — 그림 파일 없음. 색은 시안 A.
 import * as THREE from 'three';
-import { DESK_D, DESK_ROWS, DESK_W, DESK_X, MEETING_TABLE, ROOMS, meetingSpot } from './layout.ts';
+import { DESK_COLS, DESK_D, DESK_W, DESK_YS, MEETING_TABLE, ROOMS, meetingSpot } from './layout.ts';
 
 export const WALL_H = 2.4;
 const FONT = "-apple-system, 'Apple SD Gothic Neo', sans-serif";
@@ -73,17 +73,18 @@ export function buildOffice(): OfficeScene {
   g.add(block(3.95, 5.05, 0.1, 1.4, 0, 0.55, glassColor, glass));
   g.add(block(3.95, 7.6, 0.1, 2.4, 0, 0.55, glassColor, glass));
 
-  // Claude 작업실 책상 8개 + 모니터
+  // Claude 작업실 책상 8개(2열 × 4) + 모니터(+x 쪽 통로를 향함). 순서는 seatPosition과 같게: 열을 번갈아
   const deskScreens: THREE.Mesh[] = [];
-  for (const row of DESK_ROWS) {
-    for (const cx of DESK_X) {
-      g.add(block(cx - DESK_W / 2, row, DESK_W, DESK_D, 0, 0.62, '#F2F0EC'));
-      g.add(block(cx - 0.38, row + 0.06, 0.76, 0.1, 0.62, 0.5, '#2A2F38'));
-      const screen = new THREE.Mesh(new THREE.PlaneGeometry(0.66, 0.4), new THREE.MeshBasicMaterial({ color: '#3A404C' }));
-      screen.position.set(cx, 0.62 + 0.25, row + 0.165);
-      g.add(screen);
-      deskScreens.push(screen);
-    }
+  for (let seat = 0; seat < 8; seat++) {
+    const x0 = DESK_COLS[seat % 2];
+    const y0 = DESK_YS[Math.floor(seat / 2)];
+    g.add(block(x0, y0, DESK_W, DESK_D, 0, 0.62, '#F2F0EC'));
+    g.add(block(x0 + 0.08, y0 + 0.08, 0.1, DESK_D - 0.16, 0.62, 0.5, '#2A2F38'));
+    const screen = new THREE.Mesh(new THREE.PlaneGeometry(DESK_D - 0.28, 0.4), new THREE.MeshBasicMaterial({ color: '#3A404C' }));
+    screen.rotation.y = Math.PI / 2;
+    screen.position.set(x0 + 0.185, 0.62 + 0.25, y0 + DESK_D / 2);
+    g.add(screen);
+    deskScreens.push(screen);
   }
 
   // Codex 실험실: 서버랙 + 책상과 큰 모니터

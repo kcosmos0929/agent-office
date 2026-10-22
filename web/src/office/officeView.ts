@@ -5,6 +5,8 @@ import type { Snapshot } from '../../../src/shared/types.ts';
 import type { OfficeHost } from '../main.ts';
 import { targetFps } from './fps.ts';
 import type { Pose } from './pose.ts';
+import { showCard } from './card.ts';
+import { Cast } from './cast.ts';
 import { buildOffice, type OfficeScene } from './scene.ts';
 import { createTv } from './tv.ts';
 
@@ -28,6 +30,10 @@ export class OfficeView implements OfficeHost {
   private raf = 0;
   private disposed = false;
   private zoom = 1;
+  private cast: Cast;
+  private lastT = 0;
+  private snap: Snapshot | null = null;
+  private closeCard: (() => void) | null = null;
 
   constructor(container: HTMLElement) {
     this.container = container;
@@ -54,6 +60,7 @@ export class OfficeView implements OfficeHost {
 
     this.office = buildOffice();
     this.scene.add(this.office.group, this.tv.group);
+    this.cast = new Cast(this.scene, this.office);
 
     this.camera.position.copy(TARGET).addScaledVector(VIEW_DIR, 30);
     this.camera.lookAt(TARGET);
@@ -64,6 +71,8 @@ export class OfficeView implements OfficeHost {
       this.fit();
       this.invalidate();
     }, { passive: false });
+
+    this.renderer.domElement.addEventListener('pointerdown', (e) => this.onPointer(e));
 
     this.resizeObserver = new ResizeObserver(() => {
       this.fit();
@@ -77,8 +86,21 @@ export class OfficeView implements OfficeHost {
   }
 
   update(s: Snapshot): void {
+    this.snap = s;
     this.tv.update(s.usage, s.now);
+    this.cast.sync(s);
+    this.poses = this.cast.poses();
     this.invalidate();
+  }
+
+  private onPointer(e: PointerEvent): void {
+    const rect = this.renderer.domElement.getBoundingClientRect();
+    const ndc = new THREE.Vector2(((e.clientX - rect.left) / rect.width) * 2 - 1, -((e.clientY - rect.top) / rect.height) * 2 + 1);
+    const ray = new THREE.Raycaster();
+    ray.setFromCamera(ndc, this.camera);
+    const agent = this.cast.pick(ray);
+    this.closeCard?.();
+    this.closeCard = agent && this.snap ? showCard(this.container, agent, this.snap.now, { x: e.clientX - rect.left, y: e.clientY - rect.top }) : null;
   }
 
   dispose(): void {
@@ -92,7 +114,12 @@ export class OfficeView implements OfficeHost {
   }
 
   /** 매 프레임 움직임(하위 클래스·캐릭터가 씀) */
-  protected animate(_t: number): void {}
+  protected animate(t: number): void {
+    const dt = this.lastT ? Math.min(0.25, (t - this.lastT) / 1000) : 0;
+    this.lastT = t;
+    this.cast.animate(t, dt);
+    this.poses = this.cast.poses();
+  }
 
   /** 지금 바로 한 번 그리고, 그 뒤 속도 조절 루프를 다시 잡는다 */
   protected invalidate(): void {
