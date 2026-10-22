@@ -6,7 +6,7 @@ import { loadConfig } from '../src/server/config.ts';
 import { soHome } from '../src/server/paths.ts';
 import { renderPlist } from './lib/plist.ts';
 import { mergeClaudeSettings } from './lib/settingsMerge.ts';
-import { APP, LABEL, PLIST, REPO_ROOT, UID, backupSettings, readSettings, stableNodePath, writeSettings } from './lib/system.ts';
+import { APP, LABEL, PLIST, REPO_ROOT, UID, backupSettings, readSettingsFile, stableNodePath, writeSettingsIfUnchanged } from './lib/system.ts';
 
 const step = (msg: string) => console.log(`▶ ${msg}`);
 
@@ -51,24 +51,34 @@ function main(): void {
   }
 
   step('~/.claude/settings.json 확인');
-  const before = readSettings();
   const node = stableNodePath(process.execPath);
-  const merged = mergeClaudeSettings(before, {
+  const cmd = {
     hook: `"${node}" "${path.join(bin, 'claude-hook.mjs')}"`,
     statusline: `"${node}" "${path.join(bin, 'statusline.mjs')}"`,
-  });
-  if (merged.conflict) {
-    console.error(`✖ ${merged.conflict}`);
-    console.error('  settings.json은 바꾸지 않았어요. 기존 설정을 정리한 뒤 다시 설치하세요.');
-    process.exit(1);
-  }
-  if (merged.changed) {
+  };
+  // 읽고 → 합치고 → 쓰기 직전에 그사이 바뀌었는지 확인. 바뀌었으면 새 내용으로 다시(최대 3번)
+  let settled = false;
+  for (let attempt = 1; attempt <= 3 && !settled; attempt++) {
+    const { raw, settings } = readSettingsFile();
+    const merged = mergeClaudeSettings(settings, cmd);
+    if (merged.conflict) {
+      console.error(`✖ ${merged.conflict}`);
+      console.error('  settings.json은 바꾸지 않았어요. 기존 설정을 정리한 뒤 다시 설치하세요.');
+      process.exit(1);
+    }
+    if (!merged.changed) {
+      console.log('  이미 설치돼 있음');
+      settled = true;
+      break;
+    }
     const backup = backupSettings('설치전');
     if (backup) console.log(`  백업: ${backup}`);
-    writeSettings(merged.settings);
-    console.log('  훅·상태줄 추가');
-  } else {
-    console.log('  이미 설치돼 있음');
+    settled = writeSettingsIfUnchanged(merged.settings, raw);
+    console.log(settled ? '  훅·상태줄 추가' : '  다른 프로그램이 방금 settings.json을 바꿔서 다시 읽어요');
+  }
+  if (!settled) {
+    console.error('✖ settings.json이 계속 바뀌고 있어 설치를 멈췄어요. 잠시 뒤 다시 해 주세요.');
+    process.exit(1);
   }
 
   step(`자동 켜기 등록 (${LABEL})`);
