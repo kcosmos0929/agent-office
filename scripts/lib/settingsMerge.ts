@@ -36,6 +36,14 @@ export function mergeClaudeSettings(settings: Settings, cmd: { hook: string; sta
       arr.push({ matcher: '', hooks: [{ type: 'command', command: cmd.hook, timeout: 5 }] });
       changed = true;
     }
+    for (const g of arr) {
+      for (const h of g.hooks ?? []) {
+        if (isOurs(h) && h.command !== cmd.hook) {
+          h.command = cmd.hook; // 경로가 바뀌었으면(예: node 위치) 새 경로로
+          changed = true;
+        }
+      }
+    }
     nextHooks[ev] = arr;
   }
   next.hooks = nextHooks;

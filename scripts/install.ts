@@ -6,7 +6,7 @@ import { loadConfig } from '../src/server/config.ts';
 import { soHome } from '../src/server/paths.ts';
 import { renderPlist } from './lib/plist.ts';
 import { mergeClaudeSettings } from './lib/settingsMerge.ts';
-import { APP, LABEL, PLIST, REPO_ROOT, UID, backupSettings, readSettings, writeSettings } from './lib/system.ts';
+import { APP, LABEL, PLIST, REPO_ROOT, UID, backupSettings, readSettings, stableNodePath, writeSettings } from './lib/system.ts';
 
 const step = (msg: string) => console.log(`▶ ${msg}`);
 
@@ -17,6 +17,22 @@ function sleep(ms: number) {
 function healthy(port: number): boolean {
   const r = spawnSync('curl', ['-s', '--max-time', '1', `http://127.0.0.1:${port}/healthz`], { encoding: 'utf8' });
   return r.stdout === 'ok';
+}
+
+const loaded = () => spawnSync('launchctl', ['print', `gui/${UID}/${LABEL}`], { stdio: 'ignore' }).status === 0;
+
+/** 이미 등록돼 있으면 내리고(완전히 내려갈 때까지 기다림), 다시 올린다. 올리기는 3번까지 재시도 */
+function reloadService(): void {
+  if (loaded()) {
+    spawnSync('launchctl', ['bootout', `gui/${UID}/${LABEL}`], { stdio: 'ignore' });
+    for (let i = 0; i < 20 && loaded(); i++) sleep(250);
+  }
+  for (let attempt = 1; ; attempt++) {
+    const r = spawnSync('launchctl', ['bootstrap', `gui/${UID}`, PLIST], { encoding: 'utf8' });
+    if (r.status === 0) return;
+    if (attempt >= 3) throw new Error(`launchctl bootstrap 실패: ${r.stderr.trim()}`);
+    sleep(1000);
+  }
 }
 
 function main(): void {
@@ -36,7 +52,7 @@ function main(): void {
 
   step('~/.claude/settings.json 확인');
   const before = readSettings();
-  const node = process.execPath;
+  const node = stableNodePath(process.execPath);
   const merged = mergeClaudeSettings(before, {
     hook: `"${node}" "${path.join(bin, 'claude-hook.mjs')}"`,
     statusline: `"${node}" "${path.join(bin, 'statusline.mjs')}"`,
@@ -64,8 +80,7 @@ function main(): void {
     logPath: path.join(home, 'server.log'),
     soHome: home,
   }));
-  spawnSync('launchctl', ['bootout', `gui/${UID}/${LABEL}`], { stdio: 'ignore' });
-  execFileSync('launchctl', ['bootstrap', `gui/${UID}`, PLIST]);
+  reloadService();
 
   step('서버 확인');
   let ok = false;

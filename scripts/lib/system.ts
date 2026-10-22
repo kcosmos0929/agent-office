@@ -11,6 +11,14 @@ export const PLIST = path.join(os.homedir(), 'Library', 'LaunchAgents', `${LABEL
 export const APP = path.join(os.homedir(), 'Applications', 'Synthetic Office.app');
 export const UID = process.getuid?.() ?? 501;
 
+/** Homebrew는 node를 버전 폴더(…/Cellar/node/26.3.0/bin/node)에 두므로, 업그레이드에도 안 깨지는 고정 링크(…/bin/node)가 있으면 그걸 쓴다 */
+export function stableNodePath(execPath: string, exists: (p: string) => boolean = fs.existsSync): string {
+  const m = /^(.*)\/Cellar\/node(?:@[^/]+)?\/[^/]+\/bin\/node$/.exec(execPath);
+  if (!m) return execPath;
+  const link = `${m[1]}/bin/node`;
+  return exists(link) ? link : execPath;
+}
+
 export function readSettings(): Record<string, unknown> {
   if (!fs.existsSync(CLAUDE_SETTINGS)) return {};
   return JSON.parse(fs.readFileSync(CLAUDE_SETTINGS, 'utf8')) as Record<string, unknown>;

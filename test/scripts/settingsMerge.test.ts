@@ -40,6 +40,19 @@ test('두 번 설치해도 중복 없음(changed=false)', () => {
   assert.deepEqual(twice.settings, once);
 });
 
+test('다시 설치하면 우리 항목의 명령을 새 경로로 바꾸고 중복은 만들지 않음', () => {
+  const old = mergeClaudeSettings(withPixel(), { hook: 'node "/old/.synthetic-office/bin/claude-hook.mjs"', statusline: 'node "/old/.synthetic-office/bin/statusline.mjs"' }).settings;
+  const r = mergeClaudeSettings(old, CMD);
+  assert.equal(r.changed, true);
+  const hooks = r.settings.hooks as Record<string, Array<{ hooks: Array<{ command: string }> }>>;
+  for (const ev of HOOK_EVENTS) {
+    const ours = hooks[ev].flatMap((g) => g.hooks).filter((h) => h.command.includes('/.synthetic-office/bin/'));
+    assert.deepEqual(ours.map((h) => h.command), [CMD.hook], ev);
+  }
+  assert.deepEqual(hooks.PreToolUse[0].hooks[0], PIXEL);
+  assert.deepEqual(r.settings.statusLine, { type: 'command', command: CMD.statusline });
+});
+
 test('남의 statusLine이 있으면 conflict, settings 그대로', () => {
   const before = { ...withPixel(), statusLine: { type: 'command', command: '~/my-status.sh' } };
   const r = mergeClaudeSettings(before, CMD);
