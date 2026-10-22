@@ -1,0 +1,87 @@
+:root {
+  --bg: #f4efe8;
+  --paper: #fbf7f1;
+  --line: #efe8de;
+  --ink: #2a2a2a;
+  --muted: #7a6f64;
+  --soft: #8a7a68;
+  --wait: #f5a524;
+  --wait-bg: #fff4de;
+  --wait-ink: #9a5b00;
+  --done: #2f9e5b;
+  --done-bg: #eef8f1;
+  --claude: #d97757;
+  --tv: #1e2430;
+  --tv-ink: #7ce0a3;
+  font-family: -apple-system, 'Apple SD Gothic Neo', 'Pretendard', sans-serif;
+  color: var(--ink);
+  -webkit-font-smoothing: antialiased;
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; background: var(--bg); }
+#app { position: relative; min-height: 100%; }
+
+/* ---------- 툴바 ---------- */
+.toolbar { position: fixed; top: 10px; left: 12px; z-index: 20; display: flex; gap: 6px; flex-wrap: wrap; }
+.toolbar button {
+  font: 600 12px/1 inherit; font-family: inherit; color: #5a5047; background: #fff;
+  border: 1px solid #e2d8cb; border-radius: 9px; padding: 7px 10px; cursor: pointer;
+}
+.toolbar button:hover { border-color: #c9bca9; }
+.toolbar button.blink { animation: blink 1.2s infinite; border-color: var(--wait); }
+@keyframes blink { 50% { background: var(--wait-bg); } }
+.view-list .toolbar { position: static; padding: 10px 12px 0; }
+
+/* ---------- 연결 끊김 ---------- */
+.overlay {
+  position: fixed; inset: 0; z-index: 40; display: flex; align-items: center; justify-content: center;
+  background: rgba(244, 239, 232, 0.82); font-weight: 700; color: var(--soft); backdrop-filter: blur(2px);
+}
+.overlay[hidden] { display: none; }
+
+/* ---------- 목록형 ---------- */
+.list-host { max-width: 560px; margin: 0 auto; padding: 10px 12px 16px; }
+.board { background: var(--paper); border-radius: 16px; overflow: hidden; box-shadow: 0 6px 24px rgba(0, 0, 0, 0.08); }
+.board-bar { display: flex; align-items: center; gap: 6px; padding: 10px 14px; background: var(--bg); }
+.board-title { font-size: 10.5px; font-weight: 800; letter-spacing: 1.5px; color: var(--soft); }
+.badge { margin-left: auto; font-size: 11px; font-weight: 700; padding: 3px 9px; border-radius: 10px; background: var(--done-bg); color: var(--done); }
+.badge.urgent { background: var(--wait); color: #3a2600; }
+.rows { display: flex; flex-direction: column; }
+.row { display: flex; gap: 10px; align-items: center; padding: 10px 12px; border-bottom: 1px solid var(--line); border-left: 4px solid transparent; background: #fff; }
+.row.urgent { background: var(--wait-bg); border-left-color: var(--wait); }
+.row.waiting { border-left-color: var(--done); }
+.row.rest, .row.stalled { opacity: 0.55; }
+.avatar { flex: none; }
+.meta { min-width: 0; flex: 1; }
+.name { font-size: 11px; color: #5a5047; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.state { font-size: 14px; font-weight: 700; line-height: 1.3; }
+.row.urgent .state { color: var(--wait-ink); }
+.chips { display: flex; gap: 5px; align-items: center; margin-top: 3px; min-width: 0; }
+.chip { font-size: 10.5px; font-weight: 600; padding: 2px 7px; border-radius: 9px; background: #d977571f; color: var(--claude); white-space: nowrap; }
+.detail { font-size: 11px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.time { flex: none; align-self: flex-start; padding-top: 2px; font-size: 11px; color: #5a5047; font-variant-numeric: tabular-nums; }
+.empty { padding: 28px 14px; text-align: center; color: var(--muted); font-size: 13px; }
+.usage { display: flex; align-items: center; gap: 8px; padding: 9px 12px; background: var(--tv); color: var(--tv-ink); font: 700 11px 'SF Mono', Menlo, monospace; }
+.track { flex: 1; height: 6px; border-radius: 3px; overflow: hidden; background: #2e3644; }
+.fill { height: 100%; background: var(--tv-ink); }
+.usage-reset { color: #9aa5b4; font-weight: 500; }
+
+/* 작은 창(PiP) */
+.mini { margin: 0; background: var(--bg); }
+.mini .board { border-radius: 0; box-shadow: none; min-height: 100vh; }
+
+/* ---------- 설정 패널 ---------- */
+.settings {
+  position: fixed; top: 48px; left: 12px; z-index: 30; width: 280px; background: #fff; border-radius: 14px;
+  box-shadow: 0 10px 32px rgba(0, 0, 0, 0.18); padding: 14px; font-size: 12.5px;
+}
+.settings[hidden] { display: none; }
+.settings h3 { margin: 0 0 8px; font-size: 13px; }
+.settings img { width: 100%; image-rendering: pixelated; border-radius: 8px; background: #fff; }
+.settings .lan-url { font: 11px 'SF Mono', Menlo, monospace; color: var(--muted); word-break: break-all; margin: 6px 0 10px; }
+.settings .actions { display: flex; gap: 6px; }
+.settings .actions button { flex: 1; font-family: inherit; font-weight: 600; padding: 7px; border-radius: 8px; border: 1px solid #e2d8cb; background: #fff; cursor: pointer; }
+
+/* ---------- 오피스 ---------- */
+.office-host { position: fixed; inset: 0; }
