@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#F8F3EC"/>
+      <stop offset="1" stop-color="#EAD7BD"/>
+    </linearGradient>
+  </defs>
+  <rect x="100" y="100" width="824" height="824" rx="185" fill="url(#bg)"/>
+  <!-- 바닥 그림자 -->
+  <ellipse cx="512" cy="812" rx="230" ry="38" fill="#D9C6AA"/>
+  <!-- 몸 -->
+  <rect x="312" y="560" width="400" height="250" rx="44" fill="#D97757"/>
+  <rect x="312" y="560" width="400" height="60" rx="30" fill="#E59474"/>
+  <!-- 머리 -->
+  <rect x="342" y="250" width="340" height="330" rx="52" fill="#F3E2D2" stroke="#E2CDB9" stroke-width="10"/>
+  <!-- 모자 -->
+  <rect x="322" y="214" width="380" height="92" rx="34" fill="#2F4B7C"/>
+  <!-- 눈 -->
+  <circle cx="442" cy="432" r="30" fill="#2A2A2A"/>
+  <circle cx="582" cy="432" r="30" fill="#2A2A2A"/>
+  <!-- 말풍선 알림 점 -->
+  <circle cx="770" cy="290" r="62" fill="#F5A524" stroke="#F8F3EC" stroke-width="14"/>
+</svg>
