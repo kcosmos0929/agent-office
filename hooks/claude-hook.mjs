@@ -21,24 +21,42 @@ function endpoint() {
   }
 }
 
+// 서버 수집기(claudeHook.ts)가 실제로 쓰는 필드만 보낸다 — 큰 파일 내용·프롬프트·응답·도구 결과는 보내지 않음
+const KEEP = ['session_id', 'hook_event_name', 'cwd', 'transcript_path', 'session_title', 'agent_id', 'agent_type',
+  'tool_name', 'tool_use_id', 'notification_type', 'message', 'is_interrupt'];
+const KEEP_INPUT = ['command', 'file_path', 'notebook_path', 'pattern', 'url', 'query', 'description', 'subagent_type'];
+const cut = (v) => (typeof v === 'string' && v.length > 300 ? v.slice(0, 300) : v);
+
+function minimize(d) {
+  const out = {};
+  for (const k of KEEP) if (d[k] !== undefined) out[k] = cut(d[k]);
+  if (d.tool_input && typeof d.tool_input === 'object') {
+    const ti = {};
+    for (const k of KEEP_INPUT) if (d.tool_input[k] !== undefined) ti[k] = cut(d.tool_input[k]);
+    out.tool_input = ti;
+  }
+  return out;
+}
+
 let input = '';
 process.stdin.setEncoding('utf8');
 process.stdin.on('data', (c) => { input += c; });
 process.stdin.on('end', () => {
   const ep = endpoint();
   if (!ep) return done();
+  let body;
   try {
-    JSON.parse(input);
+    body = JSON.stringify(minimize(JSON.parse(input)));
   } catch {
     return done();
   }
   const req = http.request(
     { host: '127.0.0.1', port: ep.port, path: '/api/claude/hook', method: 'POST', timeout: POST_TIMEOUT_MS,
-      headers: { 'content-type': 'application/json', 'content-length': Buffer.byteLength(input), authorization: `Bearer ${ep.token}` } },
+      headers: { 'content-type': 'application/json', 'content-length': Buffer.byteLength(body), authorization: `Bearer ${ep.token}` } },
     (res) => { res.resume(); res.on('end', done); },
   );
   req.on('timeout', () => { req.destroy(); done(); });
   req.on('error', done);
-  req.end(input);
+  req.end(body);
 });
 process.stdin.on('error', done);

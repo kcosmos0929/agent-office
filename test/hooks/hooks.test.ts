@@ -5,6 +5,7 @@ import fs from 'node:fs';
 import http from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
+import { hookToEvents } from '../../src/server/collectors/claudeHook.ts';
 
 const ROOT = path.resolve(import.meta.dirname, '..', '..');
 const HOOK = path.join(ROOT, 'hooks', 'claude-hook.mjs');
@@ -65,7 +66,7 @@ test('endpoint.json의 pid가 죽었으면 보내지 않고 끝', async () => {
   assert.equal(fake.got.length, 0);
 });
 
-test('서버 있음: 페이로드가 그대로 전달되고 출력 없음', async () => {
+test('서버 있음: 필요한 필드만 전달되고 출력 없음', async () => {
   const home = tempHome();
   const fake = await fakeServer();
   writeEndpoint(home, fake.port);
@@ -75,7 +76,42 @@ test('서버 있음: 페이로드가 그대로 전달되고 출력 없음', asyn
   assert.equal(fake.got.length, 1);
   assert.equal(fake.got[0].url, '/api/claude/hook');
   assert.equal(fake.got[0].auth, 'Bearer ' + TOKEN);
-  assert.equal(fake.got[0].body, PAYLOAD);
+  assert.deepEqual(JSON.parse(fake.got[0].body), JSON.parse(PAYLOAD));
+});
+
+test('큰 Write(2MB)도 작은 요청으로 전달되어 editing이 되고, 대화 내용·파일 내용은 보내지 않음', async () => {
+  const home = tempHome();
+  const fake = await fakeServer();
+  writeEndpoint(home, fake.port);
+  const big = JSON.stringify({
+    session_id: 's1', hook_event_name: 'PreToolUse', cwd: '/x', transcript_path: '/t.jsonl', permission_mode: 'default', prompt_id: 'p',
+    tool_name: 'Write', tool_use_id: 'w1', tool_input: { file_path: '/x/big.txt', content: '비밀'.repeat(1_000_000) },
+  });
+  await run(HOOK, home, big);
+  const body = fake.got[0].body;
+  assert.ok(Buffer.byteLength(body) < 4096, `${Buffer.byteLength(body)} bytes`);
+  assert.ok(!body.includes('비밀'));
+  assert.ok(!body.includes('permission_mode'));
+  const [e] = hookToEvents(JSON.parse(body), 0);
+  assert.equal(e.type, 'tool-start');
+  assert.deepEqual(e.type === 'tool-start' ? [e.activity, e.detail, e.toolUseId] : null, ['editing', 'big.txt', 'w1']);
+  assert.equal(e.transcriptPath, '/t.jsonl');
+});
+
+test('프롬프트·응답·도구 결과는 빼고 제목·알림 종류·끊김 여부는 남김', async () => {
+  const home = tempHome();
+  const fake = await fakeServer();
+  writeEndpoint(home, fake.port);
+  await run(HOOK, home, JSON.stringify({ session_id: 's1', hook_event_name: 'UserPromptSubmit', prompt: '비밀 프롬프트', session_title: '제목' }));
+  await run(HOOK, home, JSON.stringify({ session_id: 's1', hook_event_name: 'PostToolUseFailure', tool_name: 'Bash', tool_use_id: 't', tool_response: '비밀 출력', error: '비밀 에러', is_interrupt: true }));
+  await run(HOOK, home, JSON.stringify({ session_id: 's1', hook_event_name: 'Notification', notification_type: 'permission_prompt', message: 'Claude needs your permission to use Bash' }));
+  await run(HOOK, home, JSON.stringify({ session_id: 's1', hook_event_name: 'Stop', last_assistant_message: '비밀 답' }));
+  const bodies = fake.got.map((g) => JSON.parse(g.body));
+  assert.ok(!fake.got.some((g) => g.body.includes('비밀')));
+  assert.equal(bodies[0].session_title, '제목');
+  assert.equal(bodies[1].is_interrupt, true);
+  assert.equal(bodies[2].notification_type, 'permission_prompt');
+  assert.equal(bodies[2].message, 'Claude needs your permission to use Bash');
 });
 
 test('서버가 응답 안 함: 1.5초 안에 exit 0', async () => {
