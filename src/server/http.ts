@@ -14,6 +14,8 @@ import { tokenMatches } from './token.ts';
 import { hookToEvents } from './collectors/claudeHook.ts';
 import { statuslineToUsage } from './collectors/usage.ts';
 import { readTranscriptTitle } from './collectors/transcriptTitle.ts';
+import { readContext, type ContextReading } from './collectors/contextUsage.ts';
+import { makeContextRefresher } from './contextRefresher.ts';
 
 export type AdminAction = 'restart' | 'stop';
 
@@ -27,6 +29,8 @@ export type ServerOptions = {
   isLoopback?: (addr: string) => boolean;
   now?: () => number;
   onAdmin?: (action: AdminAction) => void;
+  /** 대화 게이지 읽기(테스트에서 바꿈) */
+  readContext?: (file: string) => Promise<ContextReading>;
 };
 
 export type RunningServer = { port: number; close(): Promise<void>; notify(): void };
@@ -145,6 +149,8 @@ export function startServer(opts: ServerOptions): Promise<RunningServer> {
     }, BROADCAST_MS);
   };
 
+  const refreshContext = makeContextRefresher({ state, read: opts.readContext ?? readContext, onChange: notify, now });
+
   const fetchTitle = async (sessionId: string) => {
     const transcript = state.needsTitle(sessionId);
     const last = titleTried.get(sessionId) ?? 0;
@@ -181,7 +187,11 @@ export function startServer(opts: ServerOptions): Promise<RunningServer> {
       for (const e of events) changed = state.apply(e) || changed;
       if (changed) notify();
       text(res, 204);
-      if (events[0]) void fetchTitle(events[0].sessionId);
+      if (events[0]) {
+        void fetchTitle(events[0].sessionId);
+        // 대화 정리 뒤엔 5초 간격을 기다리지 않고 바로 다시 읽는다
+        refreshContext(events[0].sessionId, events.some((e) => e.type === 'compact-end'));
+      }
       return;
     }
     if (url.pathname === '/api/claude/usage') {

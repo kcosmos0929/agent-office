@@ -2,6 +2,8 @@
 import { groupOf } from '../shared/labels.ts';
 import type { Activity, Agent, OfficeEvent, RegistryHealth, Snapshot, Status, Usage, WaitKind } from '../shared/types.ts';
 import type { RegistryEntry, RegistryRead, RegistryStatus } from './collectors/sessionRegistry.ts';
+import type { ContextReading } from './collectors/contextUsage.ts';
+import { contextWindow } from '../shared/contextWindow.ts';
 
 export type StateOptions = {
   idleMs: number;
@@ -128,6 +130,20 @@ export class OfficeState {
     const changed = JSON.stringify(u) !== JSON.stringify(this.usage);
     this.usage = u;
     return changed;
+  }
+
+  /** 트랜스크립트에서 읽은 대화 게이지를 넣는다. 바뀌었을 때만 true */
+  setContext(sessionId: string, r: ContextReading): boolean {
+    const a = this.entries.get(sessionId)?.agent;
+    if (!a) return false;
+    const next = r === null ? null : r.state === 'ok' ? { ...r, window: contextWindow(r.model) } : r;
+    if (JSON.stringify(next) === JSON.stringify(a.context)) return false;
+    a.context = next;
+    return true;
+  }
+
+  transcriptPathOf(sessionId: string): string | null {
+    return this.entries.get(sessionId)?.transcriptPath ?? null;
   }
 
   needsTitle(sessionId: string): string | null {
@@ -257,6 +273,7 @@ export class OfficeState {
       seat: firstFree(used.map((a) => a.seat), -1),
       subagents: [],
       hookless: false,
+      context: null,
     };
     const entry: Entry = {
       agent, openTools: new Map(), transcriptPath: null, waitingMain: null, waitingSubs: new Map(), waitSince: null,

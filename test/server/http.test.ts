@@ -221,3 +221,15 @@ test('토큰 파일 권한 0600, 다시 읽으면 같은 토큰', () => {
   assert.equal(fs.statSync(path.join(h, 'token')).mode & 0o777, 0o600);
   assert.equal(loadOrCreateToken(h), t);
 });
+
+test('hook 뒤 대화 게이지가 스냅샷에 실림', { timeout: 5000 }, async () => {
+  const { url } = await boot({ readContext: async () => ({ state: 'ok', used: 500_000, model: 'claude-opus-5-5' }) });
+  const ws = new WebSocket(url.replace('http', 'ws') + '/ws');
+  await nextSnapshot(ws, () => true);
+  const got = nextSnapshot(ws, (s) => s.agents.some((a) => a.context?.state === 'ok'));
+  const r = await fetch(url + '/api/claude/hook', { method: 'POST', headers: { authorization: `Bearer ${TOKEN}` }, body: JSON.stringify(fx('stop')) });
+  assert.equal(r.status, 204);
+  const snap = await got;
+  assert.deepEqual(snap.agents[0].context, { state: 'ok', used: 500_000, window: 1_000_000, model: 'claude-opus-5-5' });
+  ws.close();
+});

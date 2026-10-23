@@ -7,7 +7,7 @@ import { M } from '../helpers.ts';
 
 const NOW = 100 * M;
 function agent(id: string, status: Status, since: number, extra: Partial<Agent> = {}): Agent {
-  return { id, kind: 'claude', sessionId: id, title: null, cwd: '/x', project: '성수 LST', status, detail: 'analysis.py', since, lastEventAt: since, hat: 0, seat: 0, subagents: [], hookless: false, ...extra };
+  return { id, kind: 'claude', sessionId: id, title: null, cwd: '/x', project: '성수 LST', status, detail: 'analysis.py', since, lastEventAt: since, hat: 0, seat: 0, subagents: [], hookless: false, context: null, ...extra };
 }
 function render(snap: Snapshot): FakeElement {
   const root = new FakeElement('div');

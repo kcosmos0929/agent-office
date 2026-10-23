@@ -518,3 +518,28 @@ test('registryHealth·lastHookAt: 처음엔 missing·null, 읽고 훅 받으면 
   st.apply({ type: 'title', sessionId: 's1', at: 3_000, cwd: '', title: 't' });
   assert.deepEqual([st.registryHealth, st.lastHookAt], ['ok', 2_000]);
 });
+
+test('setContext: 창 = contextWindow(model), haiku-4-5면 20만, 모르는 모델 null, 같은 값이면 false, compacted, null', () => {
+  const st = make();
+  st.apply(ev.prompt('s1', 0));
+  assert.equal(one(st).context, null);
+  assert.equal(st.setContext('s1', { state: 'ok', used: 234560, model: 'claude-opus-5-5' }), true);
+  assert.deepEqual(one(st).context, { state: 'ok', used: 234560, window: 1_000_000, model: 'claude-opus-5-5' });
+  assert.equal(st.setContext('s1', { state: 'ok', used: 234560, model: 'claude-opus-5-5' }), false);
+  st.setContext('s1', { state: 'ok', used: 150_000, model: 'claude-haiku-4-5-20251001' });
+  assert.deepEqual(one(st).context, { state: 'ok', used: 150_000, window: 200_000, model: 'claude-haiku-4-5-20251001' });
+  st.setContext('s1', { state: 'ok', used: 10, model: 'mystery' });
+  assert.deepEqual(one(st).context, { state: 'ok', used: 10, window: null, model: 'mystery' });
+  st.setContext('s1', { state: 'compacted' });
+  assert.deepEqual(one(st).context, { state: 'compacted' });
+  st.setContext('s1', null);
+  assert.equal(one(st).context, null);
+  assert.equal(st.setContext('zzz', null), false);
+});
+
+test('transcriptPathOf: 훅이 준 경로, 모르면 null', () => {
+  const st = make();
+  st.apply({ ...ev.prompt('s1', 0), transcriptPath: '/t/s1.jsonl' });
+  assert.equal(st.transcriptPathOf('s1'), '/t/s1.jsonl');
+  assert.equal(st.transcriptPathOf('nope'), null);
+});

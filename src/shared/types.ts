@@ -61,7 +61,12 @@ export type Agent = {
   subagents: Subagent[];
   /** 등록부엔 일하는 중인데 서버가 켜진 뒤 훅이 한 번도 안 옴(2분 넘게) → '훅 없음' 태그 */
   hookless: boolean;
+  /** 대화 게이지: 이 세션 대화가 모델의 기억 창을 얼마나 채웠나 (모르면 null) */
+  context: AgentContext | null;
 };
+
+/** ok = 마지막 답 기준 사용 토큰과 창 크기(모르는 모델이면 null) / compacted = 정리 직후라 다음 답부터 다시 계산 */
+export type AgentContext = { state: 'ok'; used: number; window: number | null; model: string } | { state: 'compacted' };
 
 /** resetsAt = epoch 초 */
 export type UsageWindow = { pct: number; resetsAt: number };

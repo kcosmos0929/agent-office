@@ -4,7 +4,7 @@ import { sortForBoard } from '../../src/shared/sort.ts';
 import type { Agent, Status } from '../../src/shared/types.ts';
 
 function agent(id: string, status: Status, since: number): Agent {
-  return { id, kind: 'claude', sessionId: id, title: null, cwd: '/', project: 'x', status, detail: null, since, lastEventAt: since, hat: 0, seat: 0, subagents: [], hookless: false };
+  return { id, kind: 'claude', sessionId: id, title: null, cwd: '/', project: 'x', status, detail: null, since, lastEventAt: since, hat: 0, seat: 0, subagents: [], hookless: false, context: null };
 }
 
 test('sortForBoard: permission, done, working, stalled, idle, gone 순 + since 오래된 순', () => {
