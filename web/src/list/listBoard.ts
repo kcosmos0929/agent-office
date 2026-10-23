@@ -1,8 +1,10 @@
 // 목록형 상황판. 글자는 전부 textContent로 넣는다(데이터를 innerHTML에 넣지 않음).
 import { groupOf, HAT_COLORS, KIND_COLOR, STATUS_LABEL } from '../../../src/shared/labels.ts';
 import { sortForBoard } from '../../../src/shared/sort.ts';
-import type { Agent, Snapshot } from '../../../src/shared/types.ts';
+import type { Agent, AgentContext, Snapshot } from '../../../src/shared/types.ts';
 import { agentName, formatElapsed, formatReset } from '../format.ts';
+import { contextPct, gaugeLevel, rowGaugeText } from '../gauge.ts';
+import { renderStrip } from '../strip.ts';
 import { avatar } from './avatar.ts';
 
 function el(doc: Document, tag: string, cls: string, text?: string): HTMLElement {
@@ -10,6 +12,21 @@ function el(doc: Document, tag: string, cls: string, text?: string): HTMLElement
   e.className = cls;
   if (text !== undefined) e.textContent = text;
   return e;
+}
+
+/** 대화 게이지: 문구 + (창을 알면) 막대 */
+function gauge(doc: Document, c: AgentContext): HTMLElement {
+  const pct = contextPct(c);
+  const g = el(doc, 'div', pct === null ? 'gauge' : `gauge ${gaugeLevel(pct)}`);
+  g.appendChild(el(doc, 'span', 'gauge-label', rowGaugeText(c)));
+  if (pct !== null) {
+    const track = el(doc, 'div', 'gauge-track');
+    const fill = el(doc, 'div', 'gauge-fill');
+    fill.setAttribute('style', `width:${Math.min(100, Math.max(0, pct))}%`);
+    track.appendChild(fill);
+    g.appendChild(track);
+  }
+  return g;
 }
 
 function row(doc: Document, a: Agent, now: number): HTMLElement {
@@ -23,7 +40,9 @@ function row(doc: Document, a: Agent, now: number): HTMLElement {
   chips.appendChild(el(doc, 'span', 'chip', a.project));
   if (a.detail) chips.appendChild(el(doc, 'span', 'detail', a.detail));
   if (a.subagents.length) chips.appendChild(el(doc, 'span', 'detail', `도우미 ${a.subagents.length}`));
+  if (a.hookless) chips.appendChild(el(doc, 'span', 'tag-hookless', '훅 없음'));
   meta.appendChild(chips);
+  if (a.context) meta.appendChild(gauge(doc, a.context));
   r.append(meta, el(doc, 'span', 'time', formatElapsed(now - a.since)));
   return r;
 }
@@ -41,15 +60,18 @@ function usageBar(doc: Document, snap: Snapshot): HTMLElement {
   return bar;
 }
 
-export function renderList(root: HTMLElement, snap: Snapshot, doc: Document = document): void {
+export function renderList(root: HTMLElement, snap: Snapshot, doc: Document = document, connected = true): void {
   const board = el(doc, 'div', 'board');
   const top = el(doc, 'div', 'board-bar');
   top.appendChild(el(doc, 'span', 'board-title', 'THE SYNTHETIC OFFICE'));
-  const waiting = snap.agents.filter((a) => a.status === 'permission' || a.status === 'done').length;
+  const waiting = snap.agents.filter((a) => groupOf(a.status) === 'urgent' || a.status === 'done').length;
   if (waiting > 0) {
-    const urgent = snap.agents.some((a) => a.status === 'permission');
+    const urgent = snap.agents.some((a) => groupOf(a.status) === 'urgent');
     top.appendChild(el(doc, 'span', `badge${urgent ? ' urgent' : ''}`, `기다리는 중 ${waiting}`));
   }
+  // 펼쳐 둔 띠는 다시 그려도 펼친 채로
+  const open = root.querySelector?.('details.strip[open]') != null;
+  top.appendChild(renderStrip(doc, connected, snap.health, snap.now, open));
   board.appendChild(top);
   const rows = el(doc, 'div', 'rows');
   const agents = sortForBoard(snap.agents);

@@ -31,11 +31,12 @@ export function stripDetails(health: Health | null, now: number): string[] {
   ];
 }
 
-/** <details>라서 누르면 펼쳐진다(스크립트 없음) */
-export function renderStrip(doc: Document, connected: boolean, health: Health | null, now: number): HTMLElement {
+/** <details>라서 누르면 펼쳐진다(스크립트 없음). open = 다시 그릴 때 펼친 상태 유지 */
+export function renderStrip(doc: Document, connected: boolean, health: Health | null, now: number, open = false): HTMLElement {
   const { tone, text } = stripState(connected, health, now);
   const details = doc.createElement('details');
   details.className = `strip ${tone}`;
+  if (open) details.setAttribute('open', '');
   const summary = doc.createElement('summary');
   const label = doc.createElement('span');
   label.className = 'strip-text';

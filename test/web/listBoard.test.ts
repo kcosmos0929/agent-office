@@ -61,3 +61,39 @@ test('에이전트가 없으면 안내 문구', () => {
   const root = render({ now: NOW, agents: [], usage: null });
   assert.equal(root.byClass('empty')[0].textContent, '지금 열린 세션이 없어요');
 });
+
+test('줄: 게이지(대화 75% + warn), 훅 없음 태그, 정리 직후, context 없으면 게이지 없음', () => {
+  const root = render({ now: NOW, usage: null, agents: [
+    agent('a', 'editing', 1, { context: { state: 'ok', used: 750_000, window: 1_000_000, model: 'claude-opus-5-5' } }),
+    agent('b', 'thinking', 2, { hookless: true, context: { state: 'compacted' } }),
+    agent('c', 'running', 3),
+  ] });
+  const rows = root.byClass('row');
+  const g = rows[0].byClass('gauge')[0];
+  assert.equal(g.className, 'gauge warn');
+  assert.equal(g.byClass('gauge-label')[0].textContent, '대화 75%');
+  assert.equal(g.byClass('gauge-fill')[0].getAttribute('style'), 'width:75%');
+  assert.equal(rows[0].byClass('tag-hookless').length, 0);
+  assert.equal(rows[1].byClass('tag-hookless')[0].textContent, '훅 없음');
+  assert.equal(rows[1].byClass('gauge')[0].className, 'gauge');
+  assert.equal(rows[1].byClass('gauge-label')[0].textContent, '대화 정리 직후');
+  assert.equal(rows[1].byClass('gauge-fill').length, 0);
+  assert.equal(rows[2].byClass('gauge').length, 0);
+});
+
+test('머리줄: connected=true면 띠 green, false면 red (머리줄 안)', () => {
+  const health: Health = { startedAt: 0, lastHookAt: NOW - 12_000, registry: 'ok', sessions: 1, hookless: 0 };
+  const on = render({ now: NOW, usage: null, agents: [], health });
+  assert.equal(on.byClass('board-bar')[0].byClass('strip')[0].className, 'strip green');
+  const off = new FakeElement('div');
+  renderList(off as unknown as HTMLElement, { now: NOW, usage: null, agents: [], health }, fakeDocument as unknown as Document, false);
+  assert.equal(off.byClass('strip')[0].className, 'strip red');
+});
+
+test('배지: ❓도 기다림·급함으로 셈, ❓ 줄은 urgent 클래스', () => {
+  const root = render({ now: NOW, usage: null, agents: [agent('q', 'question', 0), agent('w', 'running', 0)] });
+  const badge = root.byClass('badge')[0];
+  assert.equal(badge.textContent, '기다리는 중 1');
+  assert.ok(badge.className.includes('urgent'));
+  assert.ok(root.byClass('row')[0].className.includes('urgent'));
+});

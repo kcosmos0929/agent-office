@@ -38,12 +38,22 @@ html, body { margin: 0; height: 100%; background: var(--bg); }
 @keyframes blink { 50% { background: var(--wait-bg); } }
 .view-list .toolbar { position: static; padding: 10px 12px 0; }
 
-/* ---------- 연결 끊김 ---------- */
-.overlay {
-  position: fixed; inset: 0; z-index: 40; display: flex; align-items: center; justify-content: center;
-  background: rgba(244, 239, 232, 0.82); font-weight: 700; color: var(--soft); backdrop-filter: blur(2px);
+/* ---------- 연결 띠 (끊겨도 화면은 그대로, 오른쪽 위에 상태만) ---------- */
+.office-strip { position: fixed; top: 10px; right: 12px; z-index: 20; }
+.office-strip[hidden] { display: none; }
+.strip { position: relative; font-size: 11px; font-weight: 700; }
+.strip summary { list-style: none; cursor: pointer; padding: 5px 9px; border-radius: 9px; background: #fff; border: 1px solid #e2d8cb; white-space: nowrap; }
+.strip summary::-webkit-details-marker { display: none; }
+.strip.green summary { color: #2F9E5B; }
+.strip.gray summary { color: #8a7f73; }
+.strip.orange summary { color: var(--wait-ink); background: var(--wait-bg); border-color: var(--wait); }
+.strip.red summary { color: #fff; background: #C0392B; border-color: #C0392B; }
+.strip-panel {
+  position: absolute; right: 0; top: calc(100% + 6px); z-index: 30; min-width: 230px; padding: 10px 12px; border-radius: 12px;
+  background: #fff; box-shadow: 0 10px 32px rgba(0, 0, 0, 0.18); font-weight: 500; color: #5a5047; line-height: 1.7;
 }
-.overlay[hidden] { display: none; }
+.board-bar .strip { margin-left: auto; }
+.board-bar .badge + .strip { margin-left: 0; }
 
 /* ---------- 목록형 ---------- */
 .list-host { max-width: 560px; margin: 0 auto; padding: 10px 12px 16px; }
@@ -65,6 +75,16 @@ html, body { margin: 0; height: 100%; background: var(--bg); }
 .chips { display: flex; gap: 5px; align-items: center; margin-top: 3px; min-width: 0; }
 .chip { font-size: 10.5px; font-weight: 600; padding: 2px 7px; border-radius: 9px; background: #d977571f; color: var(--claude); white-space: nowrap; }
 .detail { font-size: 11px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tag-hookless { font-size: 10px; font-weight: 700; padding: 1px 6px; border-radius: 8px; background: #ece6dd; color: #8a7f73; white-space: nowrap; }
+.gauge { display: flex; align-items: center; gap: 6px; margin-top: 4px; font-size: 10.5px; color: var(--muted); }
+.gauge-label { flex: none; font-variant-numeric: tabular-nums; }
+.gauge-track { flex: 1; max-width: 90px; height: 5px; border-radius: 3px; overflow: hidden; background: #ece6dd; }
+.gauge-fill { height: 100%; }
+.gauge.ok .gauge-fill { background: #2F9E5B; }
+.gauge.warn .gauge-fill { background: #E0A100; }
+.gauge.warn .gauge-label { color: #9a6d00; }
+.gauge.full .gauge-fill { background: #D64545; }
+.gauge.full .gauge-label { color: #D64545; font-weight: 700; }
 .time { flex: none; align-self: flex-start; padding-top: 2px; font-size: 11px; color: #5a5047; font-variant-numeric: tabular-nums; }
 .empty { padding: 28px 14px; text-align: center; color: var(--muted); font-size: 13px; }
 .usage { display: flex; align-items: center; gap: 8px; padding: 9px 12px; background: var(--tv); color: var(--tv-ink); font: 700 11px 'SF Mono', Menlo, monospace; }

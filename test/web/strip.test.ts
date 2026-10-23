@@ -34,3 +34,10 @@ test('renderStrip: details.strip.green 안에 summary 문구와 strip-panel 줄 
   assert.equal(el.byClass('strip-text')[0].textContent, '🟢 연결됨 · 신호 12초 전');
   assert.equal(el.byClass('strip-panel')[0].children.length, 5);
 });
+
+test('renderStrip: open이면 펼친 채로 다시 그림(스냅샷마다 닫히지 않게)', () => {
+  const closed = renderStrip(fakeDocument as unknown as Document, true, H(), 62_000) as unknown as FakeElement;
+  const open = renderStrip(fakeDocument as unknown as Document, true, H(), 62_000, true) as unknown as FakeElement;
+  assert.equal(closed.getAttribute('open'), null);
+  assert.equal(open.getAttribute('open'), '');
+});
