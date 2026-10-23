@@ -1,6 +1,6 @@
 // 상태 정리기: 이벤트를 받아 에이전트별 상태를 갱신한다. 화면·수집기·시계를 모르는 순수 로직(시간은 이벤트·tick 인자로만).
 import { groupOf } from '../shared/labels.ts';
-import type { Agent, OfficeEvent, Snapshot, Status, Usage } from '../shared/types.ts';
+import type { Activity, Agent, OfficeEvent, Snapshot, Status, Usage, WaitKind } from '../shared/types.ts';
 
 export type StateOptions = {
   idleMs: number;
@@ -12,15 +12,24 @@ export type StateOptions = {
 };
 
 const SLOTS = 8;
+/** 나를 기다리는 상태(❗·❓) */
+const WAITS = new Set<Status>(['permission', 'question']);
+/** 도구 끝 신호가 늦게 와도 바꾸지 않는 상태 */
+const SETTLED = new Set<Status>(['done', 'idle', 'gone', 'quota', 'compacting']);
+
+type OpenTool = { activity: Activity; detail: string };
 
 type Entry = {
   agent: Agent;
-  openTools: Set<string>;
+  /** 시작했지만 아직 안 끝난 메인 도구 (승인 순간 그 도구의 활동으로 돌아가려고 활동·내용을 기억) */
+  openTools: Map<string, OpenTool>;
   transcriptPath: string | null;
-  /** 메인 대화가 승인을 기다리는 중 */
-  waitingMain: boolean;
-  /** 승인을 기다리는 하위 에이전트들 (여럿이 동시에 기다릴 수 있음) */
-  waitingSubs: Set<string>;
+  /** 메인 대화가 기다리는 것(승인/질문) */
+  waitingMain: WaitKind | null;
+  /** 기다리는 하위 에이전트들과 그 종류 (여럿이 동시에 기다릴 수 있음) */
+  waitingSubs: Map<string, WaitKind>;
+  /** 대기가 하나도 없다가 처음 생긴 시각 — 모두 풀리면 null */
+  waitSince: number | null;
 };
 
 export class OfficeState {
@@ -61,7 +70,7 @@ export class OfficeState {
       } else if (a.status === 'done' && now - a.since >= this.opts.idleMs) {
         this.setStatus(a, 'idle', now);
         changed = true;
-      } else if (a.status === 'thinking' && now - a.lastEventAt >= this.opts.stalledMs) {
+      } else if ((a.status === 'thinking' || a.status === 'compacting') && now - a.lastEventAt >= this.opts.stalledMs) {
         this.setStatus(a, 'stalled', now);
         changed = true;
       } else if (a.status === 'gone' && now - a.since >= this.opts.goneMs) {
@@ -106,7 +115,7 @@ export class OfficeState {
       seat: firstFree(used.map((a) => a.seat), -1),
       subagents: [],
     };
-    const entry: Entry = { agent, openTools: new Set(), transcriptPath: null, waitingMain: false, waitingSubs: new Set() };
+    const entry: Entry = { agent, openTools: new Map(), transcriptPath: null, waitingMain: null, waitingSubs: new Map(), waitSince: null };
     this.entries.set(e.sessionId, entry);
     if (e.type === 'session-start') {
       agent.status = 'done';
@@ -130,18 +139,18 @@ export class OfficeState {
         a.detail = null;
         return;
       case 'tool-start':
-        entry.openTools.add(e.toolUseId);
-        if (a.status === 'permission') return;
+        entry.openTools.set(e.toolUseId, { activity: e.activity, detail: e.detail });
+        if (WAITS.has(a.status)) return;
         this.setStatus(a, e.activity, e.at);
         a.detail = e.detail;
         return;
       case 'tool-end':
         entry.openTools.delete(e.toolUseId);
-        if (a.status === 'done' || a.status === 'idle' || a.status === 'gone') return;
+        if (SETTLED.has(a.status)) return;
         if (entry.openTools.size > 0) return;
-        // 메인 도구가 모두 끝남 = 메인 승인 대기도 끝남(승인 요청엔 도구 id가 없어 도구별로는 못 가린다)
-        entry.waitingMain = false;
-        if (a.status === 'permission') {
+        // 메인 도구가 모두 끝남 = 메인 대기도 끝남(대기 신호엔 도구 id가 없어 도구별로는 못 가린다)
+        entry.waitingMain = null;
+        if (WAITS.has(a.status)) {
           this.resolveWaiting(entry, e.at);
         } else {
           this.setStatus(a, 'thinking', e.at);
@@ -149,13 +158,37 @@ export class OfficeState {
         }
         return;
       case 'permission':
-        entry.waitingMain = true;
-        this.setStatus(a, 'permission', e.at);
-        a.detail = e.detail;
+      case 'question':
+        entry.waitingMain = e.type;
+        this.enterWait(entry, e.type, e.detail, e.at);
         return;
       case 'stop':
         this.clearWork(entry);
         this.setStatus(a, 'done', e.at);
+        a.detail = e.error ? `오류: ${e.error}` : null;
+        return;
+      case 'compact-start':
+        this.setStatus(a, 'compacting', e.at);
+        a.detail = e.trigger === 'manual' ? '/compact' : '자동 정리';
+        return;
+      case 'compact-end':
+        // 직접 /compact는 끝나면 내 차례, 자동 정리는 차례 도중이라 이어서 일함
+        if (e.trigger === 'manual') {
+          this.clearWork(entry);
+          this.setStatus(a, 'done', e.at);
+        } else {
+          this.setStatus(a, 'thinking', e.at);
+        }
+        a.detail = null;
+        return;
+      case 'quota-wait':
+        this.clearWork(entry);
+        this.setStatus(a, 'quota', e.at);
+        a.detail = null;
+        return;
+      case 'resume':
+        if (a.status === 'gone') return;
+        this.setStatus(a, 'thinking', e.at);
         a.detail = null;
         return;
       case 'subagent-start':
@@ -184,30 +217,56 @@ export class OfficeState {
     }
   }
 
-  /** 하위 에이전트 안의 이벤트: 승인 요청과 그 승인된 도구의 끝만 부모 상태에 영향 */
+  /** 하위 에이전트 안의 이벤트: 승인·질문 대기와 그 대기 뒤 도구의 끝만 부모 상태에 영향 */
   private applySubagentEvent(entry: Entry, e: OfficeEvent, subagentId: string): void {
-    const a = entry.agent;
-    if (e.type === 'permission') {
-      entry.waitingSubs.add(subagentId);
-      this.setStatus(a, 'permission', e.at);
-      a.detail = e.detail;
+    if (e.type === 'permission' || e.type === 'question') {
+      entry.waitingSubs.set(subagentId, e.type);
+      this.enterWait(entry, e.type, e.detail, e.at);
     } else if (e.type === 'tool-end' && entry.waitingSubs.delete(subagentId)) {
       this.resolveWaiting(entry, e.at);
     }
   }
 
-  /** 기다리는 곳이 하나도 안 남았을 때만 승인 필요를 푼다 */
+  /** 승인이 하나라도 걸려 있으면 ❗, 질문만 있으면 ❓ */
+  private shownWait(entry: Entry): WaitKind | null {
+    const kinds = [entry.waitingMain, ...entry.waitingSubs.values()];
+    if (kinds.includes('permission')) return 'permission';
+    if (kinds.includes('question')) return 'question';
+    return null;
+  }
+
+  private enterWait(entry: Entry, kind: WaitKind, detail: string | null, at: number): void {
+    const a = entry.agent;
+    entry.waitSince ??= at;
+    const shown = this.shownWait(entry) ?? kind;
+    this.setStatus(a, shown, at);
+    if (shown === kind) a.detail = detail;
+  }
+
+  /** 대기가 하나도 안 남았을 때만 대기 상태를 푼다. 남았으면 남은 종류로 */
   private resolveWaiting(entry: Entry, at: number): void {
     const a = entry.agent;
-    if (a.status !== 'permission' || entry.waitingMain || entry.waitingSubs.size > 0) return;
+    if (!WAITS.has(a.status)) return;
+    const shown = this.shownWait(entry);
+    if (shown) {
+      if (shown !== a.status) a.detail = null;
+      this.setStatus(a, shown, at);
+      return;
+    }
+    entry.waitSince = null;
     this.setStatus(a, entry.openTools.size > 0 ? 'delegating' : 'thinking', at);
     a.detail = null;
   }
 
+  private clearWaits(entry: Entry): void {
+    entry.waitingMain = null;
+    entry.waitingSubs.clear();
+    entry.waitSince = null;
+  }
+
   private clearWork(entry: Entry): void {
     entry.openTools.clear();
-    entry.waitingMain = false;
-    entry.waitingSubs.clear();
+    this.clearWaits(entry);
   }
 
   private setStatus(a: Agent, s: Status, at: number): void {

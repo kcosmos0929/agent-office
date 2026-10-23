@@ -23,6 +23,12 @@ const ev = {
   end_: (s: string, at: number): Ev => ({ ...b(s, at), type: 'session-end' }),
   subStart: (s: string, at: number, id: string): Ev => ({ ...b(s, at), type: 'subagent-start', agentId: id, agentType: 'Explore' }),
   subStop: (s: string, at: number, id: string): Ev => ({ ...b(s, at), type: 'subagent-stop', agentId: id }),
+  question: (s: string, at: number, sub?: string): Ev => ({ ...b(s, at), type: 'question', detail: null, ...(sub ? { subagentId: sub } : {}) }),
+  compactStart: (s: string, at: number, trigger: 'manual' | 'auto'): Ev => ({ ...b(s, at), type: 'compact-start', trigger }),
+  compactEnd: (s: string, at: number, trigger: 'manual' | 'auto'): Ev => ({ ...b(s, at), type: 'compact-end', trigger }),
+  quota: (s: string, at: number): Ev => ({ ...b(s, at), type: 'quota-wait' }),
+  resume: (s: string, at: number): Ev => ({ ...b(s, at), type: 'resume' }),
+  stopErr: (s: string, at: number, error: string): Ev => ({ ...b(s, at), type: 'stop', error }),
 };
 const one = (st: OfficeState, now = 0) => st.snapshot(now).agents[0];
 
@@ -256,4 +262,81 @@ test('메인 승인 대기 중에 하위 에이전트 승인이 오고 먼저 �
   st.apply(ev.end('s1', 8, 'M'));
   st.apply(ev.end('s1', 9, 'AG'));
   assert.equal(one(st).status, 'thinking');
+});
+
+test('질문: AskUserQuestion 도구 + question → ❓, 그 도구가 끝나면 💭', () => {
+  const st = make();
+  st.apply(ev.prompt('s1', 0));
+  st.apply(ev.tool('s1', 1, 'q1'));
+  st.apply(ev.question('s1', 1));
+  assert.equal(one(st).status, 'question');
+  st.apply(ev.end('s1', 5, 'q1'));
+  assert.equal(one(st).status, 'thinking');
+});
+
+test('❗와 ❓가 함께면 ❗, 승인한 도구가 끝나면 남은 ❓', () => {
+  const st = make();
+  st.apply(ev.prompt('s1', 0));
+  st.apply(ev.tool('s1', 1, 't1'));
+  st.apply(ev.perm('s1', 2));
+  st.apply(ev.question('s1', 3, 'A'));
+  assert.equal(one(st).status, 'permission');
+  st.apply(ev.end('s1', 4, 't1'));
+  assert.equal(one(st).status, 'question');
+});
+
+test('대화 정리: manual은 끝나면 ✅, auto는 💭', () => {
+  const st = make();
+  st.apply(ev.prompt('s1', 0));
+  st.apply(ev.compactStart('s1', 1, 'manual'));
+  assert.deepEqual([one(st).status, one(st).detail], ['compacting', '/compact']);
+  st.apply(ev.compactEnd('s1', 2, 'manual'));
+  assert.deepEqual([one(st).status, one(st).detail], ['done', null]);
+  st.apply(ev.prompt('s1', 3));
+  st.apply(ev.compactStart('s1', 4, 'auto'));
+  assert.deepEqual([one(st).status, one(st).detail], ['compacting', '자동 정리']);
+  st.apply(ev.compactEnd('s1', 5, 'auto'));
+  assert.deepEqual([one(st).status, one(st).detail], ['thinking', null]);
+});
+
+test('🧹도 15분 무신호면 응답 없음', () => {
+  const st = make();
+  st.apply(ev.prompt('s1', 0));
+  st.apply(ev.compactStart('s1', 0, 'auto'));
+  st.tick(14 * M);
+  assert.equal(one(st).status, 'compacting');
+  st.tick(15 * M);
+  assert.equal(one(st).status, 'stalled');
+});
+
+test('한도: ⏳(쉼 묶음), 1시간 지나도 ⏳, resume → 💭', () => {
+  const st = make();
+  st.apply(ev.prompt('s1', 0));
+  st.apply(ev.tool('s1', 1, 't1'));
+  st.apply(ev.quota('s1', 2));
+  assert.deepEqual([one(st).status, one(st).detail], ['quota', null]);
+  st.tick(60 * M);
+  assert.equal(one(st).status, 'quota');
+  st.apply(ev.resume('s1', 61 * M));
+  assert.equal(one(st).status, 'thinking');
+});
+
+test('다른 오류로 멈춤: ✅ + "오류: overloaded"', () => {
+  const st = make();
+  st.apply(ev.prompt('s1', 0));
+  st.apply(ev.stopErr('s1', 1, 'overloaded'));
+  assert.deepEqual([one(st).status, one(st).detail], ['done', '오류: overloaded']);
+});
+
+test('⏳·🧹 중에 늦게 온 도구 끝 신호는 상태를 바꾸지 않음', () => {
+  const st = make();
+  st.apply(ev.prompt('s1', 0));
+  st.apply(ev.tool('s1', 1, 't1'));
+  st.apply(ev.quota('s1', 2));
+  st.apply(ev.end('s1', 3, 't1'));
+  assert.equal(one(st).status, 'quota');
+  st.apply(ev.prompt('s1', 4));
+  st.apply(ev.compactStart('s1', 5, 'auto'));
+  st.apply(ev.end('s1', 6, 'late'));
+  assert.equal(one(st).status, 'compacting');
 });
