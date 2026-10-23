@@ -2,6 +2,7 @@
 import { HAT_COLORS, STATUS_LABEL } from '../../../src/shared/labels.ts';
 import type { Agent } from '../../../src/shared/types.ts';
 import { agentName, formatElapsed } from '../format.ts';
+import { cardContextLine } from '../gauge.ts';
 import { bubbleTone, shortCwd } from './bubbles.ts';
 
 function div(cls: string, text?: string): HTMLDivElement {
@@ -19,6 +20,12 @@ export function showCard(container: HTMLElement, a: Agent, now: number, at: { x:
   const swatch = div('card-swatch');
   swatch.style.background = HAT_COLORS[a.hat % HAT_COLORS.length];
   head.append(swatch, div('card-kind', `Claude · 세션 ${a.hat + 1}`));
+  if (a.hookless) {
+    const tag = document.createElement('span');
+    tag.className = 'tag-hookless';
+    tag.textContent = '훅 없음';
+    head.appendChild(tag);
+  }
   const close = document.createElement('button');
   close.type = 'button';
   close.className = 'card-close';
@@ -34,7 +41,7 @@ export function showCard(container: HTMLElement, a: Agent, now: number, at: { x:
   pill.style.color = tone.fg;
   stateRow.append(pill, document.createTextNode(` ${formatElapsed(now - a.since)}`));
 
-  card.append(head, div('card-title', agentName(a)), stateRow);
+  card.append(head, div('card-title', agentName(a)), stateRow, div('card-context', cardContextLine(a.context)));
   if (a.detail) card.appendChild(div('card-detail', a.detail));
   const proj = div('card-project', '프로젝트 · ');
   const b = document.createElement('b');

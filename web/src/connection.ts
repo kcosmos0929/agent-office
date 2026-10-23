@@ -14,7 +14,7 @@ export function connect(onSnapshot: (s: Snapshot) => void, onStatus: (up: boolea
     ws.onmessage = (m) => {
       const data = JSON.parse(String(m.data)) as { type: string } & Snapshot;
       if (data.type !== 'snapshot') return;
-      onSnapshot({ agents: data.agents, usage: data.usage, now: data.now });
+      onSnapshot({ agents: data.agents, usage: data.usage, now: data.now, health: data.health });
     };
     ws.onclose = () => {
       onStatus(false);

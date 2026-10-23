@@ -1,11 +1,15 @@
 // Claude Code 훅 입력(JSON) → 오피스 이벤트. 대화 내용(prompt, 응답, 도구 결과, 에러 본문)은 여기서 버린다.
 import path from 'node:path';
-import type { Activity, OfficeEvent } from '../../shared/types.ts';
+import type { Activity, CompactTrigger, OfficeEvent } from '../../shared/types.ts';
 
 const READING = new Set(['Read', 'Grep', 'Glob', 'LS', 'WebFetch', 'WebSearch', 'NotebookRead']);
 const EDITING = new Set(['Edit', 'Write', 'MultiEdit', 'NotebookEdit']);
 const DELEGATING = new Set(['Agent', 'Task']);
-const NEEDS_ME = new Set(['permission_prompt', 'elicitation_dialog', 'elicitation_url_dialog', 'agent_needs_input']);
+/** 알림 중 '나에게 묻는' 종류 (permission_prompt는 승인으로 따로) */
+const ASKS_ME = new Set(['elicitation_dialog', 'elicitation_url_dialog', 'agent_needs_input']);
+/** 사용량 한도 대기가 자동 재개 없이 끝남 → 내 차례 */
+const QUOTA_GAVE_UP = new Set(['quota_auto_resume_stale', 'quota_auto_resume_disabled']);
+const ASK_TOOL = 'AskUserQuestion';
 
 type Json = Record<string, unknown>;
 
@@ -94,13 +98,17 @@ export function hookToEvents(payload: unknown, now: number): OfficeEvent[] {
   if (agentId && event !== 'SubagentStart' && event !== 'SubagentStop') base.subagentId = agentId;
 
   const tool = str(p.tool_name) ?? '';
+  const trigger: CompactTrigger = p.trigger === 'manual' ? 'manual' : 'auto';
   switch (event) {
     case 'SessionStart':
       return [{ ...base, type: 'session-start' }];
     case 'UserPromptSubmit':
       return [{ ...base, type: 'prompt' }];
-    case 'PreToolUse':
-      return [{ ...base, type: 'tool-start', toolUseId: str(p.tool_use_id) ?? '', activity: classifyTool(tool), detail: summarizeToolInput(tool, p.tool_input) }];
+    case 'PreToolUse': {
+      const start: OfficeEvent = { ...base, type: 'tool-start', toolUseId: str(p.tool_use_id) ?? '', activity: classifyTool(tool), detail: summarizeToolInput(tool, p.tool_input) };
+      // 질문 도구는 시작하자마자 사용자 답을 기다린다
+      return tool === ASK_TOOL ? [start, { ...base, type: 'question', detail: null }] : [start];
+    }
     case 'PostToolUse':
       return [{ ...base, type: 'tool-end', toolUseId: str(p.tool_use_id) ?? '' }];
     case 'PostToolUseFailure': {
@@ -109,15 +117,29 @@ export function hookToEvents(payload: unknown, now: number): OfficeEvent[] {
       return p.is_interrupt === true ? [end, { ...base, type: 'stop' }] : [end];
     }
     case 'PermissionRequest':
+      if (tool === ASK_TOOL) return [{ ...base, type: 'question', detail: null }];
       return [{ ...base, type: 'permission', detail: summarizeToolInput(tool, p.tool_input) }];
     case 'Notification': {
       const kind = str(p.notification_type);
+      const message = str(p.message);
       if (kind === 'idle_prompt') return [{ ...base, type: 'idle' }];
-      if (!kind || !NEEDS_ME.has(kind)) return [];
-      return [{ ...base, type: 'permission', detail: clip(str(p.message) ?? '') }];
+      if (kind === 'permission_prompt') return [{ ...base, type: 'permission', detail: clip(message ?? ''), viaNotification: true }];
+      if (kind && ASKS_ME.has(kind)) return [{ ...base, type: 'question', detail: message ? clip(message) : null, viaNotification: true }];
+      if (kind === 'quota_auto_resume_fired') return [{ ...base, type: 'resume' }];
+      if (kind && QUOTA_GAVE_UP.has(kind)) return [{ ...base, type: 'stop' }];
+      return [];
     }
     case 'Stop':
       return [{ ...base, type: 'stop' }];
+    case 'StopFailure': {
+      // 오류 종류 이름만 쓴다(error_details·last_assistant_message 본문은 버림)
+      const error = clip(str(p.error) ?? 'unknown', 30);
+      return error === 'rate_limit' ? [{ ...base, type: 'quota-wait' }] : [{ ...base, type: 'stop', error }];
+    }
+    case 'PreCompact':
+      return [{ ...base, type: 'compact-start', trigger }];
+    case 'PostCompact':
+      return [{ ...base, type: 'compact-end', trigger }];
     case 'SubagentStart':
       return agentId ? [{ ...base, type: 'subagent-start', agentId, agentType: str(p.agent_type) }] : [];
     case 'SubagentStop':

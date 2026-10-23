@@ -32,3 +32,12 @@ test('색', () => {
   assert.equal(KIND_COLOR.aria, '#8B6CC9');
   assert.equal(WAIT_COLOR, '#F5A524');
 });
+
+test('새 상태 3개: 문구와 묶음', () => {
+  assert.equal(STATUS_LABEL.question, '❓️ 질문 대기');
+  assert.equal(STATUS_LABEL.compacting, '🧹 대화 정리 중');
+  assert.equal(STATUS_LABEL.quota, '⏳️ 토큰 기다림');
+  assert.equal(groupOf('question'), 'urgent');
+  assert.equal(groupOf('compacting'), 'working');
+  assert.equal(groupOf('quota'), 'rest');
+});

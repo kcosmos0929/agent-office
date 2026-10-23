@@ -6,6 +6,11 @@ export function soHome(): string {
   return process.env.SO_HOME ?? path.join(os.homedir(), '.synthetic-office');
 }
 
+/** Claude 앱이 세션마다 <pid>.json을 쓰는 폴더(읽기만). 테스트·데모에선 SO_CLAUDE_SESSIONS로 바꾼다 */
+export function claudeSessionsDir(): string {
+  return process.env.SO_CLAUDE_SESSIONS ?? path.join(os.homedir(), '.claude', 'sessions');
+}
+
 export function homeFiles(home: string) {
   return {
     config: path.join(home, 'config.json'),

@@ -1,15 +1,18 @@
-import type { Snapshot } from '../../src/shared/types.ts';
+import type { Snapshot, Status } from '../../src/shared/types.ts';
 
 export type SoundKind = 'urgent' | 'soft';
 
-/** 이전 스냅샷과 비교해 새로 '승인 필요'가 된 수만큼 urgent, 새로 '끝남'이 된 수만큼 soft. 첫 스냅샷은 조용히. */
+/** 나를 기다리는 상태(❗·❓): 둘 사이로만 바뀌면 다시 울리지 않는다 */
+const URGENT = new Set<Status | undefined>(['permission', 'question']);
+
+/** 이전 스냅샷과 비교해 새로 '승인 필요'·'질문 대기'가 된 수만큼 urgent, 새로 '끝남'이 된 수만큼 soft. 첫 스냅샷은 조용히. */
 export function soundEvents(prev: Snapshot | null, next: Snapshot): SoundKind[] {
   if (!prev) return [];
   const before = new Map(prev.agents.map((a) => [a.id, a.status]));
   const out: SoundKind[] = [];
   for (const a of next.agents) {
     const was = before.get(a.id);
-    if (a.status === 'permission' && was !== 'permission') out.push('urgent');
+    if (URGENT.has(a.status) && !URGENT.has(was)) out.push('urgent');
     else if (a.status === 'done' && was !== undefined && was !== 'done') out.push('soft');
   }
   return out;

@@ -1,5 +1,5 @@
 // 머리 위 말풍선과 상세 카드에 쓰는 글자·색 (DOM만 다루고 three.js는 모름)
-import { groupOf, KIND_COLOR, STATUS_LABEL, WAIT_COLOR } from '../../../src/shared/labels.ts';
+import { groupOf, KIND_COLOR, QUOTA_COLOR, STATUS_LABEL, WAIT_COLOR } from '../../../src/shared/labels.ts';
 import type { Agent } from '../../../src/shared/types.ts';
 
 /** 머리 위 말풍선: 상태만 짧게 (이웃 캐릭터를 덜 가리게) */
@@ -13,6 +13,7 @@ export function nameplateText(a: Pick<Agent, 'project'>): string {
 }
 
 export function bubbleTone(a: Pick<Agent, 'status'>): { bg: string; fg: string } {
+  if (a.status === 'quota') return { bg: QUOTA_COLOR, fg: '#FFFFFF' };
   switch (groupOf(a.status)) {
     case 'urgent':
       return { bg: WAIT_COLOR, fg: '#3A2600' };
@@ -46,7 +47,7 @@ export function makeBubble(doc: Document): { el: HTMLElement; set(a: Pick<Agent,
       el.textContent = text;
       el.style.background = tone.bg;
       el.style.color = tone.fg;
-      el.classList.toggle('urgent', a.status === 'permission');
+      el.classList.toggle('urgent', groupOf(a.status) === 'urgent');
     },
   };
 }

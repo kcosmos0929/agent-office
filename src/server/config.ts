@@ -33,12 +33,20 @@ function defaults(): Config {
 /** config.json을 읽어 기본값과 합친다. 없으면 기본값으로 만들고, 깨져 있으면 건드리지 않고 기본값을 쓴다 */
 export function loadConfig(home: string): Config {
   const file = homeFiles(home).config;
-  const base = defaults();
   if (!fs.existsSync(file)) {
+    const base = defaults();
     fs.mkdirSync(home, { recursive: true, mode: 0o700 });
     fs.writeFileSync(file, JSON.stringify(base, null, 2) + '\n');
     return base;
   }
+  return peekConfig(home);
+}
+
+/** loadConfig와 같은 값을 읽기만 한다(파일을 만들지 않음 — npm run doctor용) */
+export function peekConfig(home: string): Config {
+  const file = homeFiles(home).config;
+  const base = defaults();
+  if (!fs.existsSync(file)) return base;
   try {
     const user = JSON.parse(fs.readFileSync(file, 'utf8')) as Partial<Config>;
     return { ...base, ...user, projectNames: { ...base.projectNames, ...(user.projectNames ?? {}) } };
