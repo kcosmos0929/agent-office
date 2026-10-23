@@ -599,3 +599,30 @@ test('PermissionRequest가 오는 세션에선 승인 뒤 늦게 온 permission_
   old.apply(notice(ev.perm('s2', 7_000)));
   assert.equal(one(old).status, 'permission');
 });
+
+// ---------- Task 0 실제 확인에서 나온 것: 거절하면 등록부가 busy가 아니라 idle ----------
+test('R6: 거절·중단으로 차례가 끝나면(등록부 idle) ✅ 내 차례 — 등록부 값이 마지막 훅보다 나중일 때만', () => {
+  const st = make();
+  st.apply(ev.prompt('s1', 0));
+  st.apply(ev.tool('s1', 1_000, 't1'));
+  st.apply(ev.perm('s1', 1_200));
+  st.applyRegistry(read(reg('s1', 'waiting', 1_100)), 1_300);
+  assert.equal(one(st).status, 'permission');
+  st.applyRegistry(read(reg('s1', 'idle', 2_000)), 2_100);
+  assert.deepEqual([one(st).status, one(st).detail], ['done', null]);
+  const stalled = make();
+  stalled.apply(ev.prompt('s2', 0));
+  stalled.tick(16 * M);
+  assert.equal(one(stalled).status, 'stalled');
+  stalled.applyRegistry(read(reg('s2', 'idle', 16 * M + 1_000)), 16 * M + 1_100);
+  assert.equal(one(stalled).status, 'done');
+  const old = make();
+  old.apply(ev.prompt('s3', 5_000));
+  old.applyRegistry(read(reg('s3', 'idle', 4_000)), 5_100);
+  assert.equal(one(old).status, 'thinking');
+  const quota = make();
+  quota.apply(ev.prompt('s4', 0));
+  quota.apply(ev.quota('s4', 1_000));
+  quota.applyRegistry(read(reg('s4', 'idle', 2_000)), 2_100);
+  assert.equal(one(quota).status, 'quota');
+});

@@ -14,9 +14,9 @@ const MINUTE = 60_000;
 const REPO_ROOT = path.resolve(import.meta.dirname, '..', '..');
 /**
  * 등록부 waiting을 '사용자 입력 기다림'으로 믿고 R2(연달아 대기)·늦은 알림 무시를 켤지.
- * A 계획 Task 0 실제 확인(승인·거절·/compact)이 끝나기 전이라 안전한 쪽(false). 확인 결과로 정한다.
+ * 2026-10-23 실제 확인: 세션 2개·승인/거절/질문 7번 모두 waiting은 승인·질문 창이 떠 있을 때만 나타남 → 켬.
  */
-const REGISTRY_WAIT_RULE = false;
+const REGISTRY_WAIT_RULE = true;
 
 async function main(): Promise<void> {
   const home = soHome();

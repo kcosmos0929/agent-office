@@ -163,7 +163,7 @@ export class OfficeState {
 
   /**
    * 등록부(Claude 앱 세션 목록)의 지금 목록을 반영한다. 화면에 보이는 게 바뀌었을 때만 true.
-   * R1 승인·답변 순간 · R2 연달아 대기 · R3 훅 없는 세션 · R4 퇴근 · R5 제목 (설계서 4-1)
+   * R1 승인·답변 순간 · R2 연달아 대기 · R3 훅 없는 세션 · R4 퇴근 · R5 제목 · R6 거절·중단 뒤 내 차례 (설계서 4-1)
    */
   applyRegistry(r: RegistryRead, now: number): boolean {
     const before = this.fingerprint();
@@ -220,6 +220,11 @@ export class OfficeState {
           this.setStatus(a, tools.some((t) => t.activity === 'delegating') ? 'delegating' : 'thinking', x.statusUpdatedAt);
           a.detail = null;
         }
+      } else if (x.status === 'idle' && x.statusUpdatedAt > (entry.lastHookAt ?? 0) && (w || groupOf(a.status) === 'working')) {
+        // R6: 마지막 훅 뒤에 등록부가 쉼 = Stop 훅 없이 차례가 끝남(승인 거절·중단 등) → 내 차례
+        this.clearWork(entry);
+        this.setStatus(a, 'done', x.statusUpdatedAt);
+        a.detail = null;
       } else if (this.opts.registryWaitRule && !w && groupOf(a.status) === 'working' && x.status === 'waiting'
         && now - x.statusUpdatedAt >= WAIT_GRACE_MS && (entry.lastHookAt ?? 0) < x.statusUpdatedAt) {
         // R2: 훅 없이 나를 기다림(앱이 질문·승인을 차례로 묻는 경우 등)
