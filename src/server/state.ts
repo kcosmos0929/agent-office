@@ -54,6 +54,8 @@ type Entry = {
   missingReads: number;
   /** 등록부의 이름 — 있으면 훅 제목보다 우선 */
   regName: string | null;
+  /** 알림이 아닌 대기 훅(PermissionRequest 등)을 받은 적 있나 — 있으면 permission_prompt 알림은 중복 */
+  directWait: boolean;
 };
 
 export class OfficeState {
@@ -87,7 +89,8 @@ export class OfficeState {
       a.hookless = false;
     }
     if (e.title && !entry.regName) a.title = e.title;
-    if ((e.type === 'permission' || e.type === 'question') && e.viaNotification && this.ignoreNotice(entry)) {
+    if ((e.type === 'permission' || e.type === 'question') && !e.viaNotification) entry.directWait = true;
+    if ((e.type === 'permission' || e.type === 'question') && e.viaNotification && this.ignoreNotice(entry, e.type)) {
       return this.fingerprint() !== before;
     }
     if (e.transcriptPath) entry.transcriptPath = e.transcriptPath;
@@ -115,7 +118,8 @@ export class OfficeState {
       } else if (a.status === 'done' && now - a.since >= this.opts.idleMs) {
         this.setStatus(a, 'idle', now);
         changed = true;
-      } else if ((a.status === 'thinking' || a.status === 'compacting') && now - a.lastEventAt >= this.opts.stalledMs) {
+      } else if ((a.status === 'thinking' || a.status === 'compacting') && entry.hookSeen && now - a.lastEventAt >= this.opts.stalledMs) {
+        // 훅 없는 세션은 등록부가 기준이라 '응답 없음'으로 바꾸지 않는다
         this.setStatus(a, 'stalled', now);
         changed = true;
       } else if (a.status === 'gone' && now - a.since >= this.opts.goneMs) {
@@ -174,6 +178,7 @@ export class OfficeState {
       if (entry.missingReads >= 2 && entry.agent.status !== 'gone') {
         this.clearWork(entry);
         entry.agent.subagents = [];
+        entry.agent.hookless = false;
         this.setStatus(entry.agent, 'gone', now);
         entry.agent.detail = null;
       }
@@ -198,7 +203,8 @@ export class OfficeState {
       a.cwd = x.cwd;
       a.project = this.opts.resolveProject(x.cwd);
     }
-    if (!entry.hookSeen || a.status === 'gone') {
+    // 퇴근(SessionEnd) 직후 잠깐 남은 파일로 되살리지 않는다 — 그 뒤에 새로 쓰인 기록(이어서 열기)만
+    if (!entry.hookSeen || (a.status === 'gone' && x.statusUpdatedAt > a.since)) {
       this.mirror(entry, x);
     } else {
       const w = this.shownWait(entry);
@@ -241,8 +247,13 @@ export class OfficeState {
     a.detail = null;
   }
 
-  /** 알림(Notification)에서 온 대기 신호를 버릴까: 이미 다른 대기가 걸려 있거나, 등록부가 일하는 중이라는데 늦게 온 알림 */
-  private ignoreNotice(entry: Entry): boolean {
+  /**
+   * 알림(Notification)에서 온 대기 신호를 버릴까:
+   * PermissionRequest 훅이 오는 세션의 승인 알림(중복, 승인 뒤 늦게 오면 ❗를 되살림) · 이미 다른 대기가 걸려 있음 ·
+   * 등록부가 일하는 중이라는데 늦게 온 알림
+   */
+  private ignoreNotice(entry: Entry, kind: WaitKind): boolean {
+    if (kind === 'permission' && entry.directWait) return true;
     if (this.shownWait(entry) !== null) return true;
     return this.opts.registryWaitRule && entry.reg?.status === 'busy';
   }
@@ -287,7 +298,7 @@ export class OfficeState {
     };
     const entry: Entry = {
       agent, openTools: new Map(), transcriptPath: null, waitingMain: null, waitingSubs: new Map(), waitSince: null,
-      hookSeen: false, lastHookAt: null, reg: null, everInRegistry: false, inRegistry: false, missingReads: 0, regName: null,
+      hookSeen: false, lastHookAt: null, reg: null, everInRegistry: false, inRegistry: false, missingReads: 0, regName: null, directWait: false,
     };
     this.entries.set(sessionId, entry);
     return entry;

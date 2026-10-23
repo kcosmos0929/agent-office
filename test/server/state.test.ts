@@ -553,3 +553,49 @@ test('health: 시작 시각·마지막 훅·등록부 상태·세션 수(퇴근 
   st.applyRegistry(read(reg('r1', 'busy', 0)), 3 * M);
   assert.deepEqual(st.snapshot(0).health, { startedAt: 5, lastHookAt: 3_000, registry: 'ok', sessions: 2, hookless: 1 });
 });
+
+// ---------- 최종 리뷰에서 나온 순서 문제 ----------
+test('훅 없는 busy 세션은 15분이 지나도 응답 없음으로 바뀌지 않고, 다시 읽어도 화면 재전송 없음', () => {
+  const st = make();
+  st.applyRegistry(read(reg('r1', 'busy', 0)), 1_000);
+  st.applyRegistry(read(reg('r1', 'busy', 0)), 3 * M);
+  assert.equal(st.tick(16 * M), false);
+  assert.equal(one(st).status, 'thinking');
+  assert.equal(st.applyRegistry(read(reg('r1', 'busy', 0)), 16 * M + 2_000), false);
+});
+
+test('R4: 훅 없는 세션이 등록부에서 사라지면 훅 없음 태그와 경보도 내려감', () => {
+  const st = make();
+  st.applyRegistry(read(reg('r1', 'busy', 0)), 3 * M);
+  assert.equal(one(st).hookless, true);
+  st.applyRegistry(read(), 3 * M + 2_000);
+  st.applyRegistry(read(), 3 * M + 4_000);
+  assert.deepEqual([one(st).status, one(st).hookless, st.snapshot(0).health.hookless], ['gone', false, 0]);
+});
+
+test('SessionEnd 뒤 잠깐 남은 등록부 파일은 퇴근을 되돌리지 않고, 새로 쓰인 파일이면 되살림', () => {
+  const st = make();
+  st.apply(ev.prompt('s1', 0));
+  st.applyRegistry(read(reg('s1', 'busy', 500)), 1_000);
+  st.apply(ev.end_('s1', 5_000));
+  st.applyRegistry(read(reg('s1', 'idle', 4_000)), 6_000);
+  assert.equal(one(st).status, 'gone');
+  st.applyRegistry(read(reg('s1', 'busy', 9_000)), 10_000);
+  assert.equal(one(st).status, 'thinking');
+});
+
+test('PermissionRequest가 오는 세션에선 승인 뒤 늦게 온 permission_prompt 알림이 ❗를 다시 띄우지 않음, 옛 설치는 대비용 유지', () => {
+  const st = make();
+  st.apply(ev.prompt('s1', 0));
+  st.apply(ev.tool('s1', 1_000, 't1', 'editing'));
+  st.apply(ev.perm('s1', 1_200));
+  st.applyRegistry(read(reg('s1', 'busy', 3_000)), 3_100);
+  assert.equal(one(st).status, 'editing');
+  st.apply(notice(ev.perm('s1', 7_000)));
+  assert.equal(one(st).status, 'editing');
+  const old = make();
+  old.apply(ev.prompt('s2', 0));
+  old.apply(ev.tool('s2', 1_000, 't1'));
+  old.apply(notice(ev.perm('s2', 7_000)));
+  assert.equal(one(old).status, 'permission');
+});
