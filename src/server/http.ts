@@ -236,6 +236,8 @@ export function startServer(opts: ServerOptions): Promise<RunningServer> {
     switch (url.pathname) {
       case '/healthz':
         return local ? text(res, 200, 'ok') : text(res, 404);
+      case '/api/health':
+        return json(res, state.snapshot(now()).health);
       case '/api/client-config':
         return json(res, { softSound: config.softSound, loopback: local });
       case '/api/lan-info': {

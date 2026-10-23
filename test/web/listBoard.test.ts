@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { renderList } from '../../web/src/list/listBoard.ts';
-import type { Agent, Snapshot, Status } from '../../src/shared/types.ts';
+import type { Agent, Health, Snapshot, Status } from '../../src/shared/types.ts';
 import { FakeElement, fakeDocument } from './fakeDom.ts';
 import { M } from '../helpers.ts';
 
@@ -9,7 +9,9 @@ const NOW = 100 * M;
 function agent(id: string, status: Status, since: number, extra: Partial<Agent> = {}): Agent {
   return { id, kind: 'claude', sessionId: id, title: null, cwd: '/x', project: '성수 LST', status, detail: 'analysis.py', since, lastEventAt: since, hat: 0, seat: 0, subagents: [], hookless: false, context: null, ...extra };
 }
-function render(snap: Snapshot): FakeElement {
+const HEALTH: Health = { startedAt: 0, lastHookAt: null, registry: 'ok', sessions: 0, hookless: 0 };
+function render(input: Omit<Snapshot, 'health'> & { health?: Health }): FakeElement {
+  const snap: Snapshot = { health: HEALTH, ...input };
   const root = new FakeElement('div');
   renderList(root as unknown as HTMLElement, snap, fakeDocument as unknown as Document);
   return root;

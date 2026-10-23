@@ -543,3 +543,13 @@ test('transcriptPathOf: 훅이 준 경로, 모르면 null', () => {
   assert.equal(st.transcriptPathOf('s1'), '/t/s1.jsonl');
   assert.equal(st.transcriptPathOf('nope'), null);
 });
+
+test('health: 시작 시각·마지막 훅·등록부 상태·세션 수(퇴근 제외)·훅 없음 수', () => {
+  const st = make({ startedAt: 5 });
+  assert.deepEqual(st.snapshot(0).health, { startedAt: 5, lastHookAt: null, registry: 'missing', sessions: 0, hookless: 0 });
+  st.apply(ev.prompt('s1', 1_000));
+  st.apply(ev.prompt('s2', 2_000));
+  st.apply(ev.end_('s2', 3_000));
+  st.applyRegistry(read(reg('r1', 'busy', 0)), 3 * M);
+  assert.deepEqual(st.snapshot(0).health, { startedAt: 5, lastHookAt: 3_000, registry: 'ok', sessions: 2, hookless: 1 });
+});

@@ -71,7 +71,9 @@ export type AgentContext = { state: 'ok'; used: number; window: number | null; m
 /** resetsAt = epoch 초 */
 export type UsageWindow = { pct: number; resetsAt: number };
 export type Usage = { fiveHour: UsageWindow | null; sevenDay: UsageWindow | null; at: number };
-export type Snapshot = { agents: Agent[]; usage: Usage | null; now: number };
+/** 연결 띠·npm run doctor용: 서버가 제대로 듣고 있나 */
+export type Health = { startedAt: number; lastHookAt: number | null; registry: RegistryHealth; sessions: number; hookless: number };
+export type Snapshot = { agents: Agent[]; usage: Usage | null; now: number; health: Health };
 
 /** Claude 앱 세션 목록 폴더 상태: 읽힘 / 폴더 없음 / 못 읽음 */
 export type RegistryHealth = 'ok' | 'missing' | 'error';

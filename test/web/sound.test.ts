@@ -4,7 +4,7 @@ import { soundEvents } from '../../web/src/sound.ts';
 import type { Agent, Snapshot, Status } from '../../src/shared/types.ts';
 
 const agent = (id: string, status: Status) => ({ id, status }) as Agent;
-const snap = (...agents: Agent[]): Snapshot => ({ agents, usage: null, now: 0 });
+const snap = (...agents: Agent[]): Snapshot => ({ agents, usage: null, now: 0, health: { startedAt: 0, lastHookAt: null, registry: 'ok', sessions: 0, hookless: 0 } });
 
 test('soundEvents: 새로 permission이면 urgent, 새로 done이면 soft', () => {
   assert.deepEqual(soundEvents(snap(agent('a', 'running')), snap(agent('a', 'permission'))), ['urgent']);

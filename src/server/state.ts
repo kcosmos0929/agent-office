@@ -1,6 +1,6 @@
 // 상태 정리기: 이벤트를 받아 에이전트별 상태를 갱신한다. 화면·수집기·시계를 모르는 순수 로직(시간은 이벤트·tick 인자로만).
 import { groupOf } from '../shared/labels.ts';
-import type { Activity, Agent, OfficeEvent, RegistryHealth, Snapshot, Status, Usage, WaitKind } from '../shared/types.ts';
+import type { Activity, Agent, Health, OfficeEvent, RegistryHealth, Snapshot, Status, Usage, WaitKind } from '../shared/types.ts';
 import type { RegistryEntry, RegistryRead, RegistryStatus } from './collectors/sessionRegistry.ts';
 import type { ContextReading } from './collectors/contextUsage.ts';
 import { contextWindow } from '../shared/contextWindow.ts';
@@ -154,7 +154,7 @@ export class OfficeState {
 
   snapshot(now: number): Snapshot {
     const agents = [...this.entries.values()].map(({ agent }) => ({ ...agent, subagents: agent.subagents.map((s) => ({ ...s })) }));
-    return { agents, usage: this.usage, now };
+    return { agents, usage: this.usage, now, health: this.health(agents) };
   }
 
   /**
@@ -245,6 +245,16 @@ export class OfficeState {
   private ignoreNotice(entry: Entry): boolean {
     if (this.shownWait(entry) !== null) return true;
     return this.opts.registryWaitRule && entry.reg?.status === 'busy';
+  }
+
+  private health(agents: Agent[]): Health {
+    return {
+      startedAt: this.opts.startedAt,
+      lastHookAt: this.lastHook,
+      registry: this.registry,
+      sessions: agents.filter((a) => a.status !== 'gone').length,
+      hookless: agents.filter((a) => a.hookless).length,
+    };
   }
 
   private create(e: OfficeEvent): Entry {
