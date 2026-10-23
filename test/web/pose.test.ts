@@ -32,3 +32,9 @@ test('shortCwd: 홈 폴더를 ~로', () => {
   assert.equal(shortCwd('/Users/seop/developer/street-centrality-bus'), '~/developer/street-centrality-bus');
   assert.equal(shortCwd('/opt/x'), '/opt/x');
 });
+
+test('새 상태 자세: 질문은 손 흔들기, 정리는 생각, 한도는 졸기', () => {
+  assert.equal(poseFor('question'), 'wave');
+  assert.equal(poseFor('compacting'), 'think');
+  assert.equal(poseFor('quota'), 'sleep');
+});

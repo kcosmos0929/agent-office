@@ -21,3 +21,11 @@ test('soundEvents: 새로 나타난 세션이 바로 done(새 세션)이면 안 
   assert.deepEqual(soundEvents(snap(), snap(agent('n', 'done'))), []);
   assert.deepEqual(soundEvents(snap(), snap(agent('n', 'permission'))), ['urgent']);
 });
+
+test('soundEvents: ❓도 urgent, ❗↔❓는 다시 안 울림, ⏳·🧹는 조용히', () => {
+  assert.deepEqual(soundEvents(snap(agent('a', 'running')), snap(agent('a', 'question'))), ['urgent']);
+  assert.deepEqual(soundEvents(snap(agent('a', 'permission')), snap(agent('a', 'question'))), []);
+  assert.deepEqual(soundEvents(snap(agent('a', 'question')), snap(agent('a', 'permission'))), []);
+  assert.deepEqual(soundEvents(snap(agent('a', 'running')), snap(agent('a', 'quota'))), []);
+  assert.deepEqual(soundEvents(snap(agent('a', 'running')), snap(agent('a', 'compacting'))), []);
+});
