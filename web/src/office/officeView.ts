@@ -7,13 +7,15 @@ import { targetFps } from './fps.ts';
 import type { Pose } from './pose.ts';
 import { showCard } from './card.ts';
 import { Cast } from './cast.ts';
+import { PALETTE, officeLights } from './backdrop.ts';
+import { FLOOR } from './layout.ts';
 import { buildOffice, type OfficeScene } from './scene.ts';
 import { createTv } from './tv.ts';
 
-const TARGET = new THREE.Vector3(5, 0.7, 5);
+const TARGET = new THREE.Vector3(FLOOR / 2, 0.7, FLOOR / 2);
 const VIEW_DIR = new THREE.Vector3(1, 0.82, 1).normalize();
-const FIT_W = 15.2; // 장면 폭(월드 단위)
-const FIT_H = 11.2; // 장면 높이
+const FIT_W = 23.6; // 장면 폭(월드 단위)
+const FIT_H = 17.2; // 장면 높이
 
 export class OfficeView implements OfficeHost {
   readonly renderer: THREE.WebGLRenderer;
@@ -38,9 +40,9 @@ export class OfficeView implements OfficeHost {
   constructor(container: HTMLElement) {
     this.container = container;
     this.renderer = new THREE.WebGLRenderer({ antialias: false });
-    const px = Number(new URLSearchParams(location.search).get('px') ?? 3);
-    this.renderer.setPixelRatio(1 / Math.max(1, px)); // 픽셀 스타일: 낮은 해상도로 그리고 CSS로 또렷하게 키움(?px=2~4)
-    this.renderer.setClearColor('#F4EFE8');
+    const px = Number(new URLSearchParams(location.search).get('px') ?? 1.5);
+    this.renderer.setPixelRatio(1 / Math.max(1, px)); // 픽셀 스타일: 낮은 해상도로 그리고 CSS로 또렷하게 키움(?px=1.5~4)
+    this.renderer.setClearColor(PALETTE.bg);
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.BasicShadowMap;
     container.appendChild(this.renderer.domElement);
@@ -49,15 +51,7 @@ export class OfficeView implements OfficeHost {
     Object.assign(this.labels.domElement.style, { position: 'absolute', inset: '0', pointerEvents: 'none' });
     container.appendChild(this.labels.domElement);
 
-    this.scene.add(new THREE.HemisphereLight('#FFFFFF', '#E8DCCB', 2.2));
-    const sun = new THREE.DirectionalLight('#FFF6E8', 1.6);
-    sun.position.set(1, 12, 9);
-    sun.target.position.set(5, 0, 5);
-    sun.castShadow = true;
-    sun.shadow.mapSize.set(1024, 1024);
-    Object.assign(sun.shadow.camera, { left: -9, right: 9, top: 9, bottom: -9, near: 1, far: 30 });
-    sun.shadow.radius = 4;
-    this.scene.add(sun, sun.target);
+    this.scene.add(...officeLights());
 
     this.office = buildOffice();
     this.scene.add(this.office.group, this.tv.group);

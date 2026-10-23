@@ -41,8 +41,8 @@ export function createTv(): { group: THREE.Group; update(u: Usage | null, now: n
   const label = new CSS2DObject(labelEl);
   label.position.set(0, 0.12, 0.05);
   group.add(label);
-  // 뒷벽(z=0) Claude 작업실 위
-  group.position.set(2.7, 1.63, 0.04);
+  // 뒷벽(z=0) 사무실 위
+  group.position.set(3.75, 2.0, 0.04);
 
   let last = '';
   function update(u: Usage | null, now: number) {
