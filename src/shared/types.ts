@@ -65,3 +65,6 @@ export type Agent = {
 export type UsageWindow = { pct: number; resetsAt: number };
 export type Usage = { fiveHour: UsageWindow | null; sevenDay: UsageWindow | null; at: number };
 export type Snapshot = { agents: Agent[]; usage: Usage | null; now: number };
+
+/** Claude 앱 세션 목록 폴더 상태: 읽힘 / 폴더 없음 / 못 읽음 */
+export type RegistryHealth = 'ok' | 'missing' | 'error';
