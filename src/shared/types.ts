@@ -22,13 +22,22 @@ type EventBase = {
 export type OfficeEvent = EventBase & (
   | { type: 'session-start' }
   | { type: 'prompt' }
-  | { type: 'stop' }
+  /** 차례가 끝남. error = 한도 말고 다른 API 오류로 멈춘 경우의 종류(overloaded 등) */
+  | { type: 'stop'; error?: string }
   | { type: 'session-end' }
   /** 입력을 기다린다는 알림(Stop 없이 끝난 차례 대비) */
   | { type: 'idle' }
   | { type: 'tool-start'; toolUseId: string; activity: Activity; detail: string }
   | { type: 'tool-end'; toolUseId: string }
-  | { type: 'permission'; detail: string }
+  /** viaNotification: 늦게 올 수 있는 Notification 훅에서 왔음(PermissionRequest가 아니라) */
+  | { type: 'permission'; detail: string; viaNotification?: true }
+  | { type: 'question'; detail: string | null; viaNotification?: true }
+  | { type: 'compact-start'; trigger: CompactTrigger }
+  | { type: 'compact-end'; trigger: CompactTrigger }
+  /** 사용량 한도에 걸려 멈춤 */
+  | { type: 'quota-wait' }
+  /** 한도가 풀려 자동으로 이어 감 */
+  | { type: 'resume' }
   | { type: 'subagent-start'; agentId: string; agentType: string | null }
   | { type: 'subagent-stop'; agentId: string }
   | { type: 'title'; title: string }

@@ -2,7 +2,7 @@
 
 export const HOOK_EVENTS = [
   'SessionStart', 'UserPromptSubmit', 'PreToolUse', 'PostToolUse', 'PostToolUseFailure', 'PermissionRequest',
-  'Notification', 'Stop', 'SubagentStart', 'SubagentStop', 'SessionEnd',
+  'Notification', 'Stop', 'SubagentStart', 'SubagentStop', 'SessionEnd', 'PreCompact', 'PostCompact', 'StopFailure',
 ] as const;
 
 const MARK = '/.synthetic-office/bin/';
