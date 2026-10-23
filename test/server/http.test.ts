@@ -21,7 +21,7 @@ after(async () => { for (const c of closers) await c(); });
 
 async function boot(extra: Partial<Parameters<typeof startServer>[0]> = {}) {
   const config = loadConfig(home);
-  const state = new OfficeState({ idleMs: 30 * M, goneMs: 10 * M, stalledMs: 15 * M, forgetMs: 12 * 60 * M, resolveProject: () => '가로망 중심성' });
+  const state = new OfficeState({ idleMs: 30 * M, goneMs: 10 * M, stalledMs: 15 * M, forgetMs: 12 * 60 * M, resolveProject: () => '가로망 중심성', startedAt: 0, registryWaitRule: false });
   const admin: string[] = [];
   const srv = await startServer({ config, token: TOKEN, state, staticDir, listenPort: 0, host: '127.0.0.1', onAdmin: (a) => admin.push(a), ...extra });
   closers.push(srv.close);

@@ -1,6 +1,7 @@
 // 상태 정리기: 이벤트를 받아 에이전트별 상태를 갱신한다. 화면·수집기·시계를 모르는 순수 로직(시간은 이벤트·tick 인자로만).
 import { groupOf } from '../shared/labels.ts';
-import type { Activity, Agent, OfficeEvent, Snapshot, Status, Usage, WaitKind } from '../shared/types.ts';
+import type { Activity, Agent, OfficeEvent, RegistryHealth, Snapshot, Status, Usage, WaitKind } from '../shared/types.ts';
+import type { RegistryEntry, RegistryRead, RegistryStatus } from './collectors/sessionRegistry.ts';
 
 export type StateOptions = {
   idleMs: number;
@@ -9,6 +10,10 @@ export type StateOptions = {
   /** 이 시간 동안 아무 신호가 없으면 상태와 상관없이 정리(종료 신호 없이 닫힌 세션) */
   forgetMs: number;
   resolveProject: (cwd: string) => string;
+  /** 서버가 켜진 시각 — '훅 없음' 2분을 이때부터 잰다 */
+  startedAt: number;
+  /** 등록부 waiting을 '사용자 입력 기다림'으로 믿어도 되나(설계 R2·늦은 알림 무시). Task 0 실제 확인으로 정함 */
+  registryWaitRule: boolean;
 };
 
 const SLOTS = 8;
@@ -16,6 +21,12 @@ const SLOTS = 8;
 const WAITS = new Set<Status>(['permission', 'question']);
 /** 도구 끝 신호가 늦게 와도 바꾸지 않는 상태 */
 const SETTLED = new Set<Status>(['done', 'idle', 'gone', 'quota', 'compacting']);
+/** 등록부만 있고 훅이 없는 세션이 이만큼 일하는 중이면 '훅 없음' */
+const HOOKLESS_MS = 2 * 60_000;
+/** 등록부 waiting 뒤 이만큼 훅이 없으면 질문 대기로(R2) */
+const WAIT_GRACE_MS = 2_000;
+/** 훅 없는 세션: 등록부 값 → 화면 상태 */
+const MIRROR: Record<RegistryStatus, Status> = { busy: 'thinking', waiting: 'question', idle: 'done' };
 
 type OpenTool = { activity: Activity; detail: string };
 
@@ -30,15 +41,36 @@ type Entry = {
   waitingSubs: Map<string, WaitKind>;
   /** 대기가 하나도 없다가 처음 생긴 시각 — 모두 풀리면 null */
   waitSince: number | null;
+  /** 서버가 켜진 뒤 이 세션의 훅을 받은 적 있나 / 마지막 훅 시각 */
+  hookSeen: boolean;
+  lastHookAt: number | null;
+  /** 등록부의 마지막 값. activeSince = busy/waiting이 이어진 시작(서버 켜진 시각보다 이르지 않게) */
+  reg: { status: RegistryStatus; updatedAt: number; activeSince: number | null } | null;
+  /** 등록부에서 본 적 있나 / 마지막 읽기에 있었나 / 연속으로 안 보인 횟수 */
+  everInRegistry: boolean;
+  inRegistry: boolean;
+  missingReads: number;
+  /** 등록부의 이름 — 있으면 훅 제목보다 우선 */
+  regName: string | null;
 };
 
 export class OfficeState {
   private readonly opts: StateOptions;
   private readonly entries = new Map<string, Entry>();
   private usage: Usage | null = null;
+  private registry: RegistryHealth = 'missing';
+  private lastHook: number | null = null;
 
   constructor(opts: StateOptions) {
     this.opts = opts;
+  }
+
+  get registryHealth(): RegistryHealth {
+    return this.registry;
+  }
+
+  get lastHookAt(): number | null {
+    return this.lastHook;
   }
 
   apply(e: OfficeEvent): boolean {
@@ -46,7 +78,16 @@ export class OfficeState {
     const entry = this.entries.get(e.sessionId) ?? this.create(e);
     const a = entry.agent;
     a.lastEventAt = e.at;
-    if (e.title) a.title = e.title;
+    if (e.type !== 'title') {
+      entry.hookSeen = true;
+      entry.lastHookAt = e.at;
+      this.lastHook = e.at;
+      a.hookless = false;
+    }
+    if (e.title && !entry.regName) a.title = e.title;
+    if ((e.type === 'permission' || e.type === 'question') && e.viaNotification && this.ignoreNotice(entry)) {
+      return this.fingerprint() !== before;
+    }
     if (e.transcriptPath) entry.transcriptPath = e.transcriptPath;
     if (e.cwd && e.cwd !== a.cwd) {
       a.cwd = e.cwd;
@@ -63,8 +104,10 @@ export class OfficeState {
 
   tick(now: number): boolean {
     let changed = false;
-    for (const [id, { agent: a }] of this.entries) {
-      if (now - a.lastEventAt >= this.opts.forgetMs) {
+    for (const [id, entry] of this.entries) {
+      const a = entry.agent;
+      // 등록부에 살아 있는 세션은 오래 조용해도 지우지 않는다
+      if (now - a.lastEventAt >= this.opts.forgetMs && !entry.inRegistry) {
         this.entries.delete(id);
         changed = true;
       } else if (a.status === 'done' && now - a.since >= this.opts.idleMs) {
@@ -98,29 +141,128 @@ export class OfficeState {
     return { agents, usage: this.usage, now };
   }
 
+  /**
+   * 등록부(Claude 앱 세션 목록)의 지금 목록을 반영한다. 화면에 보이는 게 바뀌었을 때만 true.
+   * R1 승인·답변 순간 · R2 연달아 대기 · R3 훅 없는 세션 · R4 퇴근 · R5 제목 (설계서 4-1)
+   */
+  applyRegistry(r: RegistryRead, now: number): boolean {
+    const before = this.fingerprint();
+    this.registry = r.health;
+    if (r.health !== 'ok') return this.fingerprint() !== before; // 읽기 실패 땐 아무것도 안 바꿈
+    const ids = new Set(r.entries.map((x) => x.sessionId));
+    for (const [id, entry] of this.entries) {
+      if (!entry.everInRegistry || ids.has(id)) continue;
+      entry.inRegistry = false;
+      entry.missingReads++;
+      // 파일을 쓰는 도중 잠깐 안 읽힐 수 있어 두 번 연속일 때만 퇴근
+      if (entry.missingReads >= 2 && entry.agent.status !== 'gone') {
+        this.clearWork(entry);
+        entry.agent.subagents = [];
+        this.setStatus(entry.agent, 'gone', now);
+        entry.agent.detail = null;
+      }
+    }
+    for (const x of r.entries) this.applyRegistryEntry(x, now);
+    return this.fingerprint() !== before;
+  }
+
+  private applyRegistryEntry(x: RegistryEntry, now: number): void {
+    const entry = this.entries.get(x.sessionId) ?? this.newEntry(x.sessionId, x.cwd, x.statusUpdatedAt, now);
+    const a = entry.agent;
+    entry.everInRegistry = true;
+    entry.inRegistry = true;
+    entry.missingReads = 0;
+    const activeSince = x.status === 'idle' ? null : (entry.reg?.activeSince ?? Math.max(x.statusUpdatedAt, this.opts.startedAt));
+    entry.reg = { status: x.status, updatedAt: x.statusUpdatedAt, activeSince };
+    if (x.name) {
+      entry.regName = x.name;
+      a.title = x.name;
+    }
+    if (x.cwd && x.cwd !== a.cwd) {
+      a.cwd = x.cwd;
+      a.project = this.opts.resolveProject(x.cwd);
+    }
+    if (!entry.hookSeen || a.status === 'gone') {
+      this.mirror(entry, x);
+    } else {
+      const w = this.shownWait(entry);
+      if (w && x.status === 'busy' && entry.waitSince !== null && x.statusUpdatedAt > entry.waitSince) {
+        // R1: 대기에 들어간 뒤 일하기 시작 = 사용자가 답했다(승인·거절·질문 답)
+        const tools = [...entry.openTools.values()];
+        this.clearWaits(entry);
+        if (w === 'permission') {
+          const last = tools.at(-1);
+          this.setStatus(a, last?.activity ?? 'running', x.statusUpdatedAt);
+          a.detail = last?.detail ?? null;
+        } else {
+          this.setStatus(a, tools.some((t) => t.activity === 'delegating') ? 'delegating' : 'thinking', x.statusUpdatedAt);
+          a.detail = null;
+        }
+      } else if (this.opts.registryWaitRule && !w && groupOf(a.status) === 'working' && x.status === 'waiting'
+        && now - x.statusUpdatedAt >= WAIT_GRACE_MS && (entry.lastHookAt ?? 0) < x.statusUpdatedAt) {
+        // R2: 훅 없이 나를 기다림(앱이 질문·승인을 차례로 묻는 경우 등)
+        entry.waitingMain = 'question';
+        entry.waitSince = x.statusUpdatedAt;
+        this.setStatus(a, 'question', x.statusUpdatedAt);
+        a.detail = null;
+      }
+    }
+    a.hookless = !entry.hookSeen && activeSince !== null && now - activeSince >= HOOKLESS_MS;
+  }
+
+  /** 훅 없는 세션(또는 퇴근 뒤 다시 나타난 세션): 등록부 값을 그대로 보여 준다 */
+  private mirror(entry: Entry, x: RegistryEntry): void {
+    const a = entry.agent;
+    const s = MIRROR[x.status];
+    if (a.status === s || (s === 'done' && a.status === 'idle')) return; // 30분 뒤 😴를 되돌리지 않음
+    if (WAITS.has(s)) {
+      entry.waitingMain = 'question';
+      entry.waitSince = x.statusUpdatedAt;
+    } else {
+      this.clearWork(entry);
+    }
+    this.setStatus(a, s, x.statusUpdatedAt);
+    a.detail = null;
+  }
+
+  /** 알림(Notification)에서 온 대기 신호를 버릴까: 이미 다른 대기가 걸려 있거나, 등록부가 일하는 중이라는데 늦게 온 알림 */
+  private ignoreNotice(entry: Entry): boolean {
+    if (this.shownWait(entry) !== null) return true;
+    return this.opts.registryWaitRule && entry.reg?.status === 'busy';
+  }
+
   private create(e: OfficeEvent): Entry {
+    const entry = this.newEntry(e.sessionId, e.cwd, e.at, e.at);
+    if (e.type === 'session-start') {
+      entry.agent.status = 'done';
+      entry.agent.detail = '새 세션';
+    }
+    return entry;
+  }
+
+  private newEntry(sessionId: string, cwd: string, since: number, now: number): Entry {
     const used = [...this.entries.values()].map((x) => x.agent);
     const agent: Agent = {
-      id: `claude:${e.sessionId}`,
+      id: `claude:${sessionId}`,
       kind: 'claude',
-      sessionId: e.sessionId,
+      sessionId,
       title: null,
-      cwd: e.cwd,
-      project: this.opts.resolveProject(e.cwd),
+      cwd,
+      project: this.opts.resolveProject(cwd),
       status: 'thinking',
       detail: null,
-      since: e.at,
-      lastEventAt: e.at,
+      since,
+      lastEventAt: now,
       hat: firstFree(used.map((a) => a.hat), used.length % SLOTS),
       seat: firstFree(used.map((a) => a.seat), -1),
       subagents: [],
+      hookless: false,
     };
-    const entry: Entry = { agent, openTools: new Map(), transcriptPath: null, waitingMain: null, waitingSubs: new Map(), waitSince: null };
-    this.entries.set(e.sessionId, entry);
-    if (e.type === 'session-start') {
-      agent.status = 'done';
-      agent.detail = '새 세션';
-    }
+    const entry: Entry = {
+      agent, openTools: new Map(), transcriptPath: null, waitingMain: null, waitingSubs: new Map(), waitSince: null,
+      hookSeen: false, lastHookAt: null, reg: null, everInRegistry: false, inRegistry: false, missingReads: 0, regName: null,
+    };
+    this.entries.set(sessionId, entry);
     return entry;
   }
 
@@ -205,7 +347,7 @@ export class OfficeState {
         a.detail = null;
         return;
       case 'title':
-        a.title = e.title;
+        if (!entry.regName) a.title = e.title;
         return;
       case 'idle':
         // 입력을 기다린다는 알림: 일하던 중이었다면(Stop 없이 끝난 차례) 내 차례로. 승인 대기는 건드리지 않는다

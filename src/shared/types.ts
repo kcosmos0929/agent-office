@@ -59,6 +59,8 @@ export type Agent = {
   hat: number;
   seat: number;
   subagents: Subagent[];
+  /** 등록부엔 일하는 중인데 서버가 켜진 뒤 훅이 한 번도 안 옴(2분 넘게) → '훅 없음' 태그 */
+  hookless: boolean;
 };
 
 /** resetsAt = epoch 초 */
