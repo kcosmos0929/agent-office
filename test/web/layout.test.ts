@@ -1,16 +1,20 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { ROOMS, ROOM_DOORS, SPLIT_X, seatPosition, meetingSpot, DOOR, pathTo } from '../../web/src/office/layout.ts';
+import { IDLE_SPOTS, ROOMS, ROOM_DOORS, SPLIT_X, seatPosition, meetingSpot, DOOR, pathTo } from '../../web/src/office/layout.ts';
 import { targetFps } from '../../web/src/office/fps.ts';
 
 const inside = (p: { x: number; y: number }, r: { x0: number; y0: number; x1: number; y1: number }) => p.x > r.x0 && p.x < r.x1 && p.y > r.y0 && p.y < r.y1;
 
-test('방 배치: 15×15, 통창 쪽 열린 사무실 + 오른쪽에 개발실·비서실·회의실 (2026-10-23 배치 A)', () => {
+test('방 배치: 15×18, 통창 쪽 열린 사무실 + 오른쪽에 개발실·비서실·회의실 + 앞쪽 띠(창고·화장실·입구 복도·휴게실→안쪽 탕비실) (2026-10-23)', () => {
   assert.deepEqual([ROOMS.claude.x0, ROOMS.claude.y0, ROOMS.claude.x1, ROOMS.claude.y1], [0, 0, 7.5, 15]);
   assert.deepEqual([ROOMS.codex.x0, ROOMS.codex.y0, ROOMS.codex.x1, ROOMS.codex.y1], [7.5, 0, 15, 4.5]);
   assert.deepEqual([ROOMS.aria.x0, ROOMS.aria.y0, ROOMS.aria.x1, ROOMS.aria.y1], [7.5, 4.5, 15, 9.5]);
   assert.deepEqual([ROOMS.meeting.x0, ROOMS.meeting.y0, ROOMS.meeting.x1, ROOMS.meeting.y1], [7.5, 9.5, 15, 15]);
-  assert.deepEqual(Object.values(ROOMS).map((r) => r.label), ['사무실', '개발실', '비서실', '회의실']);
+  for (const r of [ROOMS.lounge, ROOMS.pantry]) assert.deepEqual([r.y0, r.y1], [15, 18]);
+  assert.deepEqual([ROOMS.storage.y0, ROOMS.storage.y1, ROOMS.restroom.y0, ROOMS.restroom.y1], [15, ROOMS.restroom.y0, ROOMS.storage.y1, 18]);
+  assert.ok(ROOMS.restroom.x1 < DOOR.x && DOOR.x < ROOMS.lounge.x0, '입구는 창고·화장실과 휴게실 사이 복도');
+  assert.equal(ROOMS.lounge.x1, ROOMS.pantry.x0, '탕비실은 휴게실 안쪽(휴게실을 지나 들어감)');
+  assert.deepEqual(Object.values(ROOMS).map((r) => r.label), ['사무실', '개발실', '비서실', '회의실', '창고', '화장실', '휴게실', '탕비실']);
 });
 
 test('seatPosition 0~7은 모두 다르고 Claude 작업실 안', () => {
@@ -19,11 +23,15 @@ test('seatPosition 0~7은 모두 다르고 Claude 작업실 안', () => {
   for (const s of seats) assert.ok(inside(s, ROOMS.claude), JSON.stringify(s));
 });
 
-test('seatPosition(-1)과 범위 밖 자리는 문 근처', () => {
+test('seatPosition(-1)과 범위 밖 자리는 로비(사무실 앞쪽) 대기 자리', () => {
   for (const i of [-1, 8, 99]) {
     const p = seatPosition(i);
-    assert.ok(Math.hypot(p.x - DOOR.x, p.y - DOOR.y) < 1.5, JSON.stringify(p));
+    assert.ok(inside(p, ROOMS.claude) && p.y > 13, JSON.stringify(p));
   }
+});
+
+test('쉬는 동안 갈 지점은 휴게실·탕비실 안', () => {
+  for (const p of Object.values(IDLE_SPOTS)) assert.ok(inside(p, ROOMS.pantry) || inside(p, ROOMS.lounge), JSON.stringify(p));
 });
 
 test('meetingSpot 0~5는 회의실 안이고 서로 다름, 6 이상도 회의실 안', () => {

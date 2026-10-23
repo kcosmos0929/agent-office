@@ -8,14 +8,14 @@ import type { Pose } from './pose.ts';
 import { showCard } from './card.ts';
 import { Cast } from './cast.ts';
 import { PALETTE, officeLights } from './backdrop.ts';
-import { FLOOR } from './layout.ts';
+import { FLOOR_X, FLOOR_Z } from './layout.ts';
 import { buildOffice, type OfficeScene } from './scene.ts';
 import { createTv } from './tv.ts';
 
-const TARGET = new THREE.Vector3(FLOOR / 2, 0.7, FLOOR / 2);
+const TARGET = new THREE.Vector3(FLOOR_X / 2, 0.7, FLOOR_Z / 2);
 const VIEW_DIR = new THREE.Vector3(1, 0.82, 1).normalize();
-const FIT_W = 23.6; // 장면 폭(월드 단위)
-const FIT_H = 17.2; // 장면 높이
+const FIT_W = 25.8; // 장면 폭(월드 단위)
+const FIT_H = 18.6; // 장면 높이
 
 export class OfficeView implements OfficeHost {
   readonly renderer: THREE.WebGLRenderer;

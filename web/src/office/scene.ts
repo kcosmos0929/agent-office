@@ -2,7 +2,8 @@
 import * as THREE from 'three';
 import { CSS2DObject } from 'three/examples/jsm/renderers/CSS2DRenderer.js';
 import { buildBackdrop } from './backdrop.ts';
-import { ARIA_DESK, ARIA_DESK_XS, ARIA_DESK_Y, DESK_COLS, DESK_D, DESK_W, DESK_YS, MEETING_TABLE, ROOMS, meetingSpot } from './layout.ts';
+import { beanBag, bigPlant, bookshelf, boxStack, fileCabinet, fridge, FURN, kitchenCounter, lowTable, officeChair, podDesk, podDivider, printer, receptionDesk, screenStand, sofa, stool, storageShelf, toilet, trashBin, vendingMachine, washbasin, waterCooler } from './furniture.ts';
+import { ARIA_DESK, ARIA_DESK_XS, ARIA_DESK_Y, DESK_DEPTH, DESK_WIDTH, DESKS, MEETING_TABLE, POD_X0, POD_YS, ROOMS, meetingSpot } from './layout.ts';
 
 export const WALL_H = 3.0;
 
@@ -45,57 +46,90 @@ export function buildOffice(): OfficeScene {
   const g = new THREE.Group();
   buildBackdrop(g);
 
-  // 사무실 책상 8개(2열 × 4) + 모니터(+x 쪽 통로를 향함). 순서는 seatPosition과 같게: 열을 번갈아
-  const deskScreens: THREE.Mesh[] = [];
-  for (let seat = 0; seat < 8; seat++) {
-    const x0 = DESK_COLS[seat % 2];
-    const y0 = DESK_YS[Math.floor(seat / 2)];
-    g.add(block(x0, y0, DESK_W, DESK_D, 0, 0.62, '#F2F0EC'));
-    g.add(block(x0 + 0.08, y0 + 0.08, 0.1, DESK_D - 0.16, 0.62, 0.5, '#2A2F38'));
-    const screen = new THREE.Mesh(new THREE.PlaneGeometry(DESK_D - 0.28, 0.4), new THREE.MeshBasicMaterial({ color: '#3A404C' }));
-    screen.rotation.y = Math.PI / 2;
-    screen.position.set(x0 + 0.185, 0.62 + 0.25, y0 + DESK_D / 2);
-    g.add(screen);
-    deskScreens.push(screen);
+  // 사무실: 4인 책상 묶음 2개(두 자리씩 마주 보고 가운데 칸막이). 순서는 seatPosition과 같게(DESKS)
+  const deskScreens = DESKS.map((d, seat) => podDesk(g, d.x0, d.y0, DESK_DEPTH, DESK_WIDTH, d.facing, seat % 3 === 0));
+  for (const y0 of POD_YS) {
+    podDivider(g, POD_X0 + DESK_DEPTH, y0, 2 * DESK_WIDTH + 0.04);
+    trashBin(g, POD_X0 + DESK_DEPTH - 0.11, y0 + 2 * DESK_WIDTH + 0.25);
   }
+  fileCabinet(g, 0.3, 0.2);
+  printer(g, 6.2, 0.25);
+  bigPlant(g, 6.75, 2.0);
+  // 사무실 앞쪽 로비: 입구 복도에서 곧게 들어오는 통로 오른쪽에 안내 데스크, 모서리마다 큰 화분
+  receptionDesk(g, 4.5, 13.0, 1.8);
+  bigPlant(g, 0.35, 14.2);
+  bigPlant(g, 0.35, 9.4);
+  bigPlant(g, 6.75, 9.4);
+  bigPlant(g, 6.75, 14.2);
+
+  // 창고(앞쪽 왼쪽 안): 뒷벽 철제 선반 + 바닥 상자 / 화장실(앞쪽 왼쪽 앞, 불투명 유리): 창가 쪽 변기 + 세면대·거울
+  storageShelf(g, 0.2, 15.12, 1.9);
+  boxStack(g, 2.25, 15.15);
+  boxStack(g, 0.3, 15.75);
+  washbasin(g, 0.15, 16.65);
+  toilet(g, 0.15, 17.4);
+
+  // 휴게실(앞쪽 오른쪽, 입구 복도에서 들어감): 자판기 + 러그(backdrop) 위 소파·낮은 테이블 + 뒷벽 책장 + 빈백 둘
+  vendingMachine(g, 4.6, 15.1);
+  sofa(g, 5.85, 15.22, 2.2, 0.75);
+  lowTable(g, 6.45, 16.3, 1.0, 0.55);
+  bookshelf(g, 8.6, 15.08, 2.0);
+  beanBag(g, 9.0, 16.5, '#C9A04A');
+  beanBag(g, 10.1, 16.5, '#46666D');
+
+  // 탕비실(휴게실 안쪽): 뒷벽 주방 카운터·냉장고 + 정수기 + 카페 테이블과 스툴 둘 + 휴지통
+  kitchenCounter(g, 11.3, 15.12, 2.5);
+  fridge(g, 14.0, 15.1);
+  waterCooler(g, 14.5, 16.2);
+  lowTable(g, 12.4, 16.6, 0.9, 0.7, 0.62);
+  stool(g, 12.15, 16.95);
+  stool(g, 13.55, 16.95);
+  trashBin(g, 14.6, 17.6);
 
   // 개발실(Codex): 서버랙 + 책상과 큰 모니터
   for (const x0 of [12.0, 13.0, 14.0]) {
     g.add(block(x0, 0.2, 0.8, 0.8, 0, 1.7, '#3C4656'));
     for (let k = 0; k < 4; k++) g.add(block(x0 + 0.15, 1.0, 0.08, 0.02, 0.35 + k * 0.36, 0.06, k % 2 ? '#7CE0A3' : '#5BC0EB', { emissive: k % 2 ? '#7CE0A3' : '#5BC0EB' }));
   }
-  g.add(block(8.8, 1.8, 2.0, 0.9, 0, 0.62, '#F2F0EC'));
-  g.add(block(9.2, 1.88, 1.2, 0.12, 0.62, 0.7, '#2A2F38'));
+  lowTable(g, 8.8, 1.8, 2.0, 0.9, 0.58);
+  g.add(block(9.2, 1.88, 1.2, 0.12, 0.63, 0.7, FURN.monitor));
   const codexScreen = new THREE.Mesh(new THREE.PlaneGeometry(1.04, 0.53), new THREE.MeshBasicMaterial({ color: '#CFF1E6' }));
-  codexScreen.position.set(9.8, 0.62 + 0.35, 2.005);
+  codexScreen.position.set(9.8, 0.63 + 0.35, 2.005);
   g.add(codexScreen);
+  officeChair(g, 9.8, 3.0, 'pz');
 
-  // 비서실(ARIA): 스탠딩 책상 3개(높은 상판 + 가는 다리 둘 + 모니터) + 화분
+  // 비서실(ARIA): 스탠딩 책상 3개(높은 나무 상판 + 검은 다리 둘 + 모니터) + 큰 화분
   const sd = ARIA_DESK;
   for (const x0 of ARIA_DESK_XS) {
     const y0 = ARIA_DESK_Y;
-    g.add(block(x0, y0, sd.w, sd.d, sd.h, 0.05, '#F2F0EC'));
-    g.add(block(x0 + 0.1, y0 + 0.25, 0.07, 0.1, 0.04, sd.h - 0.04, '#2A2F38'));
-    g.add(block(x0 + sd.w - 0.17, y0 + 0.25, 0.07, 0.1, 0.04, sd.h - 0.04, '#2A2F38'));
-    g.add(block(x0 + 0.1, y0 + 0.22, sd.w - 0.2, 0.16, 0.04, 0.03, '#2A2F38'));
-    g.add(block(x0 + 0.3, y0 + 0.06, sd.w - 0.6, 0.06, sd.h + 0.05, 0.4, '#2A2F38'));
+    g.add(block(x0, y0, sd.w, sd.d, sd.h, 0.05, FURN.wood));
+    g.add(block(x0 + 0.1, y0 + 0.25, 0.07, 0.1, 0.04, sd.h - 0.04, FURN.black));
+    g.add(block(x0 + sd.w - 0.17, y0 + 0.25, 0.07, 0.1, 0.04, sd.h - 0.04, FURN.black));
+    g.add(block(x0 + 0.1, y0 + 0.22, sd.w - 0.2, 0.16, 0.04, 0.03, FURN.black));
+    g.add(block(x0 + 0.3, y0 + 0.06, sd.w - 0.6, 0.06, sd.h + 0.05, 0.4, FURN.monitor));
   }
-  g.add(block(14.3, 8.8, 0.5, 0.5, 0, 0.45, '#B07A54'));
-  g.add(block(14.32, 8.82, 0.46, 0.46, 0.45, 0.5, '#6FAF6B'));
+  bigPlant(g, 14.25, 8.75);
 
-  // 회의실: 테이블 + 의자
+  // 회의실: 나무 테이블 + 검은 의자 6개(테이블 쪽으로 반쯤 밀어 넣음) + 안쪽 벽 앞 화면
   const t = MEETING_TABLE;
-  g.add(block(t.x0, t.y0, t.x1 - t.x0, t.y1 - t.y0, 0, 0.55, '#D7C3A6'));
+  lowTable(g, t.x0, t.y0, t.x1 - t.x0, t.y1 - t.y0, 0.55);
   for (let i = 0; i < 6; i++) {
     const s = meetingSpot(i);
-    g.add(block(s.x - 0.22, s.y - 0.22, 0.44, 0.44, 0, 0.4, '#8E8A84'));
+    if (i < 3) officeChair(g, s.x, s.y + 0.1, 'nz');
+    else officeChair(g, s.x, s.y - 0.1, 'pz');
   }
+  screenStand(g, 10.45, 9.65, 1.9);
+  bigPlant(g, 14.3, 14.3);
 
   // 방 이름 (각 방 앞쪽 가장자리 근처)
-  g.add(roomLabel(ROOMS.claude.label, 1.4, 14.6));
+  g.add(roomLabel(ROOMS.claude.label, 1.9, 12.6));
   g.add(roomLabel(ROOMS.codex.label, 12.2, 2.6));
-  g.add(roomLabel(ROOMS.aria.label, 11.25, 9.15));
-  g.add(roomLabel(ROOMS.meeting.label, 11.25, 14.6));
+  g.add(roomLabel(ROOMS.aria.label, 12.6, 8.2));
+  g.add(roomLabel(ROOMS.meeting.label, 13.9, 10.1));
+  g.add(roomLabel(ROOMS.storage.label, 1.2, 16.05));
+  g.add(roomLabel(ROOMS.restroom.label, 1.6, 17.85));
+  g.add(roomLabel(ROOMS.lounge.label, 7.6, 17.75));
+  g.add(roomLabel(ROOMS.pantry.label, 13.6, 17.75));
 
   return { group: g, deskScreens };
 }
