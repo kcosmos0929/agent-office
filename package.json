@@ -13,7 +13,8 @@
     "build:web": "vite build",
     "start": "node src/server/main.ts",
     "install:office": "node scripts/install.ts",
-    "uninstall:office": "node scripts/uninstall.ts"
+    "uninstall:office": "node scripts/uninstall.ts",
+    "doctor": "node scripts/doctor.ts"
   },
   "dependencies": {
     "qrcode": "^1.5.4",

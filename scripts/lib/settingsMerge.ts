@@ -5,7 +5,8 @@ export const HOOK_EVENTS = [
   'Notification', 'Stop', 'SubagentStart', 'SubagentStop', 'SessionEnd', 'PreCompact', 'PostCompact', 'StopFailure',
 ] as const;
 
-const MARK = '/.synthetic-office/bin/';
+/** 우리 훅·상태줄 명령을 알아보는 표시(설치 경로 일부) */
+export const MARK = '/.synthetic-office/bin/';
 
 type Settings = Record<string, unknown>;
 type HookItem = { type?: string; command?: string; timeout?: number };
