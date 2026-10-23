@@ -260,7 +260,8 @@ export class OfficeState {
    */
   private ignoreNotice(entry: Entry): boolean {
     if (this.shownWait(entry) !== null && !entry.waitGuessed) return true;
-    return this.opts.registryWaitRule && entry.reg?.status === 'busy';
+    // 낡은 값 금지: 마지막 읽기가 성공했고 이 세션이 그 목록에 있을 때만 등록부 busy를 믿는다
+    return this.opts.registryWaitRule && this.registry === 'ok' && entry.inRegistry && entry.reg?.status === 'busy';
   }
 
   private health(agents: Agent[]): Health {

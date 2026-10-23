@@ -658,3 +658,16 @@ test('applyRegistry: 세션이 같아도 등록부 상태(missing/error ↔ ok)�
   assert.equal(st.applyRegistry(read(), 2_000), false);
   assert.equal(st.applyRegistry({ health: 'error', entries: [] }, 3_000), true);
 });
+
+test('늦은 알림 무시는 지금 유효한 등록부 값일 때만 — 읽기 실패·폴더 없음·파일 일시 누락이면 알림 전용 승인을 받음', () => {
+  const broken: RegistryRead[] = [{ health: 'error', entries: [] }, { health: 'missing', entries: [] }, read()];
+  for (const r of broken) {
+    const st = make({ rule: true });
+    st.apply(ev.prompt('s1', 0));
+    st.apply(ev.tool('s1', 1_000, 't1'));
+    st.applyRegistry(read(reg('s1', 'busy', 500)), 1_100);
+    st.applyRegistry(r, 3_000);
+    st.apply(notice(ev.perm('s1', 9_000)));
+    assert.equal(one(st).status, 'permission', `${r.health} · 항목 ${r.entries.length}개`);
+  }
+});
