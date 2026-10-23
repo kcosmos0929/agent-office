@@ -4,6 +4,7 @@ import { connect } from './connection.ts';
 import { renderList } from './list/listBoard.ts';
 import { buildSettings } from './settings.ts';
 import { SoundPlayer, soundEvents } from './sound.ts';
+import { renderStrip } from './strip.ts';
 import { buildToolbar, type MiniTarget } from './toolbar.ts';
 import { chooseView, type ViewName } from './view.ts';
 
@@ -24,9 +25,9 @@ export async function start(makeOffice: OfficeFactory | null): Promise<void> {
   officeEl.className = 'office-host';
   const listEl = document.createElement('div');
   listEl.className = 'list-host';
-  const overlay = document.createElement('div');
-  overlay.className = 'overlay';
-  overlay.textContent = '연결 끊김 — 다시 연결하는 중…';
+  // 연결 띠(오른쪽 위): 오피스 화면이거나 아직 스냅샷이 없을 때. 목록은 머리줄에 따로 그린다
+  const strip = document.createElement('div');
+  strip.className = 'office-strip';
 
   const player = new SoundPlayer();
   player.softEnabled = config.softSound;
@@ -36,6 +37,7 @@ export async function start(makeOffice: OfficeFactory | null): Promise<void> {
   let snap: Snapshot | null = null;
   let prev: Snapshot | null = null;
   let receivedAt = 0;
+  let connected = false;
 
   const currentView = (): ViewName => (makeOffice ? chooseView(innerWidth, innerHeight, override) : 'list');
   const toolbar = buildToolbar({
@@ -50,13 +52,13 @@ export async function start(makeOffice: OfficeFactory | null): Promise<void> {
     onMini: (target, stop) => {
       minis.add(target);
       const s = current();
-      if (s) renderList(target.root, s, target.doc);
+      if (s) renderList(target.root, s, target.doc, connected);
       target.doc.defaultView?.addEventListener('pagehide', () => { minis.delete(target); stop(); });
     },
   });
   if (isMini) document.body.classList.add('mini');
   else app.append(toolbar.el, settings.el);
-  app.append(officeEl, listEl, overlay);
+  app.append(officeEl, listEl, strip);
 
   /** 서버 시각 + 받은 뒤 흐른 시간 → 경과 시간이 스냅샷 사이에도 흐르게 */
   function current(): Snapshot | null {
@@ -75,10 +77,15 @@ export async function start(makeOffice: OfficeFactory | null): Promise<void> {
       office.dispose();
       office = null;
     }
+    strip.hidden = view === 'list' && s !== null;
+    if (!strip.hidden) {
+      const open = strip.querySelector('details.strip[open]') != null;
+      strip.replaceChildren(renderStrip(document, connected, s?.health ?? null, s?.now ?? Date.now(), open));
+    }
     if (!s) return;
     if (view === 'office') office?.update(s);
-    else renderList(listEl, s);
-    for (const m of minis) renderList(m.root, s, m.doc);
+    else renderList(listEl, s, document, connected);
+    for (const m of minis) renderList(m.root, s, m.doc, connected);
   }
 
   connect(
@@ -89,7 +96,10 @@ export async function start(makeOffice: OfficeFactory | null): Promise<void> {
       receivedAt = Date.now();
       render();
     },
-    (up) => { overlay.hidden = up; },
+    (up) => {
+      connected = up;
+      render();
+    },
   );
   setInterval(render, 10_000);
   addEventListener('resize', render);

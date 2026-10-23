@@ -89,3 +89,16 @@ test('remove: hooks가 전부 우리 것이면 hooks 키도 삭제, 남의 statu
   const other = removeClaudeSettings({ statusLine: { type: 'command', command: '~/my.sh' } });
   assert.equal(other.changed, false);
 });
+
+test('HOOK_EVENTS 14개: 기존 11개 설치본에 새 3개만 더함', () => {
+  assert.equal(HOOK_EVENTS.length, 14);
+  const added = ['PreCompact', 'PostCompact', 'StopFailure'];
+  for (const ev of added) assert.ok((HOOK_EVENTS as readonly string[]).includes(ev), ev);
+  const ours = { type: 'command', command: CMD.hook, timeout: 5 };
+  const old = { hooks: Object.fromEntries(HOOK_EVENTS.filter((ev) => !added.includes(ev)).map((ev) => [ev, [{ matcher: '', hooks: [ours] }]])) };
+  const r = mergeClaudeSettings(old, CMD);
+  assert.equal(r.changed, true);
+  const hooks = r.settings.hooks as Record<string, Array<{ hooks: unknown[] }>>;
+  for (const ev of HOOK_EVENTS) assert.equal(hooks[ev].length, 1, ev);
+  for (const ev of added) assert.deepEqual(hooks[ev][0].hooks, [ours]);
+});

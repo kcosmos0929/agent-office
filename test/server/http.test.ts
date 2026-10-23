@@ -21,7 +21,7 @@ after(async () => { for (const c of closers) await c(); });
 
 async function boot(extra: Partial<Parameters<typeof startServer>[0]> = {}) {
   const config = loadConfig(home);
-  const state = new OfficeState({ idleMs: 30 * M, goneMs: 10 * M, stalledMs: 15 * M, forgetMs: 12 * 60 * M, resolveProject: () => '가로망 중심성' });
+  const state = new OfficeState({ idleMs: 30 * M, goneMs: 10 * M, stalledMs: 15 * M, forgetMs: 12 * 60 * M, resolveProject: () => '가로망 중심성', startedAt: 0, registryWaitRule: false });
   const admin: string[] = [];
   const srv = await startServer({ config, token: TOKEN, state, staticDir, listenPort: 0, host: '127.0.0.1', onAdmin: (a) => admin.push(a), ...extra });
   closers.push(srv.close);
@@ -220,4 +220,25 @@ test('토큰 파일 권한 0600, 다시 읽으면 같은 토큰', () => {
   assert.match(t, /^[0-9a-f]{64}$/);
   assert.equal(fs.statSync(path.join(h, 'token')).mode & 0o777, 0o600);
   assert.equal(loadOrCreateToken(h), t);
+});
+
+test('hook 뒤 대화 게이지가 스냅샷에 실림', { timeout: 5000 }, async () => {
+  const { url } = await boot({ readContext: async () => ({ state: 'ok', used: 500_000, model: 'claude-opus-5-5' }) });
+  const ws = new WebSocket(url.replace('http', 'ws') + '/ws');
+  await nextSnapshot(ws, () => true);
+  const got = nextSnapshot(ws, (s) => s.agents.some((a) => a.context?.state === 'ok'));
+  const r = await fetch(url + '/api/claude/hook', { method: 'POST', headers: { authorization: `Bearer ${TOKEN}` }, body: JSON.stringify(fx('stop')) });
+  assert.equal(r.status, 204);
+  const snap = await got;
+  assert.deepEqual(snap.agents[0].context, { state: 'ok', used: 500_000, window: 1_000_000, model: 'claude-opus-5-5' });
+  ws.close();
+});
+
+test('/api/health: 루프백은 JSON(키 5개), 루프백이 아니면 쿠키 없을 때 401', async () => {
+  const { url } = await boot();
+  const r = await fetch(url + '/api/health');
+  assert.equal(r.status, 200);
+  assert.deepEqual(Object.keys(await r.json()).sort(), ['hookless', 'lastHookAt', 'registry', 'sessions', 'startedAt']);
+  const remote = await boot({ isLoopback: () => false });
+  assert.equal((await fetch(remote.url + '/api/health')).status, 401);
 });

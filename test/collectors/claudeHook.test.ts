@@ -35,16 +35,14 @@ test('하위 에이전트 안의 권한 요청은 subagentId를 단다', () => {
   assert.equal(e.subagentId, 'a1');
 });
 
-test('Notification: idle_prompt는 idle, 다른 알림은 무시, permission_prompt는 permission', () => {
+test('Notification: idle_prompt는 idle, 다른 알림은 무시, permission_prompt는 permission(알림 출처 표시)', () => {
   assert.equal(hookToEvents({ ...fx('notification'), notification_type: 'idle_prompt' }, 0)[0].type, 'idle');
   assert.deepEqual(hookToEvents({ ...fx('notification'), notification_type: 'auth_success' }, 0), []);
   const [e] = hookToEvents(fx('notification'), 0);
   assert.equal(e.type, 'permission');
   if (e.type !== 'permission') throw new Error('type');
   assert.equal(e.detail, 'Claude needs your permission to use Bash');
-  for (const t of ['elicitation_dialog', 'elicitation_url_dialog', 'agent_needs_input']) {
-    assert.equal(hookToEvents({ ...fx('notification'), notification_type: t }, 0)[0].type, 'permission');
-  }
+  assert.equal(e.viaNotification, true);
 });
 
 test('UserPromptSubmit → prompt + 제목, 프롬프트 내용은 없음', () => {
@@ -124,4 +122,40 @@ test('도구 실행 중 사용자가 끊으면(PostToolUseFailure is_interrupt) 
   assert.deepEqual(evs.map((e) => e.type), ['tool-end', 'stop']);
   const normal = hookToEvents({ ...fx('post-bash'), hook_event_name: 'PostToolUseFailure', is_interrupt: false }, 0);
   assert.deepEqual(normal.map((e) => e.type), ['tool-end']);
+});
+
+// 공통 필드를 뺀 나머지만 비교
+const kinds = (p: unknown) => hookToEvents(p, 5).map(({ sessionId, at, cwd, transcriptPath, title, subagentId, ...rest }) => rest);
+
+test('PreCompact/PostCompact → 정리 시작/끝, 모르는 trigger는 auto', () => {
+  assert.deepEqual(kinds(fx('pre-compact')), [{ type: 'compact-start', trigger: 'manual' }]);
+  assert.deepEqual(kinds(fx('post-compact')), [{ type: 'compact-end', trigger: 'auto' }]);
+  assert.deepEqual(kinds({ ...fx('pre-compact'), trigger: 'weird' }), [{ type: 'compact-start', trigger: 'auto' }]);
+});
+
+test('StopFailure: rate_limit → 한도 대기, 그 밖 → stop + error', () => {
+  assert.deepEqual(kinds(fx('stop-failure')), [{ type: 'quota-wait' }]);
+  assert.deepEqual(kinds({ ...fx('stop-failure'), error: 'overloaded' }), [{ type: 'stop', error: 'overloaded' }]);
+  assert.deepEqual(kinds({ ...fx('stop-failure'), error: undefined }), [{ type: 'stop', error: 'unknown' }]);
+});
+
+test('AskUserQuestion: PreToolUse → tool-start + question, PermissionRequest → question', () => {
+  assert.deepEqual(kinds(fx('ask-question')), [
+    { type: 'tool-start', toolUseId: 'q1', activity: 'running', detail: 'AskUserQuestion' },
+    { type: 'question', detail: null },
+  ]);
+  assert.deepEqual(kinds({ ...fx('ask-question'), hook_event_name: 'PermissionRequest' }), [{ type: 'question', detail: null }]);
+});
+
+test('Notification: 질문류 → question, 승인 → permission (둘 다 viaNotification), 한도 재개 3종', () => {
+  const n = (t: string) => kinds({ ...fx('notification'), notification_type: t, message: '입력이 필요해요' });
+  for (const t of ['elicitation_dialog', 'elicitation_url_dialog', 'agent_needs_input']) {
+    assert.deepEqual(n(t), [{ type: 'question', detail: '입력이 필요해요', viaNotification: true }]);
+  }
+  assert.deepEqual(n('permission_prompt'), [{ type: 'permission', detail: '입력이 필요해요', viaNotification: true }]);
+  assert.deepEqual(n('quota_auto_resume_fired'), [{ type: 'resume' }]);
+  assert.deepEqual(n('quota_auto_resume_stale'), [{ type: 'stop' }]);
+  assert.deepEqual(n('quota_auto_resume_disabled'), [{ type: 'stop' }]);
+  assert.deepEqual(n('auth_success'), []);
+  assert.deepEqual(kinds({ ...fx('notification'), notification_type: 'elicitation_dialog', message: undefined }), [{ type: 'question', detail: null, viaNotification: true }]);
 });

@@ -3,7 +3,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { loadConfig } from './config.ts';
 import { startServer } from './http.ts';
-import { homeFiles, soHome } from './paths.ts';
+import { watchRegistry } from './collectors/sessionRegistry.ts';
+import { claudeSessionsDir, homeFiles, soHome } from './paths.ts';
 import { loadProjects, makeResolver } from './projects.ts';
 import { OfficeState } from './state.ts';
 import { loadOrCreateToken } from './token.ts';
@@ -11,6 +12,11 @@ import { loadOrCreateToken } from './token.ts';
 const TICK_MS = 5_000;
 const MINUTE = 60_000;
 const REPO_ROOT = path.resolve(import.meta.dirname, '..', '..');
+/**
+ * 등록부 waiting을 '사용자 입력 기다림'으로 믿고 R2(연달아 대기)·늦은 알림 무시를 켤지.
+ * 2026-10-23 실제 확인: 세션 2개·승인/거절/질문 7번 모두 waiting은 승인·질문 창이 떠 있을 때만 나타남 → 켬.
+ */
+const REGISTRY_WAIT_RULE = true;
 
 async function main(): Promise<void> {
   const home = soHome();
@@ -25,6 +31,8 @@ async function main(): Promise<void> {
     stalledMs: config.stalledMinutes * MINUTE,
     forgetMs: config.forgetHours * 60 * MINUTE,
     resolveProject: (cwd) => resolver(cwd),
+    startedAt: Date.now(),
+    registryWaitRule: REGISTRY_WAIT_RULE,
   });
 
   // 허브 문서가 바뀌면 이름표를 다시 읽는다 (위키는 읽기만)
@@ -51,8 +59,14 @@ async function main(): Promise<void> {
     if (state.tick(Date.now())) server.notify();
   }, TICK_MS);
 
+  // Claude 앱 세션 목록(읽기만): 승인 순간·훅 없는 세션·퇴근을 잡는다
+  const stopRegistry = watchRegistry(claudeSessionsDir(), (r) => {
+    if (state.applyRegistry(r, Date.now())) server.notify();
+  });
+
   const shutdown = async () => {
     clearInterval(ticker);
+    stopRegistry();
     try {
       fs.unlinkSync(endpoint);
     } catch {

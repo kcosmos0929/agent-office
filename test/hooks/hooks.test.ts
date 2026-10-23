@@ -114,6 +114,21 @@ test('프롬프트·응답·도구 결과는 빼고 제목·알림 종류·끊�
   assert.equal(bodies[2].message, 'Claude needs your permission to use Bash');
 });
 
+test('훅 스크립트: trigger·error는 보내고 요약·지시문·오류 원문은 안 보냄', async () => {
+  const home = tempHome();
+  const fake = await fakeServer();
+  writeEndpoint(home, fake.port);
+  await run(HOOK, home, JSON.stringify({ session_id: 's1', hook_event_name: 'PostCompact', trigger: 'auto', compact_summary: '비밀 요약', custom_instructions: '비밀 지시' }));
+  await run(HOOK, home, JSON.stringify({ session_id: 's1', hook_event_name: 'StopFailure', error: 'rate_limit', error_details: '비밀 상세', last_assistant_message: '비밀 오류문' }));
+  const [compact, failure] = fake.got.map((g) => JSON.parse(g.body));
+  assert.equal(compact.trigger, 'auto');
+  assert.equal(failure.error, 'rate_limit');
+  for (const b of [compact, failure]) {
+    for (const k of ['compact_summary', 'custom_instructions', 'error_details', 'last_assistant_message']) assert.equal(k in b, false, k);
+  }
+  assert.ok(!fake.got.some((g) => g.body.includes('비밀')));
+});
+
 test('서버가 응답 안 함: 1.5초 안에 exit 0', async () => {
   const home = tempHome();
   const fake = await fakeServer(false);

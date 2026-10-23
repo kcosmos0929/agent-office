@@ -5,13 +5,16 @@ export type Pose = 'type-fast' | 'scroll' | 'think' | 'wave' | 'lean-back' | 'sl
 
 const POSE: Record<Status, Pose> = {
   permission: 'wave',
+  question: 'wave',
   done: 'lean-back',
   thinking: 'think',
   reading: 'scroll',
   editing: 'type-fast',
   running: 'type-fast',
   delegating: 'think',
+  compacting: 'think',
   stalled: 'stand',
+  quota: 'sleep',
   idle: 'sleep',
   gone: 'walk',
 };
