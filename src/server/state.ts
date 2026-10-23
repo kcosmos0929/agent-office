@@ -56,6 +56,8 @@ type Entry = {
   regName: string | null;
   /** 지금 대기가 훅이 아니라 등록부만 보고 짐작한 것(R2·훅 없는 세션)인가 — 그렇다면 알림이 종류를 바로잡을 수 있다 */
   waitGuessed: boolean;
+  /** 메인 차례가 오류(StopFailure)로 끝났으면 그 종류 — 도우미 대기가 풀린 뒤에도 '오류'로 보이게 */
+  stopError: string | null;
 };
 
 export class OfficeState {
@@ -212,7 +214,9 @@ export class OfficeState {
         const tools = [...entry.openTools.values()];
         this.clearWaits(entry);
         const helping = a.subagents.length > 0;
-        if (w === 'permission') {
+        if (entry.stopError) {
+          this.finishTurn(entry, x.statusUpdatedAt);
+        } else if (w === 'permission') {
           const last = tools.at(-1);
           this.setStatus(a, last?.activity ?? (helping ? 'delegating' : 'running'), x.statusUpdatedAt);
           a.detail = last?.detail ?? null;
@@ -307,7 +311,7 @@ export class OfficeState {
     };
     const entry: Entry = {
       agent, openTools: new Map(), transcriptPath: null, waitingMain: null, waitingSubs: new Map(), waitSince: null,
-      hookSeen: false, lastHookAt: null, reg: null, everInRegistry: false, inRegistry: false, missingReads: 0, regName: null, waitGuessed: false,
+      hookSeen: false, lastHookAt: null, reg: null, everInRegistry: false, inRegistry: false, missingReads: 0, regName: null, waitGuessed: false, stopError: null,
     };
     this.entries.set(sessionId, entry);
     return entry;
@@ -329,6 +333,7 @@ export class OfficeState {
         return;
       case 'tool-start':
         entry.openTools.set(e.toolUseId, { activity: e.activity, detail: e.detail });
+        entry.stopError = null; // 메인이 다시 일함
         if (WAITS.has(a.status)) return;
         this.setStatus(a, e.activity, e.at);
         a.detail = e.detail;
@@ -352,16 +357,16 @@ export class OfficeState {
         this.enterWait(entry, e.type, e.detail, e.at);
         return;
       case 'stop': {
-        // 메인 차례만 끝남 — 백그라운드 도우미의 대기는 남기고, 도우미가 아직 일하면 👥
+        // 메인 차례만 끝남 — 백그라운드 도우미의 대기는 남기고, 도우미가 아직 일하면 👥. 오류로 멈췄으면 오류가 먼저
         entry.openTools.clear();
         entry.waitingMain = null;
+        entry.stopError = e.error ?? null;
         const wait = this.shownWait(entry);
         if (wait) {
           this.setStatus(a, wait, e.at);
         } else {
           this.clearWaits(entry);
-          this.setStatus(a, a.subagents.length > 0 ? 'delegating' : 'done', e.at);
-          a.detail = e.error && a.subagents.length === 0 ? `오류: ${e.error}` : null;
+          this.finishTurn(entry, e.at);
         }
         return;
       }
@@ -386,6 +391,7 @@ export class OfficeState {
         return;
       case 'resume':
         if (a.status === 'gone') return;
+        entry.stopError = null;
         this.setStatus(a, 'thinking', e.at);
         a.detail = null;
         return;
@@ -411,6 +417,8 @@ export class OfficeState {
         if (!entry.regName) a.title = e.title;
         return;
       case 'idle':
+        // idle_prompt는 백그라운드 도우미가 없을 때만 온다(공식 문서) → 남은 도우미 목록은 낡은 것
+        a.subagents = [];
         // 입력을 기다린다는 알림: 일하던 중이었다면(Stop 없이 끝난 차례) 내 차례로. 승인 대기는 건드리지 않는다
         if (groupOf(a.status) !== 'working') return;
         this.clearWork(entry);
@@ -458,8 +466,24 @@ export class OfficeState {
       return;
     }
     entry.waitSince = null;
+    if (entry.stopError) {
+      this.finishTurn(entry, at);
+      return;
+    }
     this.setStatus(a, entry.openTools.size > 0 || a.subagents.length > 0 ? 'delegating' : 'thinking', at);
     a.detail = null;
+  }
+
+  /** 메인 차례가 끝났을 때의 표시: 오류로 멈췄으면 ✅ + 오류, 도우미가 일하면 👥, 아니면 ✅ */
+  private finishTurn(entry: Entry, at: number): void {
+    const a = entry.agent;
+    if (entry.stopError) {
+      this.setStatus(a, 'done', at);
+      a.detail = `오류: ${entry.stopError}`;
+    } else {
+      this.setStatus(a, a.subagents.length > 0 ? 'delegating' : 'done', at);
+      a.detail = null;
+    }
   }
 
   private clearWaits(entry: Entry): void {
@@ -471,6 +495,7 @@ export class OfficeState {
 
   private clearWork(entry: Entry): void {
     entry.openTools.clear();
+    entry.stopError = null;
     this.clearWaits(entry);
   }
 

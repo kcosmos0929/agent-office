@@ -727,3 +727,35 @@ test('B: 도우미 없이 차례가 끝나면 지금처럼 ✅, 등록부 idle�
   st.applyRegistry(read(reg('s2', 'idle', 2_000)), 2_100);
   assert.deepEqual([one(st).status, one(st).subagents.length], ['done', 0]);
 });
+
+// ---------- Codex 리뷰(PR #3) ----------
+test('StopFailure(오류)는 도우미가 일해도 ✅ + 오류로 보이고, 도우미 승인 대기가 있으면 ❗ 뒤 풀릴 때 오류로', () => {
+  const st = make();
+  st.apply(ev.prompt('s1', 0));
+  st.apply(ev.subStart('s1', 500, 'A'));
+  st.apply(ev.stopErr('s1', 1_000, 'overloaded'));
+  assert.deepEqual([one(st).status, one(st).detail], ['done', '오류: overloaded']);
+  st.apply(ev.subStop('s1', 2_000, 'A'));
+  assert.deepEqual([one(st).status, one(st).detail], ['done', '오류: overloaded']);
+  const waiting = make();
+  waiting.apply(ev.prompt('s2', 0));
+  waiting.apply(ev.subStart('s2', 500, 'A'));
+  waiting.apply(ev.perm('s2', 800, 'A'));
+  waiting.apply(ev.stopErr('s2', 1_000, 'overloaded'));
+  assert.equal(one(waiting).status, 'permission');
+  waiting.apply(ev.end('s2', 2_000, 'x', 'A'));
+  assert.deepEqual([one(waiting).status, one(waiting).detail], ['done', '오류: overloaded']);
+});
+
+test('idle 알림(입력 기다림)도 남은 도우미 목록을 비워, 다음 차례 Stop이 낡은 도우미로 👥를 되살리지 않음', () => {
+  const st = make();
+  st.apply(ev.prompt('s1', 0));
+  st.apply(ev.subStart('s1', 500, 'A'));
+  st.apply(ev.stop('s1', 1_000));
+  assert.equal(one(st).status, 'delegating');
+  st.apply({ sessionId: 's1', at: 61_000, cwd: CWD, type: 'idle' });
+  assert.deepEqual([one(st).status, one(st).subagents.length], ['done', 0]);
+  st.apply(ev.prompt('s1', 70_000));
+  st.apply(ev.stop('s1', 71_000));
+  assert.equal(one(st).status, 'done');
+});
