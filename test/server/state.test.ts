@@ -584,8 +584,8 @@ test('SessionEnd 뒤 잠깐 남은 등록부 파일은 퇴근을 되돌리지 �
   assert.equal(one(st).status, 'thinking');
 });
 
-test('PermissionRequest가 오는 세션에선 승인 뒤 늦게 온 permission_prompt 알림이 ❗를 다시 띄우지 않음, 옛 설치는 대비용 유지', () => {
-  const st = make();
+test('승인 뒤 늦게 온 permission_prompt 알림: 등록부가 일하는 중이면 ❗를 다시 띄우지 않음, 대기가 없던 세션은 대비용 유지', () => {
+  const st = make({ rule: true });
   st.apply(ev.prompt('s1', 0));
   st.apply(ev.tool('s1', 1_000, 't1', 'editing'));
   st.apply(ev.perm('s1', 1_200));
@@ -625,4 +625,36 @@ test('R6: 거절·중단으로 차례가 끝나면(등록부 idle) ✅ 내 차�
   quota.apply(ev.quota('s4', 1_000));
   quota.applyRegistry(read(reg('s4', 'idle', 2_000)), 2_100);
   assert.equal(one(quota).status, 'quota');
+});
+
+// ---------- Codex 리뷰(PR #2) ----------
+test('직접 승인→해소 뒤, 같은 세션의 알림 전용 승인(샌드박스 네트워크)은 ❗로 보임 — 등록부 있는/없는 세션 모두', () => {
+  const st = make({ rule: true });
+  st.apply(ev.prompt('s1', 0));
+  st.apply(ev.tool('s1', 1_000, 't1'));
+  st.apply(ev.perm('s1', 1_200));
+  st.applyRegistry(read(reg('s1', 'busy', 3_000)), 3_100);
+  assert.equal(one(st).status, 'running');
+  st.applyRegistry(read(reg('s1', 'waiting', 4_000)), 6_100);
+  assert.equal(one(st).status, 'question');
+  st.apply(notice(ev.perm('s1', 10_000)));
+  assert.equal(one(st).status, 'permission');
+  st.applyRegistry(read(reg('s1', 'busy', 12_000)), 12_100);
+  assert.equal(one(st).status, 'running');
+  const cli = make({ rule: true });
+  cli.apply(ev.prompt('c1', 0));
+  cli.apply(ev.tool('c1', 1_000, 't1'));
+  cli.apply(ev.perm('c1', 1_200));
+  cli.apply(ev.end('c1', 2_000, 't1'));
+  cli.apply(ev.tool('c1', 3_000, 't2'));
+  cli.apply(notice(ev.perm('c1', 9_000)));
+  assert.equal(one(cli).status, 'permission');
+});
+
+test('applyRegistry: 세션이 같아도 등록부 상태(missing/error ↔ ok)만 바뀌면 true', () => {
+  const st = make();
+  assert.equal(st.applyRegistry({ health: 'missing', entries: [] }, 0), false);
+  assert.equal(st.applyRegistry(read(), 1_000), true);
+  assert.equal(st.applyRegistry(read(), 2_000), false);
+  assert.equal(st.applyRegistry({ health: 'error', entries: [] }, 3_000), true);
 });

@@ -54,8 +54,8 @@ type Entry = {
   missingReads: number;
   /** 등록부의 이름 — 있으면 훅 제목보다 우선 */
   regName: string | null;
-  /** 알림이 아닌 대기 훅(PermissionRequest 등)을 받은 적 있나 — 있으면 permission_prompt 알림은 중복 */
-  directWait: boolean;
+  /** 지금 대기가 훅이 아니라 등록부만 보고 짐작한 것(R2·훅 없는 세션)인가 — 그렇다면 알림이 종류를 바로잡을 수 있다 */
+  waitGuessed: boolean;
 };
 
 export class OfficeState {
@@ -89,8 +89,7 @@ export class OfficeState {
       a.hookless = false;
     }
     if (e.title && !entry.regName) a.title = e.title;
-    if ((e.type === 'permission' || e.type === 'question') && !e.viaNotification) entry.directWait = true;
-    if ((e.type === 'permission' || e.type === 'question') && e.viaNotification && this.ignoreNotice(entry, e.type)) {
+    if ((e.type === 'permission' || e.type === 'question') && e.viaNotification && this.ignoreNotice(entry)) {
       return this.fingerprint() !== before;
     }
     if (e.transcriptPath) entry.transcriptPath = e.transcriptPath;
@@ -230,6 +229,7 @@ export class OfficeState {
         // R2: 훅 없이 나를 기다림(앱이 질문·승인을 차례로 묻는 경우 등)
         entry.waitingMain = 'question';
         entry.waitSince = x.statusUpdatedAt;
+        entry.waitGuessed = true;
         this.setStatus(a, 'question', x.statusUpdatedAt);
         a.detail = null;
       }
@@ -245,6 +245,7 @@ export class OfficeState {
     if (WAITS.has(s)) {
       entry.waitingMain = 'question';
       entry.waitSince = x.statusUpdatedAt;
+      entry.waitGuessed = true;
     } else {
       this.clearWork(entry);
     }
@@ -254,12 +255,11 @@ export class OfficeState {
 
   /**
    * 알림(Notification)에서 온 대기 신호를 버릴까:
-   * PermissionRequest 훅이 오는 세션의 승인 알림(중복, 승인 뒤 늦게 오면 ❗를 되살림) · 이미 다른 대기가 걸려 있음 ·
-   * 등록부가 일하는 중이라는데 늦게 온 알림
+   * 이미 훅으로 받은 대기가 걸려 있음(같은 창의 6초 뒤 알림) · 등록부가 일하는 중이라는데 늦게 온 알림.
+   * 알림은 창이 6초 넘게 떠 있을 때만 오므로 답한 뒤 오는 건 경합뿐 — 알림 전용 승인(샌드박스 네트워크)은 막지 않는다
    */
-  private ignoreNotice(entry: Entry, kind: WaitKind): boolean {
-    if (kind === 'permission' && entry.directWait) return true;
-    if (this.shownWait(entry) !== null) return true;
+  private ignoreNotice(entry: Entry): boolean {
+    if (this.shownWait(entry) !== null && !entry.waitGuessed) return true;
     return this.opts.registryWaitRule && entry.reg?.status === 'busy';
   }
 
@@ -303,7 +303,7 @@ export class OfficeState {
     };
     const entry: Entry = {
       agent, openTools: new Map(), transcriptPath: null, waitingMain: null, waitingSubs: new Map(), waitSince: null,
-      hookSeen: false, lastHookAt: null, reg: null, everInRegistry: false, inRegistry: false, missingReads: 0, regName: null, directWait: false,
+      hookSeen: false, lastHookAt: null, reg: null, everInRegistry: false, inRegistry: false, missingReads: 0, regName: null, waitGuessed: false,
     };
     this.entries.set(sessionId, entry);
     return entry;
@@ -423,6 +423,7 @@ export class OfficeState {
   private enterWait(entry: Entry, kind: WaitKind, detail: string | null, at: number): void {
     const a = entry.agent;
     entry.waitSince ??= at;
+    entry.waitGuessed = false;
     const shown = this.shownWait(entry) ?? kind;
     this.setStatus(a, shown, at);
     if (shown === kind) a.detail = detail;
@@ -445,6 +446,7 @@ export class OfficeState {
 
   private clearWaits(entry: Entry): void {
     entry.waitingMain = null;
+    entry.waitGuessed = false;
     entry.waitingSubs.clear();
     entry.waitSince = null;
   }
@@ -459,8 +461,9 @@ export class OfficeState {
     a.status = s;
   }
 
+  /** 화면에 보이는 것: 에이전트들 + 등록부 상태(연결 띠 패널) */
   private fingerprint(): string {
-    return JSON.stringify([...this.entries.values()].map((x) => x.agent));
+    return JSON.stringify([this.registry, ...[...this.entries.values()].map((x) => x.agent)]);
   }
 }
 
