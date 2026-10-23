@@ -211,17 +211,20 @@ export class OfficeState {
         // R1: 대기에 들어간 뒤 일하기 시작 = 사용자가 답했다(승인·거절·질문 답)
         const tools = [...entry.openTools.values()];
         this.clearWaits(entry);
+        const helping = a.subagents.length > 0;
         if (w === 'permission') {
           const last = tools.at(-1);
-          this.setStatus(a, last?.activity ?? 'running', x.statusUpdatedAt);
+          this.setStatus(a, last?.activity ?? (helping ? 'delegating' : 'running'), x.statusUpdatedAt);
           a.detail = last?.detail ?? null;
         } else {
-          this.setStatus(a, tools.some((t) => t.activity === 'delegating') ? 'delegating' : 'thinking', x.statusUpdatedAt);
+          this.setStatus(a, helping || tools.some((t) => t.activity === 'delegating') ? 'delegating' : 'thinking', x.statusUpdatedAt);
           a.detail = null;
         }
       } else if (x.status === 'idle' && x.statusUpdatedAt > (entry.lastHookAt ?? 0) && (w || groupOf(a.status) === 'working')) {
-        // R6: 마지막 훅 뒤에 등록부가 쉼 = Stop 훅 없이 차례가 끝남(승인 거절·중단 등) → 내 차례
+        // R6: 마지막 훅 뒤에 등록부가 쉼 = Stop 훅 없이 차례가 끝남(승인 거절·중단 등) → 내 차례.
+        // 등록부는 백그라운드 도우미가 일하는 동안 busy라서(실측) 쉼이면 도우미 목록도 비운다
         this.clearWork(entry);
+        a.subagents = [];
         this.setStatus(a, 'done', x.statusUpdatedAt);
         a.detail = null;
       } else if (this.opts.registryWaitRule && !w && groupOf(a.status) === 'working' && x.status === 'waiting'
@@ -348,11 +351,20 @@ export class OfficeState {
         entry.waitingMain = e.type;
         this.enterWait(entry, e.type, e.detail, e.at);
         return;
-      case 'stop':
-        this.clearWork(entry);
-        this.setStatus(a, 'done', e.at);
-        a.detail = e.error ? `오류: ${e.error}` : null;
+      case 'stop': {
+        // 메인 차례만 끝남 — 백그라운드 도우미의 대기는 남기고, 도우미가 아직 일하면 👥
+        entry.openTools.clear();
+        entry.waitingMain = null;
+        const wait = this.shownWait(entry);
+        if (wait) {
+          this.setStatus(a, wait, e.at);
+        } else {
+          this.clearWaits(entry);
+          this.setStatus(a, a.subagents.length > 0 ? 'delegating' : 'done', e.at);
+          a.detail = e.error && a.subagents.length === 0 ? `오류: ${e.error}` : null;
+        }
         return;
+      }
       case 'compact-start':
         this.setStatus(a, 'compacting', e.at);
         a.detail = e.trigger === 'manual' ? '/compact' : '자동 정리';
@@ -383,6 +395,11 @@ export class OfficeState {
       case 'subagent-stop':
         a.subagents = a.subagents.filter((s) => s.id !== e.agentId);
         if (entry.waitingSubs.delete(e.agentId)) this.resolveWaiting(entry, e.at);
+        if (a.status === 'delegating' && a.subagents.length === 0 && entry.openTools.size === 0) {
+          // 메인 차례가 끝난 뒤 도우미가 다 끝남 → 메인이 결과를 받아 이어 감(안 이어 가면 등록부 idle·idle 알림이 ✅로)
+          this.setStatus(a, 'thinking', e.at);
+          a.detail = null;
+        }
         return;
       case 'session-end':
         this.clearWork(entry);
@@ -441,7 +458,7 @@ export class OfficeState {
       return;
     }
     entry.waitSince = null;
-    this.setStatus(a, entry.openTools.size > 0 ? 'delegating' : 'thinking', at);
+    this.setStatus(a, entry.openTools.size > 0 || a.subagents.length > 0 ? 'delegating' : 'thinking', at);
     a.detail = null;
   }
 

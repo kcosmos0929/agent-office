@@ -264,7 +264,8 @@ test('메인 승인 대기 중에 하위 에이전트 승인이 오고 먼저 �
   st.apply(ev.end('s1', 7, 'XA', 'a'));
   assert.equal(one(st).status, 'permission', '메인 도구 승인은 아직');
   st.apply(ev.end('s1', 8, 'M'));
-  st.apply(ev.end('s1', 9, 'AG'));
+  st.apply(ev.subStop('s1', 9, 'a')); // 실제 순서: 도우미가 끝나면 SubagentStop이 Agent 도구 끝보다 먼저 온다
+  st.apply(ev.end('s1', 10, 'AG'));
   assert.equal(one(st).status, 'thinking');
 });
 
@@ -670,4 +671,59 @@ test('늦은 알림 무시는 지금 유효한 등록부 값일 때만 — 읽�
     st.apply(notice(ev.perm('s1', 9_000)));
     assert.equal(one(st).status, 'permission', `${r.health} · 항목 ${r.entries.length}개`);
   }
+});
+
+// ---------- 다시 설치 뒤 실제 확인(2026-10-23): 도우미가 백그라운드로 돌 때 ----------
+// 실측: Agent 도구가 0.14초 만에 끝나고(백그라운드), 도우미가 승인을 요청한 2초 뒤 메인이 Stop → ❗가 지워지고 ✅로 보였음
+test('A: 메인 차례가 끝나도(Stop) 백그라운드 도우미의 승인 대기는 남고, 승인하면 👥', () => {
+  const st = make({ rule: true });
+  st.apply(ev.prompt('s1', 0));
+  st.apply(ev.tool('s1', 1_000, 'ag1', 'delegating'));
+  st.apply(ev.subStart('s1', 1_100, 'A'));
+  st.apply(ev.end('s1', 1_140, 'ag1'));
+  st.apply(ev.perm('s1', 3_000, 'A'));
+  st.apply(ev.stop('s1', 5_000));
+  assert.equal(one(st).status, 'permission');
+  st.applyRegistry(read(reg('s1', 'busy', 7_000)), 7_100);
+  assert.equal(one(st).status, 'delegating');
+});
+
+test('A: 메인 차례가 끝난 뒤 도우미의 승인된 도구가 끝나도 👥 (도우미가 아직 일함)', () => {
+  const st = make();
+  st.apply(ev.prompt('s1', 0));
+  st.apply(ev.tool('s1', 1_000, 'ag1', 'delegating'));
+  st.apply(ev.subStart('s1', 1_100, 'A'));
+  st.apply(ev.end('s1', 1_140, 'ag1'));
+  st.apply(ev.perm('s1', 3_000, 'A'));
+  st.apply(ev.stop('s1', 5_000));
+  st.apply(ev.end('s1', 6_000, 'x', 'A'));
+  assert.equal(one(st).status, 'delegating');
+});
+
+test('B: 메인 차례가 끝났는데 도우미가 일하면 👥, 도우미가 끝나면 💭, 그 뒤 등록부 idle이면 ✅', () => {
+  const st = make({ rule: true });
+  st.apply(ev.prompt('s1', 0));
+  st.apply(ev.tool('s1', 1_000, 'ag1', 'delegating'));
+  st.apply(ev.subStart('s1', 1_100, 'A'));
+  st.apply(ev.end('s1', 1_140, 'ag1'));
+  st.apply(ev.stop('s1', 2_000));
+  assert.deepEqual([one(st).status, one(st).detail], ['delegating', null]);
+  st.apply(ev.subStop('s1', 9_000, 'A'));
+  assert.equal(one(st).status, 'thinking');
+  st.applyRegistry(read(reg('s1', 'idle', 9_500)), 9_600);
+  assert.equal(one(st).status, 'done');
+});
+
+test('B: 도우미 없이 차례가 끝나면 지금처럼 ✅, 등록부 idle은 남은 도우미 목록도 비움', () => {
+  const plain = make();
+  plain.apply(ev.prompt('s1', 0));
+  plain.apply(ev.stop('s1', 1_000));
+  assert.equal(one(plain).status, 'done');
+  const st = make({ rule: true });
+  st.apply(ev.prompt('s2', 0));
+  st.apply(ev.subStart('s2', 500, 'A'));
+  st.apply(ev.stop('s2', 1_000));
+  assert.equal(one(st).status, 'delegating');
+  st.applyRegistry(read(reg('s2', 'idle', 2_000)), 2_100);
+  assert.deepEqual([one(st).status, one(st).subagents.length], ['done', 0]);
 });
