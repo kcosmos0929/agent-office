@@ -4,3 +4,6 @@
 
 - 설계서: `docs/specs/2026-10-22-synthetic-office-설계.md`
 - 1단계 계획: `docs/plans/2026-10-22-1단계-구현계획.md`
+
+## 글꼴
+오피스 화면의 픽셀 글꼴은 [갈무리(Galmuri)](https://github.com/quiple/galmuri) — SIL Open Font License 1.1 (`web/src/fonts/OFL.txt`).

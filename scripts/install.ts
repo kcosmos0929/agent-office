@@ -1,0 +1,125 @@
+// 설치: 화면 빌드 → 훅 스크립트 복사 → settings.json 백업·병합 → launchd 등록 → 서버 확인 → 아이콘 앱.
+import { execFileSync, spawnSync } from 'node:child_process';
+import fs from 'node:fs';
+import path from 'node:path';
+import { loadConfig } from '../src/server/config.ts';
+import { soHome } from '../src/server/paths.ts';
+import { renderPlist } from './lib/plist.ts';
+import { mergeClaudeSettings } from './lib/settingsMerge.ts';
+import { APP, LABEL, PLIST, REPO_ROOT, UID, backupSettings, readSettingsFile, stableNodePath, writeSettingsIfUnchanged } from './lib/system.ts';
+
+const step = (msg: string) => console.log(`▶ ${msg}`);
+
+function sleep(ms: number) {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+}
+
+function healthy(port: number): boolean {
+  const r = spawnSync('curl', ['-s', '--max-time', '1', `http://127.0.0.1:${port}/healthz`], { encoding: 'utf8' });
+  return r.stdout === 'ok';
+}
+
+const loaded = () => spawnSync('launchctl', ['print', `gui/${UID}/${LABEL}`], { stdio: 'ignore' }).status === 0;
+
+/** 이미 등록돼 있으면 내리고(완전히 내려갈 때까지 기다림), 다시 올린다. 올리기는 3번까지 재시도 */
+function reloadService(): void {
+  if (loaded()) {
+    spawnSync('launchctl', ['bootout', `gui/${UID}/${LABEL}`], { stdio: 'ignore' });
+    for (let i = 0; i < 20 && loaded(); i++) sleep(250);
+  }
+  for (let attempt = 1; ; attempt++) {
+    const r = spawnSync('launchctl', ['bootstrap', `gui/${UID}`, PLIST], { encoding: 'utf8' });
+    if (r.status === 0) return;
+    if (attempt >= 3) throw new Error(`launchctl bootstrap 실패: ${r.stderr.trim()}`);
+    sleep(1000);
+  }
+}
+
+function main(): void {
+  const home = soHome();
+  const config = loadConfig(home);
+
+  step('화면 빌드');
+  execFileSync('npm', ['run', 'build:web'], { cwd: REPO_ROOT, stdio: 'inherit' });
+
+  step(`훅 스크립트 복사 → ${path.join(home, 'bin')}`);
+  const bin = path.join(home, 'bin');
+  fs.mkdirSync(bin, { recursive: true, mode: 0o700 });
+  for (const f of ['claude-hook.mjs', 'statusline.mjs']) {
+    fs.copyFileSync(path.join(REPO_ROOT, 'hooks', f), path.join(bin, f));
+    fs.chmodSync(path.join(bin, f), 0o755);
+  }
+
+  step('~/.claude/settings.json 확인');
+  const node = stableNodePath(process.execPath);
+  const cmd = {
+    hook: `"${node}" "${path.join(bin, 'claude-hook.mjs')}"`,
+    statusline: `"${node}" "${path.join(bin, 'statusline.mjs')}"`,
+  };
+  // 읽고 → 합치고 → 쓰기 직전에 그사이 바뀌었는지 확인. 바뀌었으면 새 내용으로 다시(최대 3번)
+  let settled = false;
+  for (let attempt = 1; attempt <= 3 && !settled; attempt++) {
+    const { raw, settings } = readSettingsFile();
+    const merged = mergeClaudeSettings(settings, cmd);
+    if (merged.conflict) {
+      console.error(`✖ ${merged.conflict}`);
+      console.error('  settings.json은 바꾸지 않았어요. 기존 설정을 정리한 뒤 다시 설치하세요.');
+      process.exit(1);
+    }
+    if (!merged.changed) {
+      console.log('  이미 설치돼 있음');
+      settled = true;
+      break;
+    }
+    const backup = backupSettings('설치전');
+    if (backup) console.log(`  백업: ${backup}`);
+    settled = writeSettingsIfUnchanged(merged.settings, raw);
+    console.log(settled ? '  훅·상태줄 추가' : '  다른 프로그램이 방금 settings.json을 바꿔서 다시 읽어요');
+  }
+  if (!settled) {
+    console.error('✖ settings.json이 계속 바뀌고 있어 설치를 멈췄어요. 잠시 뒤 다시 해 주세요.');
+    process.exit(1);
+  }
+
+  step(`자동 켜기 등록 (${LABEL})`);
+  fs.mkdirSync(path.dirname(PLIST), { recursive: true });
+  fs.writeFileSync(PLIST, renderPlist({
+    label: LABEL,
+    nodePath: node,
+    mainPath: path.join(REPO_ROOT, 'src', 'server', 'main.ts'),
+    logPath: path.join(home, 'server.log'),
+    soHome: home,
+  }));
+  reloadService();
+
+  step('서버 확인');
+  let ok = false;
+  for (let i = 0; i < 30 && !ok; i++) {
+    ok = healthy(config.port);
+    if (!ok) sleep(500);
+  }
+  if (!ok) {
+    console.error(`✖ 서버가 응답하지 않아요 — ${path.join(home, 'server.log')} 를 확인하세요`);
+    process.exit(1);
+  }
+  console.log(`  켜짐: http://127.0.0.1:${config.port}`);
+
+  step(`아이콘 앱 → ${APP}`);
+  const script = fs.readFileSync(path.join(REPO_ROOT, 'scripts', 'launcher.applescript'), 'utf8').replaceAll('{{PORT}}', String(config.port));
+  const tmpScript = path.join(home, 'launcher.applescript');
+  fs.writeFileSync(tmpScript, script);
+  fs.mkdirSync(path.dirname(APP), { recursive: true });
+  fs.rmSync(APP, { recursive: true, force: true });
+  execFileSync('osacompile', ['-o', APP, tmpScript]);
+  const res = path.join(APP, 'Contents', 'Resources');
+  fs.copyFileSync(path.join(REPO_ROOT, 'assets', 'icon.icns'), path.join(res, 'applet.icns'));
+  fs.rmSync(path.join(res, 'Assets.car'), { force: true });
+  spawnSync('/usr/libexec/PlistBuddy', ['-c', 'Delete :CFBundleIconName', path.join(APP, 'Contents', 'Info.plist')], { stdio: 'ignore' });
+  execFileSync('codesign', ['--force', '--deep', '-s', '-', APP], { stdio: 'ignore' });
+  spawnSync('touch', [APP]);
+
+  console.log('\n✔ 설치 끝. 아이콘 "Synthetic Office"를 누르거나 브라우저에서 위 주소를 여세요.');
+  console.log('  이미 열려 있던 Claude 세션은 훅을 다시 읽을 때부터 보여요.');
+}
+
+main();
