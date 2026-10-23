@@ -2,7 +2,7 @@
 import * as THREE from 'three';
 import { CSS2DObject } from 'three/examples/jsm/renderers/CSS2DRenderer.js';
 import { buildBackdrop } from './backdrop.ts';
-import { beanBag, bigPlant, bookshelf, boxStack, fileCabinet, fridge, FURN, kitchenCounter, lowTable, officeChair, podDesk, podDivider, printer, receptionDesk, screenStand, sofa, stool, storageShelf, toilet, trashBin, vendingMachine, washbasin, waterCooler } from './furniture.ts';
+import { armchair, beanBag, bigPlant, binders, bookshelf, boxStack, coatRack, copier, deskLamp, fileCabinet, fridge, FURN, lowCabinet, kitchenCounter, lowTable, officeChair, podDesk, podDivider, printer, receptionDesk, screenStand, shredder, smallPlant, sofa, stool, storageShelf, supplyCabinet, toilet, trashBin, vendingMachine, washbasin, waterCooler, whiteboard } from './furniture.ts';
 import { ARIA_DESK, ARIA_DESK_XS, ARIA_DESK_Y, DESK_DEPTH, DESK_WIDTH, DESKS, MEETING_TABLE, POD_X0, POD_YS, ROOMS, meetingSpot } from './layout.ts';
 
 export const WALL_H = 3.0;
@@ -47,16 +47,33 @@ export function buildOffice(): OfficeScene {
   buildBackdrop(g);
 
   // 사무실: 4인 책상 묶음 2개(두 자리씩 마주 보고 가운데 칸막이). 순서는 seatPosition과 같게(DESKS)
-  const deskScreens = DESKS.map((d, seat) => podDesk(g, d.x0, d.y0, DESK_DEPTH, DESK_WIDTH, d.facing, seat % 3 === 0));
+  const deskScreens = DESKS.map((d, seat) => podDesk(g, d.x0, d.y0, DESK_DEPTH, DESK_WIDTH, d.facing, seat));
   for (const y0 of POD_YS) {
     podDivider(g, POD_X0 + DESK_DEPTH, y0, 2 * DESK_WIDTH + 0.04);
     trashBin(g, POD_X0 + DESK_DEPTH - 0.11, y0 + 2 * DESK_WIDTH + 0.25);
   }
+  // 사무실 집기: 창 아래 낮은 수납장 줄(바인더·화분·스탠드), TV 아래 낮은 장, 유리벽 쪽 복합기 코너와 비품장
   fileCabinet(g, 0.3, 0.2);
-  printer(g, 6.2, 0.25);
-  bigPlant(g, 6.75, 2.0);
+  for (const z0 of [0.95, 3.35, 5.75]) lowCabinet(g, 0.12, z0, 0.5, 2.0, 0.62, 'px');
+  binders(g, 0.2, 1.15, 0.66, 6);
+  smallPlant(g, 0.3, 4.2, 0.66);
+  deskLamp(g, 0.25, 6.4, 0.66);
+  binders(g, 0.2, 7.0, 0.66, 4);
+  lowCabinet(g, 2.4, 0.1, 2.8, 0.42, 0.55, 'pz');
+  smallPlant(g, 2.6, 0.2, 0.59);
+  binders(g, 4.3, 0.15, 0.59, 5);
+  printer(g, 6.75, 0.2);
+  copier(g, 6.75, 1.15);
+  shredder(g, 6.9, 2.05);
+  supplyCabinet(g, 6.85, 4.0);
   // 사무실 앞쪽 로비: 입구 복도에서 곧게 들어오는 통로 오른쪽에 안내 데스크, 모서리마다 큰 화분
   receptionDesk(g, 4.5, 13.0, 1.8);
+  // 로비 왼쪽: 창을 등진 대기 의자 둘 + 작은 테이블, 이동식 화이트보드, 입구 옆 옷걸이
+  armchair(g, 0.45, 10.9);
+  armchair(g, 0.45, 12.4);
+  lowTable(g, 1.35, 11.55, 0.6, 0.9, 0.4);
+  whiteboard(g, 0.9, 9.75, 1.7);
+  coatRack(g, 3.0, 14.5);
   bigPlant(g, 0.35, 14.2);
   bigPlant(g, 0.35, 9.4);
   bigPlant(g, 6.75, 9.4);

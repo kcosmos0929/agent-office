@@ -51,9 +51,10 @@ export function bigPlant(g: THREE.Group, x0: number, z0: number): void {
 
 /**
  * 책상 묶음의 책상 하나: 나무 상판 + 검은 다리 + 모니터(사람 쪽을 봄) + 키보드 + 서랍장 + 의자.
- * x0..x0+w(깊이), z0..z0+d(폭). facing = 사람이 앉는 쪽(px: +x, nx: -x). 모니터 화면(상태 색을 칠할 면)을 돌려준다.
+ * x0..x0+w(깊이), z0..z0+d(폭). facing = 사람이 앉는 쪽(px: +x, nx: -x). variant(자리 번호)로 책상 위 소품을 조금씩 다르게.
+ * 모니터 화면(상태 색을 칠할 면)을 돌려준다.
  */
-export function podDesk(g: THREE.Group, x0: number, z0: number, w: number, d: number, facing: 'px' | 'nx', withPlant: boolean): THREE.Mesh {
+export function podDesk(g: THREE.Group, x0: number, z0: number, w: number, d: number, facing: 'px' | 'nx', variant: number): THREE.Mesh {
   const zc = z0 + d / 2;
   const top = 0.58;
   // u = 칸막이 쪽 가장자리에서 사람 쪽으로 잰 거리 → 세계 x(크기 size인 상자의 시작)
@@ -75,7 +76,12 @@ export function podDesk(g: THREE.Group, x0: number, z0: number, w: number, d: nu
   // 서랍장(자리 옆 아래)
   g.add(block(X(0.12, 0.5), zc + 0.2, 0.5, 0.4, 0.04, 0.46, F.steel));
   for (const h of [0.2, 0.36]) g.add(block(X(0.62, 0.01), zc + 0.29, 0.01, 0.22, h, 0.02, F.handle));
-  if (withPlant) smallPlant(g, X(0.06, 0.14), zc + 0.42, top + 0.05);
+  // 책상 위 소품: 서류 더미·머그컵은 늘, 화분은 세 자리에 하나, 스탠드는 두 자리에 하나
+  g.add(block(X(0.3, 0.24), zc + 0.32, 0.24, 0.3, top + 0.05, 0.02, '#E8E2D6'));
+  g.add(block(X(0.32, 0.22), zc + 0.35, 0.22, 0.27, top + 0.07, 0.02, '#F4F1EA'));
+  g.add(block(X(0.6, 0.07), zc - 0.5, 0.07, 0.07, top + 0.05, 0.09, ['#E0533D', '#E8ECEF', '#3E6E8E', '#C9A04A'][variant % 4]));
+  if (variant % 3 === 0) smallPlant(g, X(0.06, 0.14), zc + 0.42, top + 0.05);
+  if (variant % 2 === 1) deskLamp(g, X(0.08, 0.16), zc - 0.72, top + 0.05);
   // 의자: 책상 밑으로 반쯤 밀어 넣어 캐릭터 자리 바로 뒤에
   officeChair(g, facing === 'px' ? x0 + w - 0.02 : x0 + 0.02, zc, facing);
   return screen;
@@ -256,4 +262,74 @@ export function washbasin(g: THREE.Group, x0: number, z0: number): void {
   g.add(block(x0 + 0.12, z0 + 0.12, 0.3, 0.36, 0.76, 0.02, '#A9B3BA'));
   g.add(block(x0 + 0.02, z0 + 0.27, 0.06, 0.06, 0.76, 0.14, '#9EA3AA'));
   g.add(block(x0 + 0.02, z0 + 0.06, 0.04, 0.48, 1.0, 0.5, '#C9DCE6', { emissive: '#3A4A54' }));
+}
+
+/** 책상 스탠드(바닥 높이 h0): 받침 + 기둥 + 갓 + 따뜻한 전구 */
+export function deskLamp(g: THREE.Group, x0: number, z0: number, h0: number): void {
+  g.add(block(x0 + 0.02, z0, 0.12, 0.12, h0, 0.02, F.black));
+  g.add(block(x0 + 0.065, z0 + 0.045, 0.03, 0.03, h0 + 0.02, 0.3, F.black));
+  g.add(block(x0, z0 - 0.01, 0.16, 0.12, h0 + 0.32, 0.06, F.black));
+  g.add(block(x0 + 0.02, z0 + 0.01, 0.12, 0.08, h0 + 0.31, 0.01, '#FFE2A8', { emissive: '#FFD27A' }));
+}
+
+/** 낮은 수납장(창 아래·벽 앞): 진한 몸통 + 나무 상판 + 문 손잡이. x0..x0+w, z0..z0+d, 높이 h. 손잡이는 handleSide 쪽 */
+export function lowCabinet(g: THREE.Group, x0: number, z0: number, w: number, d: number, h: number, handleSide: 'px' | 'pz'): void {
+  g.add(block(x0, z0, w, d, 0.04, h - 0.04, F.potDark));
+  g.add(block(x0 - 0.02, z0 - 0.02, w + 0.04, d + 0.04, h, 0.04, F.wood));
+  const along = handleSide === 'px' ? d : w;
+  for (let t = 0.3; t < along - 0.1; t += 0.6) {
+    if (handleSide === 'px') g.add(block(x0 + w, z0 + t, 0.01, 0.12, h - 0.2, 0.03, F.handle));
+    else g.add(block(x0 + t, z0 + d, 0.12, 0.01, h - 0.2, 0.03, F.handle));
+  }
+}
+
+/** 바인더 줄(바닥 높이 h0, z 방향으로 n개) */
+export function binders(g: THREE.Group, x0: number, z0: number, h0: number, n: number): void {
+  const colors = ['#3E6E8E', '#C0563F', '#2E3036', '#D9B44A', '#5E8F4E'];
+  for (let i = 0; i < n; i++) g.add(block(x0, z0 + i * 0.08, 0.26, 0.07, h0, 0.3, colors[i % colors.length]));
+}
+
+/** 큰 복사기(앞이 +x): 몸통 + 위 덮개 + 종이 서랍 줄 + 조작판 */
+export function copier(g: THREE.Group, x0: number, z0: number): void {
+  g.add(block(x0, z0, 0.6, 0.75, 0.04, 0.95, F.appliance));
+  g.add(block(x0 + 0.04, z0 + 0.04, 0.52, 0.67, 0.99, 0.08, '#9EA3AA'));
+  for (const h of [0.2, 0.42, 0.64]) g.add(block(x0 + 0.6, z0 + 0.08, 0.01, 0.59, h, 0.015, '#8A9099'));
+  g.add(block(x0 + 0.45, z0 + 0.5, 0.15, 0.22, 1.07, 0.04, F.steel));
+}
+
+/** 문서 파쇄기 */
+export function shredder(g: THREE.Group, x0: number, z0: number): void {
+  g.add(block(x0, z0, 0.36, 0.3, 0.04, 0.55, F.steel));
+  g.add(block(x0 + 0.04, z0 + 0.12, 0.28, 0.06, 0.59, 0.005, F.black));
+}
+
+/** 비품 수납장(앞이 +x): 높은 철제 + 문 두 짝 줄 + 손잡이 */
+export function supplyCabinet(g: THREE.Group, x0: number, z0: number): void {
+  g.add(block(x0, z0, 0.5, 0.9, 0.04, 1.6, '#4A4E57'));
+  g.add(block(x0 + 0.5, z0 + 0.445, 0.005, 0.01, 0.1, 1.45, F.black));
+  for (const z of [z0 + 0.35, z0 + 0.5]) g.add(block(x0 + 0.5, z, 0.02, 0.05, 0.8, 0.18, F.handle));
+}
+
+/** 이동식 화이트보드(앞이 +z): 바퀴 받침 + 다리 + 흰 판 + 낙서 몇 줄 */
+export function whiteboard(g: THREE.Group, x0: number, z0: number, w: number): void {
+  g.add(block(x0, z0 - 0.2, 0.06, 0.4, 0.04, 0.04, F.black));
+  g.add(block(x0 + w - 0.06, z0 - 0.2, 0.06, 0.4, 0.04, 0.04, F.black));
+  g.add(block(x0 + 0.01, z0 - 0.02, 0.04, 0.04, 0.08, 1.5, F.steel));
+  g.add(block(x0 + w - 0.05, z0 - 0.02, 0.04, 0.04, 0.08, 1.5, F.steel));
+  g.add(block(x0, z0 - 0.03, w, 0.05, 0.75, 0.8, '#F4F6F8'));
+  const ink = ['#3E6E8E', '#C0563F', '#2E3036'];
+  [[0.15, 1.35, 0.7], [0.15, 1.22, 0.45], [0.2, 1.05, 0.9], [w - 0.6, 0.95, 0.4]].forEach(([x, y, len], i) => g.add(block(x0 + x, z0 + 0.02, len, 0.005, y, 0.03, ink[i % ink.length])));
+}
+
+/** 옷걸이: 받침 + 기둥 + 걸린 겉옷 */
+export function coatRack(g: THREE.Group, cx: number, cz: number): void {
+  g.add(block(cx - 0.16, cz - 0.16, 0.32, 0.32, 0.04, 0.03, F.black));
+  g.add(block(cx - 0.025, cz - 0.025, 0.05, 0.05, 0.07, 1.6, F.black));
+  g.add(block(cx - 0.12, cz - 0.12, 0.24, 0.04, 1.55, 0.03, F.black));
+  g.add(block(cx - 0.14, cz + 0.02, 0.18, 0.12, 0.85, 0.65, '#5A6B8A'));
+}
+
+/** 1인 안락의자(앉는 면이 +x) */
+export function armchair(g: THREE.Group, x0: number, z0: number): void {
+  sofa(g, x0, z0, 0.65, 0.7, 'px');
 }
