@@ -60,7 +60,7 @@ html, body { margin: 0; height: 100%; background: var(--bg); }
 .board { background: var(--paper); border-radius: 16px; overflow: hidden; box-shadow: 0 6px 24px rgba(0, 0, 0, 0.08); }
 .board-bar { display: flex; align-items: center; gap: 6px; padding: 10px 14px; background: var(--bg); }
 .board-title { font-size: 10.5px; font-weight: 800; letter-spacing: 1.5px; color: var(--soft); }
-.badge { margin-left: auto; font-size: 11px; font-weight: 700; padding: 3px 9px; border-radius: 10px; background: var(--done-bg); color: var(--done); }
+.badge { margin-left: auto; white-space: nowrap; font-size: 11px; font-weight: 700; padding: 3px 9px; border-radius: 10px; background: var(--done-bg); color: var(--done); }
 .badge.urgent { background: var(--wait); color: #3a2600; }
 .rows { display: flex; flex-direction: column; }
 .row { display: flex; gap: 10px; align-items: center; padding: 10px 12px; border-bottom: 1px solid var(--line); border-left: 4px solid transparent; background: #fff; }
@@ -140,5 +140,6 @@ body:not(.view-list) .toolbar button { font-family: 'Galmuri11', monospace; bord
 .card-project { margin-top: 6px; color: var(--muted); }
 .card-project b { color: var(--ink); font-weight: 400; }
 .card-cwd { color: #a79c90; font-size: 11px; }
+.card-context { margin-top: 6px; color: var(--muted); font-size: 11px; }
 .tv-label { font: 11px/1.35 'Galmuri11', monospace; color: #7ce0a3; text-align: center; white-space: nowrap; -webkit-font-smoothing: none; pointer-events: none; }
 .tv-label .tv-sub { color: #9aa5b4; }
