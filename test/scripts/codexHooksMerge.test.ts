@@ -6,7 +6,7 @@ const CMD = '"/opt/homebrew/bin/node" "/Users/seop/.synthetic-office/bin/claude-
 type Groups = Record<string, Array<{ matcher?: string; hooks: Array<{ type: string; command: string; timeout: number }> }>>;
 const OTHER = { type: 'command', command: 'python3 ~/.codex/hooks/audit.py', timeout: 10 };
 
-test('빈 파일에 12개 사건(이 순서), Interrupt 타임아웃 3·나머지 5', () => {
+test('빈 파일에 12개 사건(이 순서), Interrupt·SessionEnd 타임아웃 3(Codex 최대값)·나머지 5', () => {
   const r = mergeCodexHooks({}, CMD);
   assert.equal(r.changed, true);
   assert.equal(r.conflict, null);
@@ -14,6 +14,7 @@ test('빈 파일에 12개 사건(이 순서), Interrupt 타임아웃 3·나머�
   assert.deepEqual(Object.keys(hooks), [...CODEX_HOOK_EVENTS]);
   assert.equal(CODEX_HOOK_EVENTS.length, 12);
   assert.deepEqual(hooks.Interrupt[0].hooks[0], { type: 'command', command: CMD, timeout: 3 });
+  assert.deepEqual(hooks.SessionEnd[0].hooks[0], { type: 'command', command: CMD, timeout: 3 });
   assert.deepEqual(hooks.Stop[0].hooks[0], { type: 'command', command: CMD, timeout: 5 });
 });
 

@@ -6,8 +6,8 @@ export const CODEX_HOOK_EVENTS: readonly string[] = [
   'PreCompact', 'PostCompact', 'SubagentStart', 'SubagentStop', 'Stop', 'Interrupt',
 ];
 
-/** Codex의 Interrupt 훅은 최대 3초 */
-const timeoutFor = (ev: string) => (ev === 'Interrupt' ? 3 : 5);
+/** Codex는 Interrupt·SessionEnd 훅을 최대 3초로 깎는다(넘게 적으면 실행 때 경고) */
+const timeoutFor = (ev: string) => (ev === 'Interrupt' || ev === 'SessionEnd' ? 3 : 5);
 const isObject = (v: unknown): v is Record<string, unknown> => v !== null && typeof v === 'object' && !Array.isArray(v);
 
 export function mergeCodexHooks(file: Record<string, unknown>, command: string): { next: Record<string, unknown>; changed: boolean; conflict: string | null } {
