@@ -774,3 +774,16 @@ test('health: lastCodexHookAt은 Codex 신호만, lastHookAt은 둘 다', () => 
   st.apply(ev.prompt('c1', 3_000));
   assert.deepEqual([st.snapshot(0).health.lastHookAt, st.snapshot(0).health.lastCodexHookAt], [3_000, 2_000]);
 });
+
+test('Codex 중단(Interrupt) 뒤 늦은 도구 끝은 ✅를 바꾸지 않음, transcriptPathOf는 null', async () => {
+  const { codexHookToEvents } = await import('../../src/server/collectors/codexHook.ts');
+  const st = make();
+  const send = (o: Record<string, unknown>, at: number) => { for (const e of codexHookToEvents({ session_id: 'x1', cwd: CWD, transcript_path: '/r.jsonl', ...o }, at)) st.apply(e); };
+  send({ hook_event_name: 'UserPromptSubmit' }, 0);
+  send({ hook_event_name: 'PreToolUse', tool_name: 'Bash', tool_use_id: 'u1', tool_input: { command: 'sleep 30' } }, 1_000);
+  send({ hook_event_name: 'Interrupt' }, 2_000);
+  assert.equal(one(st).status, 'done');
+  send({ hook_event_name: 'PostToolUse', tool_name: 'Bash', tool_use_id: 'u1' }, 3_000);
+  assert.equal(one(st).status, 'done');
+  assert.equal(st.transcriptPathOf('x1'), null);
+});
