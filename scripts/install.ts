@@ -11,7 +11,7 @@ import { APP, CLAUDE_SETTINGS, CODEX_DIR, CODEX_HOOKS, LABEL, PLIST, REPO_ROOT, 
 
 const step = (msg: string) => console.log(`▶ ${msg}`);
 /** Codex 훅 신뢰 위치 안내(2단계 Task 0 확인 결과로 채움) */
-const CODEX_TRUST_HINT = 'CLI는 /hooks';
+const CODEX_TRUST_HINT = '앱은 설정 → 훅 화면, CLI는 /hooks';
 
 function sleep(ms: number) {
   Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
