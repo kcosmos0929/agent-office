@@ -787,3 +787,12 @@ test('Codex 중단(Interrupt) 뒤 늦은 도구 끝은 ✅를 바꾸지 않음, 
   assert.equal(one(st).status, 'done');
   assert.equal(st.transcriptPathOf('x1'), null);
 });
+
+test('자리 번호는 종류별로 따로: 숨겨진 Codex가 사무실 자리를 차지하지 않음', () => {
+  const st = make();
+  st.apply(ev.prompt('c1', 0));
+  st.apply({ ...ev.prompt('x1', 1), kind: 'codex' });
+  st.apply(ev.prompt('c2', 2));
+  const seat = (id: string) => st.snapshot(0).agents.find((a) => a.sessionId === id)!.seat;
+  assert.deepEqual([seat('c1'), seat('x1'), seat('c2')], [0, 0, 1]);
+});

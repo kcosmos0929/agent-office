@@ -295,6 +295,8 @@ export class OfficeState {
 
   private newEntry(sessionId: string, cwd: string, since: number, now: number, kind: AgentKind = 'claude'): Entry {
     const used = [...this.entries.values()].map((x) => x.agent);
+    // 자리는 종류별로 따로 매긴다(Codex는 3단계 개발실 자리) — 모자 색은 세션 구분용이라 같이 쓴다
+    const sameKind = used.filter((a) => a.kind === kind);
     const agent: Agent = {
       id: `${kind}:${sessionId}`,
       kind,
@@ -307,7 +309,7 @@ export class OfficeState {
       since,
       lastEventAt: now,
       hat: firstFree(used.map((a) => a.hat), used.length % SLOTS),
-      seat: firstFree(used.map((a) => a.seat), -1),
+      seat: firstFree(sameKind.map((a) => a.seat), -1),
       subagents: [],
       hookless: false,
       context: null,
