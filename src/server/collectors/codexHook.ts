@@ -9,6 +9,9 @@ export const READ_COMMANDS: ReadonlySet<string> = new Set(['cat', 'rg', 'grep', 
 const WRAPPER = /^(?:bash|zsh|sh)\s+-l?c\s+/;
 
 const str = (v: unknown): string | null => (typeof v === 'string' && v.length > 0 ? v : null);
+// 앱(0.162)은 도구 이름 앞에 묶음 이름을 붙인다(collaborationspawn_agent) — 끝부분으로 본다
+const isSpawn = (tool: string) => tool.endsWith('spawn_agent');
+const isWait = (tool: string) => tool.endsWith('wait_agent');
 
 /** `bash -lc "sed -n 1p a"` → `sed`, `/usr/bin/cat x` → `cat` */
 export function shellHead(command: string): string {
@@ -22,7 +25,7 @@ export const CODEX_TOOLS: ToolDialect = {
   classify(tool, input) {
     if (tool === 'Bash') return READ_COMMANDS.has(shellHead(str(input.command) ?? '')) ? 'reading' : 'running';
     if (tool === 'apply_patch') return 'editing';
-    if (tool === 'spawn_agent') return 'delegating';
+    if (isSpawn(tool) || isWait(tool)) return 'delegating';
     return CLAUDE_TOOLS.classify(tool, input);
   },
   summarize(tool, input) {
@@ -31,7 +34,8 @@ export const CODEX_TOOLS: ToolDialect = {
       const files = Array.isArray(obj.files) ? obj.files.filter((f): f is string => typeof f === 'string') : [];
       return clip(files.length ? files.map((f) => path.basename(f)).join(', ') : 'apply_patch');
     }
-    if (tool === 'spawn_agent') return clip(str(obj.description) ?? str(obj.agent_type) ?? '도우미');
+    if (isSpawn(tool)) return clip(str(obj.task_name) ?? str(obj.description) ?? str(obj.agent_type) ?? '도우미');
+    if (isWait(tool)) return '도우미 기다림';
     return CLAUDE_TOOLS.summarize(tool, input);
   },
 };

@@ -144,6 +144,16 @@ test('codex 인자: /api/codex/hook으로, apply_patch는 파일 경로만(원�
   assert.ok(!fake.got[0].body.includes('비밀'));
 });
 
+test('codex 도우미 띄우기: task_name만 보내고 지시문(message)은 안 보냄', async () => {
+  const home = tempHome();
+  const fake = await fakeServer();
+  writeEndpoint(home, fake.port);
+  const r = await run(HOOK, home, JSON.stringify({ session_id: 'x1', hook_event_name: 'PreToolUse', tool_name: 'collaborationspawn_agent', tool_use_id: 's1', tool_input: { task_name: 'count_md', fork_turns: 0, message: '비밀 지시' } }), ['codex']);
+  assert.equal(r.code, 0);
+  assert.deepEqual(JSON.parse(fake.got[0].body).tool_input, { task_name: 'count_md' });
+  assert.ok(!fake.got[0].body.includes('비밀'));
+});
+
 test('인자 없으면 지금처럼 /api/claude/hook', async () => {
   const home = tempHome();
   const fake = await fakeServer();

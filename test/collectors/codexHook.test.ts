@@ -24,6 +24,10 @@ test('PreToolUse: 읽기 명령 📖, 그 밖 ▶, apply_patch ✏️ 파일 이
   assert.deepEqual(pre('apply_patch', {}), [{ type: 'tool-start', toolUseId: 'u1', activity: 'editing', detail: 'apply_patch' }]);
   assert.deepEqual(pre('spawn_agent', { description: '리뷰 도우미' }), [{ type: 'tool-start', toolUseId: 'u1', activity: 'delegating', detail: '리뷰 도우미' }]);
   assert.deepEqual(pre('spawn_agent', {}), [{ type: 'tool-start', toolUseId: 'u1', activity: 'delegating', detail: '도우미' }]);
+  // 앱(0.162)은 묶음 이름을 앞에 붙이고 task_name을 쓴다(Task 0 실측). 기다리는 동안(wait_agent)도 👥
+  assert.deepEqual(pre('collaborationspawn_agent', { task_name: 'count_md' }), [{ type: 'tool-start', toolUseId: 'u1', activity: 'delegating', detail: 'count_md' }]);
+  assert.deepEqual(pre('collaborationwait_agent', {}), [{ type: 'tool-start', toolUseId: 'u1', activity: 'delegating', detail: '도우미 기다림' }]);
+  assert.deepEqual(pre('wait_agent', {}), [{ type: 'tool-start', toolUseId: 'u1', activity: 'delegating', detail: '도우미 기다림' }]);
   assert.deepEqual(pre('mcp__fs__read', {}), [{ type: 'tool-start', toolUseId: 'u1', activity: 'running', detail: 'fs · read' }]);
 });
 
