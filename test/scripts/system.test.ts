@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { readSettingsFile, stableNodePath, writeSettingsIfUnchanged } from '../../scripts/lib/system.ts';
+import { backupSettings, readSettingsFile, stableNodePath, updateJsonFile, writeSettingsIfUnchanged } from '../../scripts/lib/system.ts';
 
 function tempSettings(content: string | null): string {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'so-set-'));
@@ -59,4 +59,56 @@ test('파일이 없던 상태에서 읽었는데 그사이 생겼으면 false', 
   fs.writeFileSync(file, '{"b":1}');
   assert.equal(writeSettingsIfUnchanged({ c: 1 }, raw, file), false);
   assert.equal(fs.readFileSync(file, 'utf8'), '{"b":1}');
+});
+
+// ---------- 2단계: 공용 원문 비교 쓰기 ----------
+function tmpFile(content?: string): string {
+  const f = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'so-upd-')), 'hooks.json');
+  if (content !== undefined) fs.writeFileSync(f, content);
+  return f;
+}
+const addMine = (cur: Record<string, unknown>) => ({ next: { ...cur, mine: true }, changed: cur.mine !== true, conflict: null });
+
+test('updateJsonFile: 없던 파일은 written(백업 함수 부름), 같은 내용이면 unchanged', () => {
+  const f = tmpFile();
+  let backups = 0;
+  assert.deepEqual(updateJsonFile(f, addMine, () => { backups++; return null; }), { kind: 'written', backup: null });
+  assert.deepEqual(JSON.parse(fs.readFileSync(f, 'utf8')), { mine: true });
+  assert.deepEqual(updateJsonFile(f, addMine, () => 'b'), { kind: 'unchanged' });
+  assert.equal(backups, 1);
+});
+
+test('updateJsonFile: 그사이 다른 프로그램이 바꾸면 다시 읽어 병합, 계속 바뀌면 busy', () => {
+  const f = tmpFile('{"other":1}');
+  let calls = 0;
+  const r = updateJsonFile(f, (cur) => {
+    if (calls++ === 0) fs.writeFileSync(f, '{"other":2}');
+    return addMine(cur);
+  }, () => null);
+  assert.equal(r.kind, 'written');
+  assert.deepEqual(JSON.parse(fs.readFileSync(f, 'utf8')), { other: 2, mine: true });
+  const g = tmpFile('{"n":0}');
+  let n = 0;
+  const busy = updateJsonFile(g, (cur) => { fs.writeFileSync(g, JSON.stringify({ n: ++n })); return addMine(cur); }, () => null);
+  assert.deepEqual(busy, { kind: 'busy' });
+});
+
+test('updateJsonFile: remove면 원문 비교 뒤 파일 삭제(removed), 깨진 JSON은 conflict', () => {
+  const f = tmpFile('{"mine":true}');
+  assert.deepEqual(updateJsonFile(f, () => ({ next: {}, changed: true, conflict: null, remove: true }), () => 'b'), { kind: 'removed', backup: 'b' });
+  assert.equal(fs.existsSync(f), false);
+  const bad = tmpFile('{ not json');
+  assert.equal(updateJsonFile(bad, addMine, () => null).kind, 'conflict');
+  assert.equal(fs.readFileSync(bad, 'utf8'), '{ not json');
+});
+
+test('backupSettings: 다른 파일·접두어로 <dir>/codex-hooks-설치전-날짜.json, 같은 날 두 번째는 시각을 붙임', () => {
+  const f = tmpFile('{"a":1}');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'so-bak-'));
+  const first = backupSettings('설치전', f, 'codex-hooks', dir)!;
+  assert.match(path.basename(first), /^codex-hooks-설치전-\d{4}-\d{2}-\d{2}\.json$/);
+  assert.equal(fs.readFileSync(first, 'utf8'), '{"a":1}');
+  const second = backupSettings('설치전', f, 'codex-hooks', dir)!;
+  assert.match(path.basename(second), /^codex-hooks-설치전-\d{4}-\d{2}-\d{2}-\d{6}\.json$/);
+  assert.equal(backupSettings('설치전', f + '.none', 'codex-hooks', dir), null);
 });

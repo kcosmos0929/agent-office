@@ -10,6 +10,8 @@ export const BACKUP_DIR = path.join(os.homedir(), '.claude', '백업');
 export const PLIST = path.join(os.homedir(), 'Library', 'LaunchAgents', `${LABEL}.plist`);
 export const APP = path.join(os.homedir(), 'Applications', 'Synthetic Office.app');
 export const UID = process.getuid?.() ?? 501;
+export const CODEX_DIR = path.join(os.homedir(), '.codex');
+export const CODEX_HOOKS = path.join(CODEX_DIR, 'hooks.json');
 
 /** Homebrew는 node를 버전 폴더(…/Cellar/node/26.3.0/bin/node)에 두므로, 업그레이드에도 안 깨지는 고정 링크(…/bin/node)가 있으면 그걸 쓴다 */
 export function stableNodePath(execPath: string, exists: (p: string) => boolean = fs.existsSync): string {
@@ -33,18 +35,18 @@ function currentRaw(file: string): string | null {
   }
 }
 
-/** 지금 파일을 ~/.claude/백업/settings-synthetic-office-<단계>-YYYY-MM-DD[-HHMMSS].json 으로 저장하고 경로를 돌려준다 */
-export function backupSettings(stage: '설치전' | '제거전'): string | null {
-  if (!fs.existsSync(CLAUDE_SETTINGS)) return null;
-  fs.mkdirSync(BACKUP_DIR, { recursive: true });
+/** 지금 파일을 <dir>/<prefix>-<단계>-YYYY-MM-DD[-HHMMSS].json 으로 저장하고 경로를 돌려준다(기본은 Claude settings.json → ~/.claude/백업) */
+export function backupSettings(stage: '설치전' | '제거전', file = CLAUDE_SETTINGS, prefix = 'settings-synthetic-office', dir = BACKUP_DIR): string | null {
+  if (!fs.existsSync(file)) return null;
+  fs.mkdirSync(dir, { recursive: true });
   const d = new Date();
   const day = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-  let target = path.join(BACKUP_DIR, `settings-synthetic-office-${stage}-${day}.json`);
+  let target = path.join(dir, `${prefix}-${stage}-${day}.json`);
   if (fs.existsSync(target)) {
     const t = `${String(d.getHours()).padStart(2, '0')}${String(d.getMinutes()).padStart(2, '0')}${String(d.getSeconds()).padStart(2, '0')}`;
     target = target.replace(/\.json$/, `-${t}.json`);
   }
-  fs.copyFileSync(CLAUDE_SETTINGS, target);
+  fs.copyFileSync(file, target);
   return target;
 }
 
@@ -69,4 +71,46 @@ export function writeSettingsIfUnchanged(settings: Record<string, unknown>, expe
   }
   fs.renameSync(tmp, target);
   return true;
+}
+
+export type UpdateResult =
+  | { kind: 'unchanged' }
+  | { kind: 'written'; backup: string | null }
+  | { kind: 'removed'; backup: string | null }
+  | { kind: 'conflict'; message: string }
+  | { kind: 'busy' };
+
+type Edit = (current: Record<string, unknown>) => { next: Record<string, unknown>; changed: boolean; conflict: string | null; remove?: boolean };
+
+/** 원문이 읽은 그대로일 때만 지운다(바로가기면 진짜 파일). 그사이 바뀌었으면 false */
+function removeIfUnchanged(file: string, expectedRaw: string | null): boolean {
+  let target = file;
+  try {
+    target = fs.realpathSync(file);
+  } catch {
+    return expectedRaw === null;
+  }
+  if (currentRaw(target) !== expectedRaw) return false;
+  fs.rmSync(target);
+  return true;
+}
+
+/** 읽기 → edit → 백업 → 원문 비교 쓰기(또는 지우기). 그사이 다른 프로그램이 바꾸면 다시 읽어 최대 3번 */
+export function updateJsonFile(file: string, edit: Edit, backup: () => string | null): UpdateResult {
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    let read: { raw: string | null; settings: Record<string, unknown> };
+    try {
+      read = readSettingsFile(file);
+    } catch {
+      return { kind: 'conflict', message: `${file}이 JSON 형식이 아니에요` };
+    }
+    const r = edit(read.settings);
+    if (r.conflict) return { kind: 'conflict', message: r.conflict };
+    if (!r.changed) return { kind: 'unchanged' };
+    const saved = backup();
+    if (r.remove ? removeIfUnchanged(file, read.raw) : writeSettingsIfUnchanged(r.next, read.raw, file)) {
+      return { kind: r.remove ? 'removed' : 'written', backup: saved };
+    }
+  }
+  return { kind: 'busy' };
 }

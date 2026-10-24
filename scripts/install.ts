@@ -1,14 +1,17 @@
-// 설치: 화면 빌드 → 훅 스크립트 복사 → settings.json 백업·병합 → launchd 등록 → 서버 확인 → 아이콘 앱.
+// 설치: 화면 빌드 → 훅 스크립트 복사 → settings.json 백업·병합 → (Codex 있으면) hooks.json 백업·병합 → launchd 등록 → 서버 확인 → 아이콘 앱.
 import { execFileSync, spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { loadConfig } from '../src/server/config.ts';
 import { soHome } from '../src/server/paths.ts';
 import { renderPlist } from './lib/plist.ts';
+import { mergeCodexHooks } from './lib/codexHooksMerge.ts';
 import { mergeClaudeSettings } from './lib/settingsMerge.ts';
-import { APP, LABEL, PLIST, REPO_ROOT, UID, backupSettings, readSettingsFile, stableNodePath, writeSettingsIfUnchanged } from './lib/system.ts';
+import { APP, CLAUDE_SETTINGS, CODEX_DIR, CODEX_HOOKS, LABEL, PLIST, REPO_ROOT, UID, backupSettings, stableNodePath, updateJsonFile } from './lib/system.ts';
 
 const step = (msg: string) => console.log(`▶ ${msg}`);
+/** Codex 훅 신뢰 위치 안내(2단계 Task 0 확인 결과로 채움) */
+const CODEX_TRUST_HINT = 'CLI는 /hooks';
 
 function sleep(ms: number) {
   Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
@@ -57,28 +60,42 @@ function main(): void {
     statusline: `"${node}" "${path.join(bin, 'statusline.mjs')}"`,
   };
   // 읽고 → 합치고 → 쓰기 직전에 그사이 바뀌었는지 확인. 바뀌었으면 새 내용으로 다시(최대 3번)
-  let settled = false;
-  for (let attempt = 1; attempt <= 3 && !settled; attempt++) {
-    const { raw, settings } = readSettingsFile();
-    const merged = mergeClaudeSettings(settings, cmd);
-    if (merged.conflict) {
-      console.error(`✖ ${merged.conflict}`);
-      console.error('  settings.json은 바꾸지 않았어요. 기존 설정을 정리한 뒤 다시 설치하세요.');
-      process.exit(1);
-    }
-    if (!merged.changed) {
-      console.log('  이미 설치돼 있음');
-      settled = true;
-      break;
-    }
-    const backup = backupSettings('설치전');
-    if (backup) console.log(`  백업: ${backup}`);
-    settled = writeSettingsIfUnchanged(merged.settings, raw);
-    console.log(settled ? '  훅·상태줄 추가' : '  다른 프로그램이 방금 settings.json을 바꿔서 다시 읽어요');
+  const claude = updateJsonFile(CLAUDE_SETTINGS, (s) => {
+    const r = mergeClaudeSettings(s, cmd);
+    return { next: r.settings, changed: r.changed, conflict: r.conflict };
+  }, () => backupSettings('설치전'));
+  if (claude.kind === 'conflict') {
+    console.error(`✖ ${claude.message}`);
+    console.error('  settings.json은 바꾸지 않았어요. 기존 설정을 정리한 뒤 다시 설치하세요.');
+    process.exit(1);
   }
-  if (!settled) {
+  if (claude.kind === 'busy') {
     console.error('✖ settings.json이 계속 바뀌고 있어 설치를 멈췄어요. 잠시 뒤 다시 해 주세요.');
     process.exit(1);
+  }
+  if (claude.kind === 'written') {
+    if (claude.backup) console.log(`  백업: ${claude.backup}`);
+    console.log('  훅·상태줄 추가');
+  } else {
+    console.log('  이미 설치돼 있음');
+  }
+
+  // Codex: 실패해도 Claude 설치는 그대로 진행(경고만). config.toml은 건드리지 않는다
+  step('~/.codex/hooks.json 확인 (Codex)');
+  if (!fs.existsSync(CODEX_DIR)) {
+    console.log('  Codex 없음 — 건너뜀');
+  } else {
+    // 명령 문자열은 고정 — Codex는 훅 신뢰를 이 내용의 해시에 묶는다
+    const codexCmd = `"${node}" "${path.join(bin, 'claude-hook.mjs')}" codex`;
+    const codex = updateJsonFile(CODEX_HOOKS, (f) => mergeCodexHooks(f, codexCmd), () => backupSettings('설치전', CODEX_HOOKS, 'codex-hooks'));
+    if (codex.kind === 'written') {
+      if (codex.backup) console.log(`  백업: ${codex.backup}`);
+      console.log(`  Codex 훅 12개 추가 — Codex에서 새 훅을 검토·신뢰해 주세요(${CODEX_TRUST_HINT})`);
+    } else if (codex.kind === 'unchanged') {
+      console.log('  이미 설치돼 있음');
+    } else {
+      console.warn(`  ⚠ ${codex.kind === 'conflict' ? codex.message : 'hooks.json이 계속 바뀌고 있어요'} — Codex 훅은 건너뜀(Claude 쪽은 그대로 설치)`);
+    }
   }
 
   step(`자동 켜기 등록 (${LABEL})`);
