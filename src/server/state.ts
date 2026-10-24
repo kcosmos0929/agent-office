@@ -1,6 +1,6 @@
 // 상태 정리기: 이벤트를 받아 에이전트별 상태를 갱신한다. 화면·수집기·시계를 모르는 순수 로직(시간은 이벤트·tick 인자로만).
 import { groupOf } from '../shared/labels.ts';
-import type { Activity, Agent, Health, OfficeEvent, RegistryHealth, Snapshot, Status, Usage, WaitKind } from '../shared/types.ts';
+import type { Activity, Agent, AgentKind, Health, OfficeEvent, RegistryHealth, Snapshot, Status, Usage, WaitKind } from '../shared/types.ts';
 import type { RegistryEntry, RegistryRead, RegistryStatus } from './collectors/sessionRegistry.ts';
 import type { ContextReading } from './collectors/contextUsage.ts';
 import { contextWindow } from '../shared/contextWindow.ts';
@@ -66,6 +66,7 @@ export class OfficeState {
   private usage: Usage | null = null;
   private registry: RegistryHealth = 'missing';
   private lastHook: number | null = null;
+  private lastCodexHook: number | null = null;
 
   constructor(opts: StateOptions) {
     this.opts = opts;
@@ -88,6 +89,7 @@ export class OfficeState {
       entry.hookSeen = true;
       entry.lastHookAt = e.at;
       this.lastHook = e.at;
+      if (a.kind === 'codex') this.lastCodexHook = e.at;
       a.hookless = false;
     }
     if (e.title && !entry.regName) a.title = e.title;
@@ -278,11 +280,12 @@ export class OfficeState {
       registry: this.registry,
       sessions: agents.filter((a) => a.status !== 'gone').length,
       hookless: agents.filter((a) => a.hookless).length,
+      lastCodexHookAt: this.lastCodexHook,
     };
   }
 
   private create(e: OfficeEvent): Entry {
-    const entry = this.newEntry(e.sessionId, e.cwd, e.at, e.at);
+    const entry = this.newEntry(e.sessionId, e.cwd, e.at, e.at, e.kind ?? 'claude');
     if (e.type === 'session-start') {
       entry.agent.status = 'done';
       entry.agent.detail = '새 세션';
@@ -290,11 +293,11 @@ export class OfficeState {
     return entry;
   }
 
-  private newEntry(sessionId: string, cwd: string, since: number, now: number): Entry {
+  private newEntry(sessionId: string, cwd: string, since: number, now: number, kind: AgentKind = 'claude'): Entry {
     const used = [...this.entries.values()].map((x) => x.agent);
     const agent: Agent = {
-      id: `claude:${sessionId}`,
-      kind: 'claude',
+      id: `${kind}:${sessionId}`,
+      kind,
       sessionId,
       title: null,
       cwd,

@@ -234,11 +234,11 @@ test('hook 뒤 대화 게이지가 스냅샷에 실림', { timeout: 5000 }, asyn
   ws.close();
 });
 
-test('/api/health: 루프백은 JSON(키 5개), 루프백이 아니면 쿠키 없을 때 401', async () => {
+test('/api/health: 루프백은 JSON(키 6개), 루프백이 아니면 쿠키 없을 때 401', async () => {
   const { url } = await boot();
   const r = await fetch(url + '/api/health');
   assert.equal(r.status, 200);
-  assert.deepEqual(Object.keys(await r.json()).sort(), ['hookless', 'lastHookAt', 'registry', 'sessions', 'startedAt']);
+  assert.deepEqual(Object.keys(await r.json()).sort(), ['hookless', 'lastCodexHookAt', 'lastHookAt', 'registry', 'sessions', 'startedAt']);
   const remote = await boot({ isLoopback: () => false });
   assert.equal((await fetch(remote.url + '/api/health')).status, 401);
 });

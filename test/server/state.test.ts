@@ -547,12 +547,12 @@ test('transcriptPathOf: 훅이 준 경로, 모르면 null', () => {
 
 test('health: 시작 시각·마지막 훅·등록부 상태·세션 수(퇴근 제외)·훅 없음 수', () => {
   const st = make({ startedAt: 5 });
-  assert.deepEqual(st.snapshot(0).health, { startedAt: 5, lastHookAt: null, registry: 'missing', sessions: 0, hookless: 0 });
+  assert.deepEqual(st.snapshot(0).health, { startedAt: 5, lastHookAt: null, registry: 'missing', sessions: 0, hookless: 0, lastCodexHookAt: null });
   st.apply(ev.prompt('s1', 1_000));
   st.apply(ev.prompt('s2', 2_000));
   st.apply(ev.end_('s2', 3_000));
   st.applyRegistry(read(reg('r1', 'busy', 0)), 3 * M);
-  assert.deepEqual(st.snapshot(0).health, { startedAt: 5, lastHookAt: 3_000, registry: 'ok', sessions: 2, hookless: 1 });
+  assert.deepEqual(st.snapshot(0).health, { startedAt: 5, lastHookAt: 3_000, registry: 'ok', sessions: 2, hookless: 1, lastCodexHookAt: null });
 });
 
 // ---------- 최종 리뷰에서 나온 순서 문제 ----------
@@ -758,4 +758,19 @@ test('idle 알림(입력 기다림)도 남은 도우미 목록을 비워, 다음
   st.apply(ev.prompt('s1', 70_000));
   st.apply(ev.stop('s1', 71_000));
   assert.equal(one(st).status, 'done');
+});
+
+// ---------- 2단계 Codex ----------
+test('Codex 이벤트: id codex:<세션>, kind codex, Claude와 같은 상태 규칙', () => {
+  const st = make();
+  st.apply({ ...ev.prompt('x1', 0), kind: 'codex' });
+  assert.deepEqual([one(st).id, one(st).kind, one(st).status], ['codex:x1', 'codex', 'thinking']);
+});
+
+test('health: lastCodexHookAt은 Codex 신호만, lastHookAt은 둘 다', () => {
+  const st = make();
+  st.apply(ev.prompt('c1', 1_000));
+  st.apply({ ...ev.prompt('x1', 2_000), kind: 'codex' });
+  st.apply(ev.prompt('c1', 3_000));
+  assert.deepEqual([st.snapshot(0).health.lastHookAt, st.snapshot(0).health.lastCodexHookAt], [3_000, 2_000]);
 });

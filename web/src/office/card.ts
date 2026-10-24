@@ -1,5 +1,5 @@
 // 캐릭터를 누르면 뜨는 상세 카드. 글자는 textContent로만.
-import { HAT_COLORS, STATUS_LABEL } from '../../../src/shared/labels.ts';
+import { HAT_COLORS, KIND_LABEL, STATUS_LABEL } from '../../../src/shared/labels.ts';
 import type { Agent } from '../../../src/shared/types.ts';
 import { agentName, formatElapsed } from '../format.ts';
 import { cardContextLine } from '../gauge.ts';
@@ -19,7 +19,7 @@ export function showCard(container: HTMLElement, a: Agent, now: number, at: { x:
   const head = div('card-head');
   const swatch = div('card-swatch');
   swatch.style.background = HAT_COLORS[a.hat % HAT_COLORS.length];
-  head.append(swatch, div('card-kind', `Claude · 세션 ${a.hat + 1}`));
+  head.append(swatch, div('card-kind', `${KIND_LABEL[a.kind]} · 세션 ${a.hat + 1}`));
   if (a.hookless) {
     const tag = document.createElement('span');
     tag.className = 'tag-hookless';
