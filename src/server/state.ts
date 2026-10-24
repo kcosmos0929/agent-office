@@ -333,6 +333,8 @@ export class OfficeState {
         return;
       case 'prompt':
         this.clearWork(entry);
+        // Codex 도우미는 그 차례에 묶인다 — Codex엔 등록부·idle 알림이 없어, 놓친 SubagentStop을 여기서 거둔다
+        if (a.kind === 'codex') a.subagents = [];
         this.setStatus(a, 'thinking', e.at);
         a.detail = null;
         return;
@@ -366,6 +368,11 @@ export class OfficeState {
         entry.openTools.clear();
         entry.waitingMain = null;
         entry.stopError = e.error ?? null;
+        if (e.interrupted) {
+          // Codex 중단: 사용자가 멈춘 차례의 도우미와 그 대기도 끝난 것으로
+          a.subagents = [];
+          entry.waitingSubs.clear();
+        }
         const wait = this.shownWait(entry);
         if (wait) {
           this.setStatus(a, wait, e.at);
@@ -407,8 +414,9 @@ export class OfficeState {
         a.subagents = a.subagents.filter((s) => s.id !== e.agentId);
         if (entry.waitingSubs.delete(e.agentId)) this.resolveWaiting(entry, e.at);
         if (a.status === 'delegating' && a.subagents.length === 0 && entry.openTools.size === 0) {
-          // 메인 차례가 끝난 뒤 도우미가 다 끝남 → 메인이 결과를 받아 이어 감(안 이어 가면 등록부 idle·idle 알림이 ✅로)
-          this.setStatus(a, 'thinking', e.at);
+          // 메인 차례가 끝난 뒤 도우미가 다 끝남 → Claude는 메인이 결과를 받아 이어 감(안 이어 가면 등록부 idle·idle 알림이 ✅로).
+          // Codex는 이어 가지 않고 사용자 차례 — 이어 가면 다음 도구 사건이 다시 일하는 중으로 바꾼다
+          this.setStatus(a, a.kind === 'codex' ? 'done' : 'thinking', e.at);
           a.detail = null;
         }
         return;

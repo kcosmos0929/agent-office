@@ -43,9 +43,9 @@ export const CODEX_TOOLS: ToolDialect = {
 export function codexHookToEvents(payload: unknown, now: number): OfficeEvent[] {
   if (payload === null || typeof payload !== 'object' || Array.isArray(payload)) return [];
   const p = payload as Json;
-  // 중단(Interrupt)은 차례가 끝난 것으로 — Claude엔 없는 사건
+  // 중단(Interrupt)은 차례가 끝난 것으로 — Claude엔 없는 사건. 표시를 남겨 상태가 도우미까지 거둔다
   const events = p.hook_event_name === 'Interrupt'
-    ? hookToEvents({ ...p, hook_event_name: 'Stop' }, now, CODEX_TOOLS)
+    ? hookToEvents({ ...p, hook_event_name: 'Stop' }, now, CODEX_TOOLS).map((e) => (e.type === 'stop' ? { ...e, interrupted: true } : e))
     : hookToEvents(p, now, CODEX_TOOLS);
   return events.map(({ transcriptPath, title, ...e }) => ({ ...e, kind: 'codex' }) as OfficeEvent);
 }

@@ -43,7 +43,7 @@ test('사건 매핑: 시작·프롬프트·승인(도우미면 subagentId)·도�
   assert.deepEqual(kinds(ev({ hook_event_name: 'PostCompact', trigger: 'auto' })), [{ type: 'compact-end', trigger: 'auto' }]);
   assert.deepEqual(kinds(ev({ hook_event_name: 'PostToolUse', tool_name: 'Bash', tool_use_id: 'u1' })), [{ type: 'tool-end', toolUseId: 'u1' }]);
   assert.deepEqual(kinds(ev({ hook_event_name: 'Stop' })), [{ type: 'stop' }]);
-  assert.deepEqual(kinds(ev({ hook_event_name: 'Interrupt' })), [{ type: 'stop' }]);
+  assert.deepEqual(kinds(ev({ hook_event_name: 'Interrupt' })), [{ type: 'stop', interrupted: true }]);
   assert.deepEqual(kinds(ev({ hook_event_name: 'SessionEnd', reason: 'other' })), [{ type: 'session-end' }]);
   assert.deepEqual(kinds(ev({ hook_event_name: 'Mystery' })), []);
 });

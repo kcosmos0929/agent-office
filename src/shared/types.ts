@@ -24,8 +24,8 @@ type EventBase = {
 export type OfficeEvent = EventBase & (
   | { type: 'session-start' }
   | { type: 'prompt' }
-  /** 차례가 끝남. error = 한도 말고 다른 API 오류로 멈춘 경우의 종류(overloaded 등) */
-  | { type: 'stop'; error?: string }
+  /** 차례가 끝남. error = 한도 말고 다른 API 오류로 멈춘 경우의 종류(overloaded 등), interrupted = Codex 중단(Interrupt) */
+  | { type: 'stop'; error?: string; interrupted?: boolean }
   | { type: 'session-end' }
   /** 입력을 기다린다는 알림(Stop 없이 끝난 차례 대비) */
   | { type: 'idle' }
