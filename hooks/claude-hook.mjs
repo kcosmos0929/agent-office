@@ -42,6 +42,8 @@ function minimize(d) {
   } else if (d.tool_input && typeof d.tool_input === 'object') {
     const ti = {};
     for (const k of KEEP_INPUT) if (d.tool_input[k] !== undefined) ti[k] = cut(d.tool_input[k]);
+    // 서버는 셸 명령의 첫 줄만 쓴다 — heredoc(셸로 부른 apply_patch, cat <<EOF)의 본문은 보내지 않음
+    if (typeof ti.command === 'string') ti.command = ti.command.split('\n')[0];
     out.tool_input = ti;
   }
   return out;

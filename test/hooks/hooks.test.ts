@@ -154,6 +154,17 @@ test('codex 도우미 띄우기: task_name만 보내고 지시문(message)은 �
   assert.ok(!fake.got[0].body.includes('비밀'));
 });
 
+test('셸 명령은 첫 줄만: 셸로 부른 apply_patch(heredoc)의 패치 원문이 안 나감', async () => {
+  const home = tempHome();
+  const fake = await fakeServer();
+  writeEndpoint(home, fake.port);
+  const command = "apply_patch <<'EOF'\n*** Begin Patch\n*** Update File: /x/a.ts\n-비밀 줄\n+비밀 줄2\n*** End Patch\nEOF";
+  const r = await run(HOOK, home, JSON.stringify({ session_id: 'x1', hook_event_name: 'PreToolUse', tool_name: 'Bash', tool_use_id: 'b1', tool_input: { command } }), ['codex']);
+  assert.equal(r.code, 0);
+  assert.deepEqual(JSON.parse(fake.got[0].body).tool_input, { command: "apply_patch <<'EOF'" });
+  assert.ok(!fake.got[0].body.includes('비밀'));
+});
+
 test('인자 없으면 지금처럼 /api/claude/hook', async () => {
   const home = tempHome();
   const fake = await fakeServer();
