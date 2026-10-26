@@ -21,14 +21,17 @@ function button(label: string, onClick: () => void): HTMLButtonElement {
   return b;
 }
 
+/** 작은 창 크기: 420px부터 머리줄 제목이 한 줄로 들어감. 목록은 안에서만 스크롤돼 사용량 줄은 늘 보임 */
+const MINI = { width: 420, height: 600 };
+
 /** 크롬의 '항상 위 작은 창'(Document PiP)에 목록을 띄우고, 없으면 작은 팝업 창 */
 async function openMini(onMini: ToolbarOptions['onMini']): Promise<void> {
   const dpip = (window as unknown as { documentPictureInPicture?: { requestWindow(o: { width: number; height: number }): Promise<Window> } }).documentPictureInPicture;
   if (!dpip) {
-    window.open('/?view=list&mini=1', 'so-mini', 'width=320,height=480,popup');
+    window.open('/?view=list&mini=1', 'so-mini', `width=${MINI.width},height=${MINI.height},popup`);
     return;
   }
-  const w = await dpip.requestWindow({ width: 320, height: 480 });
+  const w = await dpip.requestWindow(MINI);
   for (const node of document.querySelectorAll('link[rel="stylesheet"], style')) {
     if (node instanceof HTMLLinkElement) {
       const link = w.document.createElement('link');
