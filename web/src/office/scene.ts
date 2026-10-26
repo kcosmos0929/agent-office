@@ -64,11 +64,12 @@ export function buildOffice(): OfficeScene {
   binders(g, 0.2, 7.0, 0.66, 4);
   lowCabinet(g, 2.4, 0.1, 2.8, 0.42, 0.55, 'pz');
   smallPlant(g, 2.6, 0.2, 0.59);
-  binders(g, 4.3, 0.15, 0.59, 5);
-  printer(g, 6.75, 0.2);
-  copier(g, 6.75, 1.15);
+  binders(g, 4.3, 0.15, 0.59, 5, 'x');
+  // 유리벽에 등을 대고 사무실 쪽(-x)을 봄
+  printer(g, 6.75, 0.2, 'nx');
+  copier(g, 6.75, 1.15, 'nx');
   shredder(g, 6.9, 2.05);
-  supplyCabinet(g, 6.85, 4.0);
+  supplyCabinet(g, 6.85, 4.0, 'nx');
   // 사무실 앞쪽 로비: 입구 복도에서 곧게 들어오는 통로 오른쪽에 안내 데스크, 모서리마다 큰 화분
   receptionDesk(g, 4.5, 13.0, 1.8);
   // 로비 왼쪽: 창을 등진 대기 의자 둘 + 작은 테이블, 이동식 화이트보드, 입구 옆 옷걸이
