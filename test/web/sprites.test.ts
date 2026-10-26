@@ -37,7 +37,7 @@ test('부품 배치 계약이 v15 layout.json과 같다', () => {
 
 test('표정: 일하는 중 집중, 끝남 환한 미소, 기다림 기본, 쉬는 중 은은한 미소', () => {
   const want: Record<string, Status[]> = {
-    focused: ['thinking', 'reading', 'editing', 'running', 'delegating', 'compacting'],
+    focused: ['approving', 'thinking', 'reading', 'editing', 'running', 'delegating', 'compacting'],
     happy: ['done'],
     neutral: ['permission', 'question', 'stalled'],
     soft: ['idle', 'quota', 'gone'],

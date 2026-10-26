@@ -1,6 +1,7 @@
 // 화면 확인용: 켜져 있는 서버(SO_HOME의 endpoint.json)에 가짜 세션 신호를 보낸다. 실제 대화 내용 없음.
 // 사용: SO_HOME=/tmp/x node scripts/demo.ts [scene]   scene = all(기본) | subagent | end | accuracy
 // accuracy: ❓·🧹·⏳·대화 게이지 + (SO_CLAUDE_SESSIONS가 있으면) 그 폴더에 훅 없는 세션 등록부 파일
+// codex: Codex 세션 셋(📖 읽기 · ✏️ 고치기 · ❗ 승인)을 /api/codex/hook으로
 import fs from 'node:fs';
 import path from 'node:path';
 import { homeFiles, soHome } from '../src/server/paths.ts';
@@ -8,12 +9,16 @@ import { homeFiles, soHome } from '../src/server/paths.ts';
 const { port, token, pid } = JSON.parse(fs.readFileSync(homeFiles(soHome()).endpoint, 'utf8')) as { port: number; token: string; pid: number };
 const DEV = '/Users/seop/developer';
 
-async function post(route: 'hook' | 'usage', body: Record<string, unknown>) {
-  const r = await fetch(`http://127.0.0.1:${port}/api/claude/${route}`, { method: 'POST', headers: { authorization: `Bearer ${token}` }, body: JSON.stringify(body) });
+async function post(route: 'hook' | 'usage' | 'codex', body: Record<string, unknown>) {
+  const url = route === 'codex' ? '/api/codex/hook' : `/api/claude/${route}`;
+  const r = await fetch(`http://127.0.0.1:${port}${url}`, { method: 'POST', headers: { authorization: `Bearer ${token}` }, body: JSON.stringify(body) });
   if (r.status !== 204) throw new Error(`${route} → ${r.status}`);
 }
 const hook = (session: string, cwd: string, event: string, extra: Record<string, unknown> = {}) =>
   post('hook', { session_id: session, cwd, transcript_path: path.join('/tmp', `${session}.jsonl`), hook_event_name: event, ...extra });
+
+const codexHook = (session: string, cwd: string, event: string, extra: Record<string, unknown> = {}) =>
+  post('codex', { session_id: session, cwd, hook_event_name: event, model: 'gpt-5.5', ...extra });
 
 const scene = process.argv[2] ?? 'all';
 if (scene === 'all') {
@@ -34,6 +39,14 @@ if (scene === 'all') {
   await hook('demo-read', `${DEV}/synthetic-office`, 'SubagentStart', { agent_id: 'sub2', agent_type: 'Explore' });
 } else if (scene === 'end') {
   await hook('demo-wiki', '/Users/seop/Documents/CnC Wiki', 'SessionEnd', { reason: 'other' });
+} else if (scene === 'codex') {
+  await codexHook('x-review', `${DEV}/street-centrality-bus`, 'UserPromptSubmit');
+  await codexHook('x-review', `${DEV}/street-centrality-bus`, 'PreToolUse', { tool_name: 'Bash', tool_use_id: 'u1', tool_input: { command: 'rg TODO src' } });
+  await codexHook('x-edit', `${DEV}/synthetic-office`, 'UserPromptSubmit');
+  await codexHook('x-edit', `${DEV}/synthetic-office`, 'PreToolUse', { tool_name: 'apply_patch', tool_use_id: 'u2', tool_input: { files: ['/Users/seop/developer/synthetic-office/src/server/state.ts'] } });
+  await codexHook('x-perm', `${DEV}/lst_ss`, 'UserPromptSubmit');
+  await codexHook('x-perm', `${DEV}/lst_ss`, 'PreToolUse', { tool_name: 'Bash', tool_use_id: 'u3', tool_input: { command: 'npm test' } });
+  await codexHook('x-perm', `${DEV}/lst_ss`, 'PermissionRequest', { tool_name: 'Bash', tool_input: { command: 'npm test' } });
 } else if (scene === 'accuracy') {
   await hook('demo-ask', `${DEV}/lst_ss`, 'UserPromptSubmit', { session_title: '질문 대기 예시' });
   await hook('demo-ask', `${DEV}/lst_ss`, 'PreToolUse', { tool_name: 'AskUserQuestion', tool_input: {}, tool_use_id: 'q1' });

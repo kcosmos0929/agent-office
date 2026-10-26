@@ -51,6 +51,7 @@ const FACE_BY_STATUS: Record<Status, Face> = {
   question: 'neutral',
   stalled: 'neutral',
   done: 'happy',
+  approving: 'focused',
   thinking: 'focused',
   reading: 'focused',
   editing: 'focused',

@@ -159,3 +159,9 @@ test('Notification: 질문류 → question, 승인 → permission (둘 다 viaNo
   assert.deepEqual(n('auth_success'), []);
   assert.deepEqual(kinds({ ...fx('notification'), notification_type: 'elicitation_dialog', message: undefined }), [{ type: 'question', detail: null, viaNotification: true }]);
 });
+
+test('SessionStart의 model이 사건에 실림(없으면 안 실림)', () => {
+  const [e] = hookToEvents({ session_id: 's1', cwd: '/x', hook_event_name: 'SessionStart', source: 'startup', model: 'claude-opus-5-5' }, 1);
+  assert.equal(e.model, 'claude-opus-5-5');
+  assert.equal(hookToEvents({ session_id: 's1', cwd: '/x', hook_event_name: 'SessionStart', source: 'clear' }, 1)[0].model, undefined);
+});

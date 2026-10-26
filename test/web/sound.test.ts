@@ -4,7 +4,7 @@ import { soundEvents } from '../../web/src/sound.ts';
 import type { Agent, Snapshot, Status } from '../../src/shared/types.ts';
 
 const agent = (id: string, status: Status) => ({ id, status }) as Agent;
-const snap = (...agents: Agent[]): Snapshot => ({ agents, usage: null, now: 0, health: { startedAt: 0, lastHookAt: null, registry: 'ok', sessions: 0, hookless: 0 } });
+const snap = (...agents: Agent[]): Snapshot => ({ agents, usage: null, now: 0, health: { startedAt: 0, lastHookAt: null, registry: 'ok', sessions: 0, hookless: 0, lastCodexHookAt: null } });
 
 test('soundEvents: 새로 permission이면 urgent, 새로 done이면 soft', () => {
   assert.deepEqual(soundEvents(snap(agent('a', 'running')), snap(agent('a', 'permission'))), ['urgent']);
@@ -28,4 +28,9 @@ test('soundEvents: ❓도 urgent, ❗↔❓는 다시 안 울림, ⏳·🧹는 �
   assert.deepEqual(soundEvents(snap(agent('a', 'question')), snap(agent('a', 'permission'))), []);
   assert.deepEqual(soundEvents(snap(agent('a', 'running')), snap(agent('a', 'quota'))), []);
   assert.deepEqual(soundEvents(snap(agent('a', 'running')), snap(agent('a', 'compacting'))), []);
+});
+
+test('soundEvents: 🛡️ 승인 확인 중은 조용, 5초 뒤 ❗가 될 때 울림', () => {
+  assert.deepEqual(soundEvents(snap(agent('a', 'running')), snap(agent('a', 'approving'))), []);
+  assert.deepEqual(soundEvents(snap(agent('a', 'approving')), snap(agent('a', 'permission'))), ['urgent']);
 });

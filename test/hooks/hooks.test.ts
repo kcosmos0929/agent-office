@@ -14,10 +14,10 @@ const TOKEN = 'd'.repeat(64);
 const servers: http.Server[] = [];
 after(() => { for (const s of servers) { s.closeAllConnections(); s.close(); } });
 
-function run(script: string, home: string, stdin: string): Promise<{ code: number | null; stdout: string; ms: number }> {
+function run(script: string, home: string, stdin: string, args: string[] = []): Promise<{ code: number | null; stdout: string; ms: number }> {
   return new Promise((resolve) => {
     const t0 = Date.now();
-    const child = spawn(process.execPath, [script], { env: { ...process.env, SO_HOME: home } });
+    const child = spawn(process.execPath, [script, ...args], { env: { ...process.env, SO_HOME: home } });
     let stdout = '';
     child.stdout.on('data', (d) => { stdout += d; });
     child.on('close', (code) => resolve({ code, stdout, ms: Date.now() - t0 }));
@@ -127,6 +127,60 @@ test('훅 스크립트: trigger·error는 보내고 요약·지시문·오류 �
     for (const k of ['compact_summary', 'custom_instructions', 'error_details', 'last_assistant_message']) assert.equal(k in b, false, k);
   }
   assert.ok(!fake.got.some((g) => g.body.includes('비밀')));
+});
+
+test('codex 인자: /api/codex/hook으로, apply_patch는 파일 경로만(원문 없음, 5개까지)', async () => {
+  const home = tempHome();
+  const fake = await fakeServer();
+  writeEndpoint(home, fake.port);
+  const adds = Array.from({ length: 6 }, (_, i) => `*** Add File: /x/new${i}.md\n+비밀 ${i}\n`).join('');
+  const patch = `*** Begin Patch\n*** Update File: /x/src/a.ts\n@@\n-비밀 줄\n+비밀 줄2\n${adds}*** Delete File: /x/old.ts\n*** End Patch`;
+  const r = await run(HOOK, home, JSON.stringify({ session_id: 'x1', hook_event_name: 'PreToolUse', tool_name: 'apply_patch', tool_use_id: 'p1', tool_input: { command: patch } }), ['codex']);
+  assert.equal(r.code, 0);
+  assert.equal(r.stdout, '');
+  assert.equal(fake.got[0].url, '/api/codex/hook');
+  const body = JSON.parse(fake.got[0].body);
+  assert.deepEqual(body.tool_input, { files: ['/x/src/a.ts', '/x/new0.md', '/x/new1.md', '/x/new2.md', '/x/new3.md'] });
+  assert.ok(!fake.got[0].body.includes('비밀'));
+});
+
+test('codex 도우미 띄우기: task_name만 보내고 지시문(message)은 안 보냄', async () => {
+  const home = tempHome();
+  const fake = await fakeServer();
+  writeEndpoint(home, fake.port);
+  const r = await run(HOOK, home, JSON.stringify({ session_id: 'x1', hook_event_name: 'PreToolUse', tool_name: 'collaborationspawn_agent', tool_use_id: 's1', tool_input: { task_name: 'count_md', fork_turns: 0, message: '비밀 지시' } }), ['codex']);
+  assert.equal(r.code, 0);
+  assert.deepEqual(JSON.parse(fake.got[0].body).tool_input, { task_name: 'count_md' });
+  assert.ok(!fake.got[0].body.includes('비밀'));
+});
+
+test('셸 명령은 첫 줄만: 셸로 부른 apply_patch(heredoc)의 패치 원문이 안 나감', async () => {
+  const home = tempHome();
+  const fake = await fakeServer();
+  writeEndpoint(home, fake.port);
+  const command = "apply_patch <<'EOF'\n*** Begin Patch\n*** Update File: /x/a.ts\n-비밀 줄\n+비밀 줄2\n*** End Patch\nEOF";
+  const r = await run(HOOK, home, JSON.stringify({ session_id: 'x1', hook_event_name: 'PreToolUse', tool_name: 'Bash', tool_use_id: 'b1', tool_input: { command } }), ['codex']);
+  assert.equal(r.code, 0);
+  assert.deepEqual(JSON.parse(fake.got[0].body).tool_input, { command: "apply_patch <<'EOF'" });
+  assert.ok(!fake.got[0].body.includes('비밀'));
+});
+
+test('model 이름은 보냄(프롬프트는 안 보냄)', async () => {
+  const home = tempHome();
+  const fake = await fakeServer();
+  writeEndpoint(home, fake.port);
+  await run(HOOK, home, JSON.stringify({ session_id: 'x1', hook_event_name: 'UserPromptSubmit', model: 'gpt-5.5', prompt: '비밀' }), ['codex']);
+  const body = JSON.parse(fake.got[0].body);
+  assert.equal(body.model, 'gpt-5.5');
+  assert.ok(!fake.got[0].body.includes('비밀'));
+});
+
+test('인자 없으면 지금처럼 /api/claude/hook', async () => {
+  const home = tempHome();
+  const fake = await fakeServer();
+  writeEndpoint(home, fake.port);
+  await run(HOOK, home, PAYLOAD);
+  assert.equal(fake.got[0].url, '/api/claude/hook');
 });
 
 test('서버가 응답 안 함: 1.5초 안에 exit 0', async () => {

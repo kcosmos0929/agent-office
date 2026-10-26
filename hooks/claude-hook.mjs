@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Synthetic Office용 Claude Code 훅. 받은 입력을 로컬 서버로 넘기기만 한다.
+// Synthetic Office용 Claude Code·Codex 훅. 받은 입력을 로컬 서버로 넘기기만 한다(인자 `codex`면 Codex 신호).
 // 약속: 표준 출력에 아무것도 쓰지 않고(권한 결정에 끼어들지 않음), 어떤 경우에도 exit 0.
 import fs from 'node:fs';
 import http from 'node:http';
@@ -8,6 +8,10 @@ import path from 'node:path';
 
 const HOME = process.env.SO_HOME ?? path.join(os.homedir(), '.synthetic-office');
 const POST_TIMEOUT_MS = 1000;
+const SOURCE = process.argv[2] === 'codex' ? 'codex' : 'claude';
+/** Codex apply_patch에서 파일 경로만 뽑을 줄 (패치 원문은 보내지 않음) */
+const PATCH_FILE = /^\*\*\* (?:Add|Update|Delete) File: (.+)$/gm;
+const MAX_PATCH_FILES = 5;
 const done = () => process.exit(0);
 setTimeout(done, 2000).unref(); // 무슨 일이 있어도 2초 안에 끝
 
@@ -23,8 +27,8 @@ function endpoint() {
 
 // 서버 수집기(claudeHook.ts)가 실제로 쓰는 필드만 보낸다 — 큰 파일 내용·프롬프트·응답·도구 결과·정리 요약·오류 원문은 보내지 않음
 const KEEP = ['session_id', 'hook_event_name', 'cwd', 'transcript_path', 'session_title', 'agent_id', 'agent_type',
-  'tool_name', 'tool_use_id', 'notification_type', 'message', 'is_interrupt', 'trigger'];
-const KEEP_INPUT = ['command', 'file_path', 'notebook_path', 'pattern', 'url', 'query', 'description', 'subagent_type'];
+  'tool_name', 'tool_use_id', 'notification_type', 'message', 'is_interrupt', 'trigger', 'model'];
+const KEEP_INPUT = ['command', 'file_path', 'notebook_path', 'pattern', 'url', 'query', 'description', 'subagent_type', 'task_name'];
 const cut = (v) => (typeof v === 'string' && v.length > 300 ? v.slice(0, 300) : v);
 
 function minimize(d) {
@@ -32,9 +36,14 @@ function minimize(d) {
   for (const k of KEEP) if (d[k] !== undefined) out[k] = cut(d[k]);
   // StopFailure의 error는 오류 종류 이름(rate_limit 등). 다른 훅(PostToolUseFailure)의 error는 오류 원문이라 보내지 않는다
   if (d.hook_event_name === 'StopFailure' && d.error !== undefined) out.error = cut(d.error);
-  if (d.tool_input && typeof d.tool_input === 'object') {
+  if (d.tool_name === 'apply_patch' && d.tool_input && typeof d.tool_input.command === 'string') {
+    // Codex의 파일 수정: command가 패치 원문(코드)이라 경로만 보낸다
+    out.tool_input = { files: [...d.tool_input.command.matchAll(PATCH_FILE)].slice(0, MAX_PATCH_FILES).map((m) => cut(m[1].trim())) };
+  } else if (d.tool_input && typeof d.tool_input === 'object') {
     const ti = {};
     for (const k of KEEP_INPUT) if (d.tool_input[k] !== undefined) ti[k] = cut(d.tool_input[k]);
+    // 서버는 셸 명령의 첫 줄만 쓴다 — heredoc(셸로 부른 apply_patch, cat <<EOF)의 본문은 보내지 않음
+    if (typeof ti.command === 'string') ti.command = ti.command.split('\n')[0];
     out.tool_input = ti;
   }
   return out;
@@ -53,7 +62,7 @@ process.stdin.on('end', () => {
     return done();
   }
   const req = http.request(
-    { host: '127.0.0.1', port: ep.port, path: '/api/claude/hook', method: 'POST', timeout: POST_TIMEOUT_MS,
+    { host: '127.0.0.1', port: ep.port, path: `/api/${SOURCE}/hook`, method: 'POST', timeout: POST_TIMEOUT_MS,
       headers: { 'content-type': 'application/json', 'content-length': Buffer.byteLength(body), authorization: `Bearer ${ep.token}` } },
     (res) => { res.resume(); res.on('end', done); },
   );

@@ -87,6 +87,8 @@ html, body { margin: 0; height: 100%; background: var(--bg); }
 .chips { display: flex; gap: 5px; align-items: center; margin-top: 3px; min-width: 0; }
 .chip { font-size: 10.5px; font-weight: 600; padding: 2px 7px; border-radius: 9px; background: #d977571f; color: var(--claude); white-space: nowrap; }
 .detail { font-size: 11px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* 작은 모델 표시: 아는 때만(훅·대화 게이지), 이름표보다 한 단계 옅게 */
+.model { font-size: 10px; font-weight: 600; padding: 1px 6px; border-radius: 8px; border: 1px solid var(--line); color: var(--muted); white-space: nowrap; }
 .tag-hookless { font-size: 10px; font-weight: 700; padding: 1px 6px; border-radius: 8px; background: #ece6dd; color: #8a7f73; white-space: nowrap; }
 .gauge { display: flex; align-items: center; gap: 6px; margin-top: 4px; font-size: 10.5px; color: var(--muted); }
 .gauge-label { flex: none; font-variant-numeric: tabular-nums; }
@@ -184,6 +186,7 @@ body:not(.view-list) .toolbar button.blink { border-color: var(--wait); animatio
   .badge { background: #1f3a2a; color: #7ce0a3; }
   .badge.urgent { background: var(--wait); color: #3a2600; }
   .tag-hookless { background: #3a3d44; color: #b8bec7; }
+  .model { border-color: var(--panel-line); color: var(--panel-muted); }
   .empty { color: var(--panel-muted); }
   body.view-list .toolbar button { color: #d9dde3; background: var(--panel); border-color: var(--panel-line); }
   body.view-list .toolbar button.blink { animation-name: blink-dark; }

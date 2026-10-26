@@ -29,24 +29,8 @@ export function mergeClaudeSettings(settings: Settings, cmd: { hook: string; sta
   }
 
   const next = structuredClone(settings);
-  const nextHooks = (next.hooks ?? {}) as Record<string, HookGroup[]>;
-  let changed = false;
-  for (const ev of HOOK_EVENTS) {
-    const arr = nextHooks[ev] ?? [];
-    if (!arr.some(groupHasOurs)) {
-      arr.push({ matcher: '', hooks: [{ type: 'command', command: cmd.hook, timeout: 5 }] });
-      changed = true;
-    }
-    for (const g of arr) {
-      for (const h of g.hooks ?? []) {
-        if (isOurs(h) && h.command !== cmd.hook) {
-          h.command = cmd.hook; // 경로가 바뀌었으면(예: node 위치) 새 경로로
-          changed = true;
-        }
-      }
-    }
-    nextHooks[ev] = arr;
-  }
+  const nextHooks = (next.hooks ?? {}) as Record<string, unknown[]>;
+  let changed = mergeHookEvents(nextHooks, HOOK_EVENTS, cmd.hook, () => 5);
   next.hooks = nextHooks;
   const wantStatus = { type: 'command', command: cmd.statusline };
   if (JSON.stringify(next.statusLine) !== JSON.stringify(wantStatus)) {
@@ -56,27 +40,59 @@ export function mergeClaudeSettings(settings: Settings, cmd: { hook: string; sta
   return changed ? { settings: next, changed, conflict: null } : unchanged(null);
 }
 
+/**
+ * 사건마다 우리 명령이 없으면 한 묶음을 더하고, 있으면 명령 경로만 맞춘다(hooks를 직접 바꿈). 바뀌었으면 true.
+ * Claude settings.json과 Codex hooks.json이 같은 모양이라 둘 다 쓴다.
+ */
+export function mergeHookEvents(hooks: Record<string, unknown[]>, events: readonly string[], command: string, timeoutFor: (ev: string) => number): boolean {
+  let changed = false;
+  for (const ev of events) {
+    const arr = (hooks[ev] ?? []) as HookGroup[];
+    if (!arr.some(groupHasOurs)) {
+      arr.push({ matcher: '', hooks: [{ type: 'command', command, timeout: timeoutFor(ev) }] });
+      changed = true;
+    }
+    for (const g of arr) {
+      for (const h of g.hooks ?? []) {
+        if (isOurs(h) && h.command !== command) {
+          h.command = command; // 경로가 바뀌었으면(예: node 위치) 새 경로로
+          changed = true;
+        }
+      }
+    }
+    hooks[ev] = arr;
+  }
+  return changed;
+}
+
+/** 우리 명령만 빼고(빈 묶음·빈 사건은 지움) 바뀌었으면 true. hooks를 직접 바꾼다 */
+export function removeOurHooks(hooks: Record<string, unknown>): boolean {
+  let changed = false;
+  for (const ev of Object.keys(hooks)) {
+    const arr = hooks[ev];
+    if (!Array.isArray(arr)) continue;
+    const kept: HookGroup[] = [];
+    for (const g of arr as HookGroup[]) {
+      if (!groupHasOurs(g)) {
+        kept.push(g);
+        continue;
+      }
+      changed = true;
+      const rest = (g.hooks ?? []).filter((h) => !isOurs(h));
+      if (rest.length) kept.push({ ...g, hooks: rest });
+    }
+    if (kept.length) hooks[ev] = kept;
+    else delete hooks[ev];
+  }
+  return changed;
+}
+
 export function removeClaudeSettings(settings: Settings): { settings: Settings; changed: boolean } {
   const next = structuredClone(settings);
   let changed = false;
   if (isObject(next.hooks)) {
     const hooks = next.hooks as Record<string, unknown>;
-    for (const ev of Object.keys(hooks)) {
-      const arr = hooks[ev];
-      if (!Array.isArray(arr)) continue;
-      const kept: HookGroup[] = [];
-      for (const g of arr as HookGroup[]) {
-        if (!groupHasOurs(g)) {
-          kept.push(g);
-          continue;
-        }
-        changed = true;
-        const rest = (g.hooks ?? []).filter((h) => !isOurs(h));
-        if (rest.length) kept.push({ ...g, hooks: rest });
-      }
-      if (kept.length) hooks[ev] = kept;
-      else delete hooks[ev];
-    }
+    changed = removeOurHooks(hooks);
     if (Object.keys(hooks).length === 0) delete next.hooks;
   }
   if (isOurs(next.statusLine)) {

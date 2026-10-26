@@ -234,11 +234,39 @@ test('hook 뒤 대화 게이지가 스냅샷에 실림', { timeout: 5000 }, asyn
   ws.close();
 });
 
-test('/api/health: 루프백은 JSON(키 5개), 루프백이 아니면 쿠키 없을 때 401', async () => {
+test('/api/health: 루프백은 JSON(키 6개), 루프백이 아니면 쿠키 없을 때 401', async () => {
   const { url } = await boot();
   const r = await fetch(url + '/api/health');
   assert.equal(r.status, 200);
-  assert.deepEqual(Object.keys(await r.json()).sort(), ['hookless', 'lastHookAt', 'registry', 'sessions', 'startedAt']);
+  assert.deepEqual(Object.keys(await r.json()).sort(), ['hookless', 'lastCodexHookAt', 'lastHookAt', 'registry', 'sessions', 'startedAt']);
   const remote = await boot({ isLoopback: () => false });
   assert.equal((await fetch(remote.url + '/api/health')).status, 401);
+});
+
+test('POST /api/codex/hook: 토큰 없으면 401, 있으면 204 후 스냅샷에 codex 에이전트', { timeout: 5000 }, async () => {
+  const { url } = await boot();
+  const body = JSON.stringify({ session_id: 'x1', cwd: '/x', hook_event_name: 'UserPromptSubmit' });
+  assert.equal((await fetch(url + '/api/codex/hook', { method: 'POST', body })).status, 401);
+  const ws = new WebSocket(url.replace('http', 'ws') + '/ws');
+  await nextSnapshot(ws, () => true);
+  const got = nextSnapshot(ws, (s) => s.agents.some((a) => a.kind === 'codex'));
+  const r = await fetch(url + '/api/codex/hook', { method: 'POST', headers: { authorization: `Bearer ${TOKEN}` }, body });
+  assert.equal(r.status, 204);
+  const snap = await got;
+  assert.deepEqual([snap.agents[0].id, snap.agents[0].status], ['codex:x1', 'thinking']);
+  ws.close();
+});
+
+test('POST /api/codex/hook: Codex 제목 읽기가 주는 제목을 붙임(Claude 훅엔 안 씀)', { timeout: 5000 }, async () => {
+  const asked: string[] = [];
+  const { url } = await boot({ codexTitle: (id) => { asked.push(id); return id === 'x9' ? 'touch 명령 실행' : null; } });
+  const ws = new WebSocket(url.replace('http', 'ws') + '/ws');
+  await nextSnapshot(ws, () => true);
+  const got = nextSnapshot(ws, (s) => s.agents.some((a) => a.title === 'touch 명령 실행'));
+  const body = JSON.stringify({ session_id: 'x9', cwd: '/x', hook_event_name: 'UserPromptSubmit' });
+  assert.equal((await fetch(url + '/api/codex/hook', { method: 'POST', headers: { authorization: `Bearer ${TOKEN}` }, body })).status, 204);
+  const snap = await got;
+  assert.deepEqual([snap.agents[0].id, snap.agents[0].title], ['codex:x9', 'touch 명령 실행']);
+  assert.deepEqual(asked, ['x9']);
+  ws.close();
 });

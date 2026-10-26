@@ -1,5 +1,4 @@
 // 대화 게이지의 숫자·색·문구 (목록 줄과 카드가 같이 쓴다)
-import { modelLabel } from '../../src/shared/contextWindow.ts';
 import type { AgentContext } from '../../src/shared/types.ts';
 
 export type GaugeLevel = 'ok' | 'warn' | 'full';
@@ -33,8 +32,8 @@ export function cardContextLine(c: AgentContext | null): string {
   if (!c) return '대화 —';
   if (c.state === 'compacted') return '대화 정리 직후 — 다음 답부터 다시 계산';
   const pct = contextPct(c);
-  const model = modelLabel(c.model);
+  // 모델은 카드 머리줄의 작은 표시로 옮김(agentModel)
   return pct === null || !c.window
-    ? `대화 ${formatTokens(c.used)} 토큰 · ${model}`
-    : `대화 ${pct}% · ${formatTokens(c.used)} / ${windowLabel(c.window)} 토큰 · ${model}`;
+    ? `대화 ${formatTokens(c.used)} 토큰`
+    : `대화 ${pct}% · ${formatTokens(c.used)} / ${windowLabel(c.window)} 토큰`;
 }

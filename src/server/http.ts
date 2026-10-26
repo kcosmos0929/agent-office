@@ -12,6 +12,7 @@ import type { Config } from './config.ts';
 import type { OfficeState } from './state.ts';
 import { tokenMatches } from './token.ts';
 import { hookToEvents } from './collectors/claudeHook.ts';
+import { codexHookToEvents } from './collectors/codexHook.ts';
 import { statuslineToUsage } from './collectors/usage.ts';
 import { readTranscriptTitle } from './collectors/transcriptTitle.ts';
 import { readContext, type ContextReading } from './collectors/contextUsage.ts';
@@ -31,6 +32,8 @@ export type ServerOptions = {
   onAdmin?: (action: AdminAction) => void;
   /** 대화 게이지 읽기(테스트에서 바꿈) */
   readContext?: (file: string) => Promise<ContextReading>;
+  /** Codex 세션 id → 제목(Codex 색인 파일, 테스트에서 바꿈). 없으면 Codex 제목을 안 읽음 */
+  codexTitle?: (sessionId: string) => string | null;
 };
 
 export type RunningServer = { port: number; close(): Promise<void>; notify(): void };
@@ -193,6 +196,17 @@ export function startServer(opts: ServerOptions): Promise<RunningServer> {
         refreshContext(events[0].sessionId, events.some((e) => e.type === 'compact-end'));
       }
       return;
+    }
+    if (url.pathname === '/api/codex/hook') {
+      // Codex: 기록 파일은 읽지 않는다(형식이 안정적이지 않음). 제목은 Codex 색인 파일의 id·제목만
+      const events = codexHookToEvents(payload, now());
+      let changed = false;
+      for (const e of events) changed = state.apply(e) || changed;
+      const sessionId = events[0]?.sessionId;
+      const title = sessionId && opts.codexTitle ? opts.codexTitle(sessionId) : null;
+      if (sessionId && title) changed = state.apply({ type: 'title', sessionId, at: now(), cwd: '', title, kind: 'codex' }) || changed;
+      if (changed) notify();
+      return text(res, 204);
     }
     if (url.pathname === '/api/claude/usage') {
       const usage = statuslineToUsage(payload, now());

@@ -1,7 +1,7 @@
 // 캐릭터를 누르면 뜨는 상세 카드. 글자는 textContent로만.
 import { HAT_COLORS, STATUS_LABEL } from '../../../src/shared/labels.ts';
 import type { Agent } from '../../../src/shared/types.ts';
-import { agentName, formatElapsed } from '../format.ts';
+import { agentModel, agentName, formatElapsed } from '../format.ts';
 import { cardContextLine } from '../gauge.ts';
 import { bubbleTone, shortCwd } from './bubbles.ts';
 
@@ -19,7 +19,9 @@ export function showCard(container: HTMLElement, a: Agent, now: number, at: { x:
   const head = div('card-head');
   const swatch = div('card-swatch');
   swatch.style.background = HAT_COLORS[a.hat % HAT_COLORS.length];
-  head.append(swatch, div('card-kind', `Claude · 세션 ${a.hat + 1}`));
+  // 플랫폼은 이름 줄(agentName)에 있으니 머리줄은 세션 번호와 모델만
+  const model = agentModel(a);
+  head.append(swatch, div('card-kind', `세션 ${a.hat + 1}${model ? ` · ${model}` : ''}`));
   if (a.hookless) {
     const tag = document.createElement('span');
     tag.className = 'tag-hookless';

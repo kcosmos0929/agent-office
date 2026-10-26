@@ -5,10 +5,11 @@ import os from 'node:os';
 import path from 'node:path';
 import { exitCode, formatReport, runChecks, type DoctorEnv } from '../../scripts/lib/doctorChecks.ts';
 import { mergeClaudeSettings } from '../../scripts/lib/settingsMerge.ts';
+import { mergeCodexHooks } from '../../scripts/lib/codexHooksMerge.ts';
 
 const REPO = path.resolve(import.meta.dirname, '..', '..');
 const TOKEN = 'e'.repeat(64);
-const NAMES = ['서버 응답', 'endpoint.json', '훅 등록 (14개)', '설치된 스크립트 = 레포', '자동 켜기 (launchd)', '마지막 훅', '세션 목록 폴더', '위키 허브', '화면 파일'];
+const NAMES = ['서버 응답', 'endpoint.json', '훅 등록 (14개)', '설치된 스크립트 = 레포', '자동 켜기 (launchd)', '마지막 훅', 'Codex 훅 등록 (12개)', '마지막 Codex 훅', '세션 목록 폴더', '위키 허브', '화면 파일'];
 
 /** 모두 정상인 가짜 설치: 데이터 폴더·settings·레포·세션 목록·위키 허브 1개 */
 function setup() {
@@ -31,28 +32,33 @@ function setup() {
   fs.writeFileSync(settingsFile, JSON.stringify(mergeClaudeSettings({}, cmd).settings));
   const registryDir = path.join(root, 'sessions');
   fs.mkdirSync(registryDir);
+  const codexDir = path.join(root, '.codex');
+  const codexHooksFile = path.join(codexDir, 'hooks.json');
+  fs.mkdirSync(codexDir);
+  fs.writeFileSync(codexHooksFile, JSON.stringify(mergeCodexHooks({}, `node "${bin}/claude-hook.mjs" codex`).next));
   const wikiPath = path.join(root, 'wiki');
   const hubDir = path.join(wikiPath, 'AI-Sessions', 'wiki', 'projects', 'x');
   fs.mkdirSync(hubDir, { recursive: true });
   fs.writeFileSync(path.join(hubDir, '00 x 허브.md'), '---\nproject: x\nproject_path: /Users/seop/developer/x/\n---\n');
   const urls: string[] = [];
   const env: DoctorEnv = {
-    home, settingsFile, repoRoot, registryDir, wikiPath,
+    home, settingsFile, repoRoot, registryDir, wikiPath, codexDir, codexHooksFile,
     isAlive: () => true,
     launchdRunning: () => true,
     getText: async (url) => { urls.push(url); return url.endsWith('/healthz') ? 'ok' : null; },
-    getJson: async (url) => { urls.push(url); return { startedAt: 0, lastHookAt: Date.now() - 3 * 60_000, registry: 'ok', sessions: 1, hookless: 0 }; },
+    getJson: async (url) => { urls.push(url); return { startedAt: 0, lastHookAt: Date.now() - 3 * 60_000, registry: 'ok', sessions: 1, hookless: 0, lastCodexHookAt: Date.now() - 5 * 60_000 }; },
   };
-  return { root, home, env, urls, settingsFile, repoRoot, registryDir, hubDir };
+  return { root, home, env, urls, settingsFile, repoRoot, registryDir, hubDir, codexDir, codexHooksFile };
 }
 
 const byName = (checks: Awaited<ReturnType<typeof runChecks>>, name: string) => checks.find((c) => c.name === name)!;
 
-test('모두 정상 → ✓ 9개(이 순서), 종료 코드 0, 서버는 endpoint.json 포트로', async () => {
+test('모두 정상 → ✓ 11개(이 순서), 종료 코드 0, 서버는 endpoint.json 포트로', async () => {
   const { env, urls } = setup();
   const checks = await runChecks(env);
   assert.deepEqual(checks.map((c) => c.name), NAMES);
-  assert.deepEqual(checks.map((c) => c.level), Array(9).fill('ok'));
+  assert.deepEqual(checks.map((c) => c.level), Array(11).fill('ok'));
+  assert.equal(byName(checks, '마지막 Codex 훅').hint, '5분 전');
   assert.equal(exitCode(checks), 0);
   assert.ok(urls.includes('http://127.0.0.1:5001/healthz'));
   assert.equal(byName(checks, '마지막 훅').hint, '3분 전');
@@ -134,4 +140,27 @@ test('읽기 전용: 점검 전후 파일 목록이 같고 config.json을 만들
   const before = list();
   await runChecks(env);
   assert.deepEqual(list(), before);
+});
+
+test('Codex 폴더 없음 → 두 줄 ⚠ Codex 없음, 종료 코드 0', async () => {
+  const { env, codexDir } = setup();
+  fs.rmSync(codexDir, { recursive: true });
+  const checks = await runChecks(env);
+  for (const n of ['Codex 훅 등록 (12개)', '마지막 Codex 훅']) assert.deepEqual([byName(checks, n).level, byName(checks, n).hint], ['warn', 'Codex 없음']);
+  assert.equal(exitCode(checks), 0);
+});
+
+test('Codex Interrupt 훅 빠짐 → ✗(안내에 Interrupt), lastCodexHookAt null → ⚠ 신뢰 확인', async () => {
+  const { env, codexHooksFile } = setup();
+  const f = JSON.parse(fs.readFileSync(codexHooksFile, 'utf8'));
+  delete f.hooks.Interrupt;
+  fs.writeFileSync(codexHooksFile, JSON.stringify(f));
+  env.getJson = async () => ({ startedAt: 0, lastHookAt: Date.now(), registry: 'ok', sessions: 0, hookless: 0, lastCodexHookAt: null });
+  const checks = await runChecks(env);
+  const reg = byName(checks, 'Codex 훅 등록 (12개)');
+  assert.equal(reg.level, 'fail');
+  assert.match(reg.hint ?? '', /Interrupt/);
+  const last = byName(checks, '마지막 Codex 훅');
+  assert.equal(last.level, 'warn');
+  assert.match(last.hint ?? '', /신뢰/);
 });

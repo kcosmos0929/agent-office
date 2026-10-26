@@ -1,7 +1,8 @@
-import type { Group, Status } from './types.ts';
+import type { AgentKind, Group, Status } from './types.ts';
 
 export const STATUS_LABEL: Record<Status, string> = {
   permission: '❗\uFE0F 승인 필요', // \uFE0F: 그림 문자로 고정(픽셀 글꼴의 흑백 ❗ 대신)
+  approving: '🛡️ 승인 확인 중',
   question: '❓\uFE0F 질문 대기',
   done: '✅ 끝남 · 내 차례',
   thinking: '💭 생각 중',
@@ -18,6 +19,7 @@ export const STATUS_LABEL: Record<Status, string> = {
 
 const GROUP: Record<Status, Group> = {
   permission: 'urgent',
+  approving: 'working',
   question: 'urgent',
   done: 'waiting',
   thinking: 'working',
@@ -40,6 +42,9 @@ export function groupOf(s: Status): Group {
 export const HAT_COLORS: string[] = ['#2F4B7C', '#C04A6B', '#3E7C4A', '#6B4E9B', '#B5651D', '#2C7A8C', '#8C2C3C', '#5C5C5C'];
 
 export const KIND_COLOR = { claude: '#D97757', codex: '#2F8F83', aria: '#8B6CC9' } as const;
+
+/** 이름에 쓰는 에이전트 종류 이름 */
+export const KIND_LABEL: Record<AgentKind, string> = { claude: 'Claude', codex: 'Codex' };
 
 export const WAIT_COLOR = '#F5A524';
 
