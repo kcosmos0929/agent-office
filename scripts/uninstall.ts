@@ -1,7 +1,7 @@
-// 제거: settings.json·Codex hooks.json에서 우리 것만 빼고(백업 후), 자동 켜기와 아이콘 앱을 지운다. ~/.synthetic-office(설정·토큰)는 남긴다.
+// 제거: settings.json·Codex hooks.json에서 우리 것만 빼고(백업 후, 파일은 지우지 않음), 자동 켜기와 아이콘 앱을 지운다. ~/.synthetic-office(설정·토큰)는 남긴다.
 import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
-import { removeCodexHooks } from './lib/codexHooksMerge.ts';
+import { codexUninstallEdit } from './lib/codexHooksMerge.ts';
 import { removeClaudeSettings } from './lib/settingsMerge.ts';
 import { APP, CLAUDE_SETTINGS, CODEX_HOOKS, LABEL, PLIST, UID, backupSettings, updateJsonFile } from './lib/system.ts';
 
@@ -19,15 +19,12 @@ if (claude.kind === 'written') {
   console.log('settings.json에서 Synthetic Office 훅·상태줄을 뺐어요');
 }
 
-// Codex: 우리 훅만 빼고, 남는 게 없으면 우리가 만든 hooks.json을 지운다. 실패해도 나머지 제거는 계속(경고만)
+// Codex: 우리 훅만 빼고 다시 쓴다(다 빠지면 {}). 파일은 지우지 않는다 — 바로가기·원래 있던 파일 보호. 실패해도 나머지 제거는 계속(경고만)
 if (fs.existsSync(CODEX_HOOKS)) {
-  const codex = updateJsonFile(CODEX_HOOKS, (f) => {
-    const r = removeCodexHooks(f);
-    return { next: r.next, changed: r.changed, conflict: null, remove: r.empty };
-  }, () => backupSettings('제거전', CODEX_HOOKS, 'codex-hooks'));
-  if (codex.kind === 'written' || codex.kind === 'removed') {
+  const codex = updateJsonFile(CODEX_HOOKS, codexUninstallEdit, () => backupSettings('제거전', CODEX_HOOKS, 'codex-hooks'));
+  if (codex.kind === 'written') {
     if (codex.backup) console.log(`백업: ${codex.backup}`);
-    console.log(codex.kind === 'removed' ? 'Codex hooks.json을 지웠어요(우리 훅만 있었음)' : 'Codex hooks.json에서 Synthetic Office 훅을 뺐어요');
+    console.log('Codex hooks.json에서 Synthetic Office 훅을 뺐어요');
   } else if (codex.kind !== 'unchanged') {
     console.warn(`⚠ Codex hooks.json을 정리하지 못했어요(${codex.kind === 'conflict' ? codex.message : '계속 바뀜'}) — 직접 확인해 주세요`);
   }

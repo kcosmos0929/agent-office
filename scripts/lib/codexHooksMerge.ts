@@ -25,11 +25,16 @@ export function mergeCodexHooks(file: Record<string, unknown>, command: string):
 }
 
 /** 우리 것만 뺀다. empty = 훅이 다 비고 다른 키도 없음(그러면 파일을 지워도 됨) */
-export function removeCodexHooks(file: Record<string, unknown>): { next: Record<string, unknown>; changed: boolean; empty: boolean } {
-  if (!isObject(file.hooks)) return { next: file, changed: false, empty: false };
+export function removeCodexHooks(file: Record<string, unknown>): { next: Record<string, unknown>; changed: boolean } {
+  if (!isObject(file.hooks)) return { next: file, changed: false };
   const next = structuredClone(file);
   const hooks = next.hooks as Record<string, unknown>;
   const changed = removeOurHooks(hooks);
   if (Object.keys(hooks).length === 0) delete next.hooks;
-  return { next: changed ? next : file, changed, empty: changed && Object.keys(next).length === 0 };
+  return { next: changed ? next : file, changed };
+}
+
+/** 제거(uninstall)에서 updateJsonFile에 넘기는 편집. 파일은 절대 지우지 않는다 — 다 빠지면 {}로 남음(바로가기·원래 있던 파일 보호, 2026-10-26 사용자 결정) */
+export function codexUninstallEdit(file: Record<string, unknown>) {
+  return { ...removeCodexHooks(file), conflict: null };
 }

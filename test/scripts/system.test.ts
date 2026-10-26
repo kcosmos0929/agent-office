@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { backupSettings, readSettingsFile, stableNodePath, updateJsonFile, writeSettingsIfUnchanged } from '../../scripts/lib/system.ts';
+import { codexUninstallEdit, mergeCodexHooks } from '../../scripts/lib/codexHooksMerge.ts';
 
 function tempSettings(content: string | null): string {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'so-set-'));
@@ -93,10 +94,7 @@ test('updateJsonFile: 그사이 다른 프로그램이 바꾸면 다시 읽어 �
   assert.deepEqual(busy, { kind: 'busy' });
 });
 
-test('updateJsonFile: remove면 원문 비교 뒤 파일 삭제(removed), 깨진 JSON은 conflict', () => {
-  const f = tmpFile('{"mine":true}');
-  assert.deepEqual(updateJsonFile(f, () => ({ next: {}, changed: true, conflict: null, remove: true }), () => 'b'), { kind: 'removed', backup: 'b' });
-  assert.equal(fs.existsSync(f), false);
+test('updateJsonFile: 깨진 JSON은 conflict, 파일 그대로', () => {
   const bad = tmpFile('{ not json');
   assert.equal(updateJsonFile(bad, addMine, () => null).kind, 'conflict');
   assert.equal(fs.readFileSync(bad, 'utf8'), '{ not json');
@@ -129,4 +127,18 @@ test('updateJsonFile: 쓰기·백업 I/O 오류는 던지지 않고 conflict(오
   const r2 = updateJsonFile(tmpFile('{}'), addMine, () => { throw Object.assign(new Error('꽉 참'), { code: 'ENOSPC' }); });
   assert.equal(r2.kind, 'conflict');
   assert.match(r2.kind === 'conflict' ? r2.message : '', /ENOSPC/);
+});
+
+test('Codex 제거는 hooks.json을 절대 지우지 않음: 우리 훅만 있던 파일도 {}로, 바로가기면 링크·원본 둘 다 남음 (리뷰 P1)', () => {
+  const CMD = '"/opt/homebrew/bin/node" "/Users/seop/.synthetic-office/bin/claude-hook.mjs" codex';
+  const ours = JSON.stringify(mergeCodexHooks({}, CMD).next);
+  const f = tmpFile(ours);
+  assert.equal(updateJsonFile(f, codexUninstallEdit, () => null).kind, 'written');
+  assert.deepEqual(JSON.parse(fs.readFileSync(f, 'utf8')), {});
+  const real = tmpFile(ours);
+  const link = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'so-lnk-')), 'hooks.json');
+  fs.symlinkSync(real, link);
+  assert.equal(updateJsonFile(link, codexUninstallEdit, () => null).kind, 'written');
+  assert.equal(fs.lstatSync(link).isSymbolicLink(), true);
+  assert.deepEqual(JSON.parse(fs.readFileSync(real, 'utf8')), {});
 });

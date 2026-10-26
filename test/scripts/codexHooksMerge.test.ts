@@ -38,13 +38,13 @@ test('hooks가 객체가 아니거나 사건 값이 배열이 아니면 conflict
   assert.equal(mergeCodexHooks({ hooks: { Stop: 'x' } }, CMD).changed, false);
 });
 
-test('remove: 우리 것만 빼고, 다 빠지면 empty true(description이 남으면 false)', () => {
+test('remove: 우리 것만 빼고, 다 빠지면 {}', () => {
   const mine = mergeCodexHooks({}, CMD).next;
   const r = removeCodexHooks(mine);
-  assert.deepEqual([r.changed, r.empty], [true, true]);
+  assert.deepEqual([r.changed, r.next], [true, {}]);
   const mixed = mergeCodexHooks({ description: 'x', hooks: { Stop: [{ hooks: [OTHER] }] } }, CMD).next;
   const r2 = removeCodexHooks(mixed);
-  assert.deepEqual([r2.changed, r2.empty], [true, false]);
+  assert.equal(r2.changed, true);
   assert.deepEqual(r2.next, { description: 'x', hooks: { Stop: [{ hooks: [OTHER] }] } });
   assert.deepEqual(removeCodexHooks({}).changed, false);
 });

@@ -77,26 +77,12 @@ export function writeSettingsIfUnchanged(settings: Record<string, unknown>, expe
 export type UpdateResult =
   | { kind: 'unchanged' }
   | { kind: 'written'; backup: string | null }
-  | { kind: 'removed'; backup: string | null }
   | { kind: 'conflict'; message: string }
   | { kind: 'busy' };
 
-type Edit = (current: Record<string, unknown>) => { next: Record<string, unknown>; changed: boolean; conflict: string | null; remove?: boolean };
+type Edit = (current: Record<string, unknown>) => { next: Record<string, unknown>; changed: boolean; conflict: string | null };
 
-/** 원문이 읽은 그대로일 때만 지운다(바로가기면 진짜 파일). 그사이 바뀌었으면 false */
-function removeIfUnchanged(file: string, expectedRaw: string | null): boolean {
-  let target = file;
-  try {
-    target = fs.realpathSync(file);
-  } catch {
-    return expectedRaw === null;
-  }
-  if (currentRaw(target) !== expectedRaw) return false;
-  fs.rmSync(target);
-  return true;
-}
-
-/** 읽기 → edit → 백업 → 원문 비교 쓰기(또는 지우기). 그사이 다른 프로그램이 바꾸면 다시 읽어 최대 3번 */
+/** 읽기 → edit → 백업 → 원문 비교 쓰기. 그사이 다른 프로그램이 바꾸면 다시 읽어 최대 3번. 파일을 지우는 길은 없다 */
 export function updateJsonFile(file: string, edit: Edit, backup: () => string | null): UpdateResult {
   for (let attempt = 1; attempt <= 3; attempt++) {
     let read: { raw: string | null; settings: Record<string, unknown> };
@@ -113,11 +99,11 @@ export function updateJsonFile(file: string, edit: Edit, backup: () => string | 
     let done: boolean;
     try {
       saved = backup();
-      done = r.remove ? removeIfUnchanged(file, read.raw) : writeSettingsIfUnchanged(r.next, read.raw, file);
+      done = writeSettingsIfUnchanged(r.next, read.raw, file);
     } catch (err) {
       return { kind: 'conflict', message: `${file}을 쓰지 못했어요(${(err as NodeJS.ErrnoException).code ?? (err as Error).message})` };
     }
-    if (done) return { kind: r.remove ? 'removed' : 'written', backup: saved };
+    if (done) return { kind: 'written', backup: saved };
   }
   return { kind: 'busy' };
 }
