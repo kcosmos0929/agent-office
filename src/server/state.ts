@@ -26,6 +26,10 @@ const SLOTS = 8;
 /** 나를 기다리는 상태(❗·❓, 그리고 ❗가 되기 전의 🛡️) */
 const WAITS = new Set<Status>(['permission', 'approving', 'question']);
 const APPROVAL_DELAY_MS = 5_000;
+/** 열기만 한 세션: 이 신호들만으로는 보드에 올리지 않는다(앱이 지난 세션을 열 때 시작 신호만 옴) */
+const NOT_WORK = new Set<OfficeEvent['type']>(['session-start', 'title', 'idle', 'session-end']);
+/** 훅 없이 등록부로만 보는 idle 세션: 프로세스 시작 뒤 이만큼 넘어 상태가 바뀌었으면 한 차례라도 일한 것 */
+const OPENED_ONLY_MS = 10_000;
 /** 도구 끝 신호가 늦게 와도 바꾸지 않는 상태 */
 const SETTLED = new Set<Status>(['done', 'idle', 'gone', 'quota', 'compacting']);
 /** 등록부만 있고 훅이 없는 세션이 이만큼 일하는 중이면 '훅 없음' */
@@ -50,6 +54,8 @@ type Entry = {
   waitSince: number | null;
   /** 승인 대기마다 시작 시각('main' 또는 도우미 id) — Codex 🛡️→❗를 남은 승인 중 가장 오래된 것 기준으로 */
   approvalSince: Map<string, number>;
+  /** 일을 한 번이라도 했나 — 아니면(열기만 함) 보드에 안 보이고 모자·자리도 안 받음 */
+  engaged: boolean;
   /** 만진 경로로 알아낸 마지막 프로젝트 — 있으면 시작 폴더 이름표보다 우선 */
   workProject: string | null;
   /** 서버가 켜진 뒤 이 세션의 훅을 받은 적 있나 / 마지막 훅 시각 */
@@ -112,6 +118,7 @@ export class OfficeState {
       a.project = entry.workProject ?? this.opts.resolveProject(e.cwd);
     }
 
+    if (!NOT_WORK.has(e.type)) this.engage(entry);
     if (e.subagentId) {
       this.applySubagentEvent(entry, e, e.subagentId);
     } else {
@@ -188,8 +195,23 @@ export class OfficeState {
     return entry.transcriptPath;
   }
 
+  /** 보드에 보이는 세션(일을 한 번이라도 한 것) */
+  private visible(): Agent[] {
+    return [...this.entries.values()].filter((x) => x.engaged).map((x) => x.agent);
+  }
+
+  /** 처음 일을 시작한 순간 보드에 올리고, 그때 비어 있는 모자·자리를 준다(열기만 한 세션이 자리를 막지 않게) */
+  private engage(entry: Entry): void {
+    if (entry.engaged) return;
+    const used = this.visible();
+    const a = entry.agent;
+    a.hat = firstFree(used.map((x) => x.hat), used.length % SLOTS);
+    a.seat = firstFree(used.filter((x) => x.kind === a.kind).map((x) => x.seat), -1);
+    entry.engaged = true;
+  }
+
   snapshot(now: number): Snapshot {
-    const agents = [...this.entries.values()].map(({ agent }) => ({ ...agent, subagents: agent.subagents.map((s) => ({ ...s })) }));
+    const agents = this.visible().map((agent) => ({ ...agent, subagents: agent.subagents.map((s) => ({ ...s })) }));
     return { agents, usage: this.usage, now, health: this.health(agents) };
   }
 
@@ -224,6 +246,9 @@ export class OfficeState {
     const a = entry.agent;
     entry.everInRegistry = true;
     entry.inRegistry = true;
+    // 훅 없이 등록부로만 보는 세션: 일하는 중·기다림이거나, 프로세스 시작 뒤 한 차례라도 했으면 보드에(열기만 한 세션은 숨김).
+    // 훅을 받은 세션은 훅이 일을 알려 준다
+    if (!entry.hookSeen && (x.status !== 'idle' || x.startedAt === undefined || x.statusUpdatedAt - x.startedAt > OPENED_ONLY_MS)) this.engage(entry);
     entry.missingReads = 0;
     const activeSince = x.status === 'idle' ? null : (entry.reg?.activeSince ?? Math.max(x.statusUpdatedAt, this.opts.startedAt));
     entry.reg = { status: x.status, updatedAt: x.statusUpdatedAt, activeSince };
@@ -323,7 +348,7 @@ export class OfficeState {
   }
 
   private newEntry(sessionId: string, cwd: string, since: number, now: number, kind: AgentKind = 'claude'): Entry {
-    const used = [...this.entries.values()].map((x) => x.agent);
+    const used = this.visible();
     // 자리는 종류별로 따로 매긴다(Codex는 3단계 개발실 자리) — 모자 색은 세션 구분용이라 같이 쓴다
     const sameKind = used.filter((a) => a.kind === kind);
     const agent: Agent = {
@@ -345,7 +370,7 @@ export class OfficeState {
       model: null,
     };
     const entry: Entry = {
-      agent, openTools: new Map(), transcriptPath: null, waitingMain: null, waitingSubs: new Map(), waitSince: null, approvalSince: new Map(), workProject: null,
+      agent, openTools: new Map(), transcriptPath: null, waitingMain: null, waitingSubs: new Map(), waitSince: null, approvalSince: new Map(), engaged: false, workProject: null,
       hookSeen: false, lastHookAt: null, reg: null, everInRegistry: false, inRegistry: false, missingReads: 0, regName: null, waitGuessed: false, stopError: null,
     };
     this.entries.set(sessionId, entry);
@@ -357,8 +382,10 @@ export class OfficeState {
     switch (e.type) {
       case 'session-start':
         if (a.status === 'gone') {
+          // 퇴근한 세션을 다시 열기만 함 → 메시지를 보낼 때까지 안 보임(모자·자리도 그때 다시)
           this.setStatus(a, 'done', e.at);
           a.detail = '새 세션';
+          entry.engaged = false;
         }
         return;
       case 'prompt':
@@ -575,7 +602,7 @@ export class OfficeState {
 
   /** 화면에 보이는 것: 에이전트들 + 등록부 상태(연결 띠 패널) */
   private fingerprint(): string {
-    return JSON.stringify([this.registry, ...[...this.entries.values()].map((x) => x.agent)]);
+    return JSON.stringify([this.registry, ...this.visible()]);
   }
 }
 

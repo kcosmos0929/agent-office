@@ -5,13 +5,14 @@ import type { RegistryHealth } from '../../shared/types.ts';
 import { clip } from './claudeHook.ts';
 
 export type RegistryStatus = 'busy' | 'waiting' | 'idle';
-export type RegistryEntry = { sessionId: string; pid: number; cwd: string; name: string | null; status: RegistryStatus; statusUpdatedAt: number };
+/** startedAt = 그 세션 프로세스가 시작된 시각(열기만 한 세션 가리기용, 없을 수 있음) */
+export type RegistryEntry = { sessionId: string; pid: number; cwd: string; name: string | null; status: RegistryStatus; statusUpdatedAt: number; startedAt?: number };
 export type RegistryRead = { health: RegistryHealth; entries: RegistryEntry[] };
 
 const STATUSES = new Set<string>(['busy', 'waiting', 'idle']);
 const DEBOUNCE_MS = 100;
 
-/** 대화형 세션 파일 하나 → 필요한 6개 필드. 형식이 다르면 null */
+/** 대화형 세션 파일 하나 → 필요한 7개 필드. 형식이 다르면 null */
 export function parseRegistryFile(text: string): RegistryEntry | null {
   let d: Record<string, unknown>;
   try {
@@ -20,7 +21,7 @@ export function parseRegistryFile(text: string): RegistryEntry | null {
     return null;
   }
   if (d === null || typeof d !== 'object' || d.kind !== 'interactive') return null;
-  const { sessionId, pid, status, statusUpdatedAt, cwd, name } = d;
+  const { sessionId, pid, status, statusUpdatedAt, cwd, name, startedAt } = d;
   if (typeof sessionId !== 'string' || !sessionId) return null;
   if (typeof pid !== 'number' || !Number.isInteger(pid) || pid <= 0) return null;
   if (typeof status !== 'string' || !STATUSES.has(status)) return null;
@@ -32,6 +33,7 @@ export function parseRegistryFile(text: string): RegistryEntry | null {
     name: typeof name === 'string' && name ? clip(name, 80) : null,
     status: status as RegistryStatus,
     statusUpdatedAt,
+    ...(typeof startedAt === 'number' && Number.isFinite(startedAt) ? { startedAt } : {}),
   };
 }
 
