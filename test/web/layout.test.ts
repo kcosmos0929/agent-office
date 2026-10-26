@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { IDLE_SPOTS, ROOMS, ROOM_DOORS, SPLIT_X, seatPosition, meetingSpot, waitingSpot, DOOR, pathTo, facingAt, forwardFrom, backwardFrom, type Point } from '../../web/src/office/layout.ts';
+import { CHAIR_PULLBACK, DESKS, DESK_DEPTH, IDLE_SPOTS, ROOMS, ROOM_DOORS, SPLIT_X, chairPosition, seatPosition, meetingSpot, waitingSpot, DOOR, pathTo, facingAt, forwardFrom, backwardFrom, type Point } from '../../web/src/office/layout.ts';
 import { targetFps } from '../../web/src/office/fps.ts';
 
 const inside = (p: { x: number; y: number }, r: { x0: number; y0: number; x1: number; y1: number }) => p.x > r.x0 && p.x < r.x1 && p.y > r.y0 && p.y < r.y1;
@@ -72,6 +72,26 @@ test('자리 없는 세션은 로비 안내 데스크 앞에 흩어져 기다리
     assert.deepEqual(facingAt(p), { x: 0, y: -1 });
   }
   assert.deepEqual(waitingSpot(0), seatPosition(-1));
+});
+
+test('의자 가운데: 상판 가장자리 바깥으로 (빼는 거리 − 0.02)만큼, 서 있는 자리와는 따로', () => {
+  assert.equal(CHAIR_PULLBACK, 0.2);
+  for (let i = 0; i < 8; i++) {
+    const d = DESKS[i];
+    const c = chairPosition(i);
+    const stand = seatPosition(i);
+    assert.equal(c.y, stand.y, '같은 줄(z)');
+    if (d.facing === 'px') {
+      assert.ok(Math.abs(c.x - (d.x0 + DESK_DEPTH + 0.18)) < 1e-9, `${i}: ${c.x}`);
+      assert.ok(c.x < stand.x, '의자가 서 있는 자리보다 책상 쪽');
+    } else {
+      assert.ok(Math.abs(c.x - (d.x0 - 0.18)) < 1e-9, `${i}: ${c.x}`);
+      assert.ok(c.x > stand.x, '의자가 서 있는 자리보다 책상 쪽');
+    }
+  }
+  // 빼기 전 위치(0)는 상판 안쪽 0.02 — 비교용
+  const px = DESKS.findIndex((d) => d.facing === 'px');
+  assert.ok(Math.abs(chairPosition(px, 0).x - (DESKS[px].x0 + DESK_DEPTH - 0.02)) < 1e-9);
 });
 
 test('머무는 곳에서 보는 방향: 책상 자리는 모니터 쪽, 회의실은 테이블 쪽', () => {

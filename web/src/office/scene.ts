@@ -3,7 +3,7 @@ import * as THREE from 'three';
 import { CSS2DObject } from 'three/examples/jsm/renderers/CSS2DRenderer.js';
 import { buildBackdrop, SLAB_H } from './backdrop.ts';
 import { armchair, beanBag, bigPlant, binders, bookshelf, boxStack, coatRack, copier, deskLamp, fileCabinet, fridge, FURN, lowCabinet, kitchenCounter, lowTable, officeChair, podDesk, podDivider, printer, receptionDesk, screenStand, shredder, smallPlant, sofa, stool, storageShelf, supplyCabinet, toilet, trashBin, vendingMachine, washbasin, waterCooler, whiteboard } from './furniture.ts';
-import { ARIA_DESK, ARIA_DESK_XS, ARIA_DESK_Y, DEV_DESK, DEV_DESKS, DESK_DEPTH, FLOOR_X, DESK_WIDTH, DESKS, MEETING_TABLE, POD_X0, POD_YS, ROOMS, meetingSpot } from './layout.ts';
+import { ARIA_DESK, ARIA_DESK_XS, ARIA_DESK_Y, DEV_DESK, DEV_DESKS, DESK_DEPTH, FLOOR_X, DESK_WIDTH, DESKS, MEETING_TABLE, POD_X0, POD_YS, ROOMS, chairPosition, meetingSpot } from './layout.ts';
 
 export const WALL_H = 3.0;
 
@@ -50,7 +50,7 @@ export function buildOffice(): OfficeScene {
   buildBackdrop(g);
 
   // 사무실: 4인 책상 묶음 2개(두 자리씩 마주 보고 가운데 칸막이). 순서는 seatPosition과 같게(DESKS)
-  const deskScreens = DESKS.map((d, seat) => podDesk(g, d.x0, d.y0, DESK_DEPTH, DESK_WIDTH, d.facing, seat));
+  const deskScreens = DESKS.map((d, seat) => podDesk(g, d.x0, d.y0, DESK_DEPTH, DESK_WIDTH, d.facing, seat, chairPosition(seat)));
   for (const y0 of POD_YS) {
     podDivider(g, POD_X0 + DESK_DEPTH, y0, 2 * DESK_WIDTH + 0.04);
     trashBin(g, POD_X0 + DESK_DEPTH - 0.11, y0 + 2 * DESK_WIDTH + 0.25);

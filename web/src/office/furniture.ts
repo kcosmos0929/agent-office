@@ -51,10 +51,10 @@ export function bigPlant(g: THREE.Group, x0: number, z0: number): void {
 
 /**
  * 책상 묶음의 책상 하나: 나무 상판 + 검은 다리 + 모니터(사람 쪽을 봄) + 키보드 + 서랍장 + 의자.
- * x0..x0+w(깊이), z0..z0+d(폭). facing = 사람이 앉는 쪽(px: +x, nx: -x). variant(자리 번호)로 책상 위 소품을 조금씩 다르게.
+ * x0..x0+w(깊이), z0..z0+d(폭). facing = 사람이 앉는 쪽(px: +x, nx: -x). variant(자리 번호)로 책상 위 소품을 조금씩 다르게. chair = 의자 가운데.
  * 모니터 화면(상태 색을 칠할 면)을 돌려준다.
  */
-export function podDesk(g: THREE.Group, x0: number, z0: number, w: number, d: number, facing: 'px' | 'nx', variant: number): THREE.Mesh {
+export function podDesk(g: THREE.Group, x0: number, z0: number, w: number, d: number, facing: 'px' | 'nx', variant: number, chair: { x: number; y: number }): THREE.Mesh {
   const zc = z0 + d / 2;
   const top = 0.58;
   // u = 칸막이 쪽 가장자리에서 사람 쪽으로 잰 거리 → 세계 x(크기 size인 상자의 시작)
@@ -82,8 +82,8 @@ export function podDesk(g: THREE.Group, x0: number, z0: number, w: number, d: nu
   g.add(block(X(0.6, 0.07), zc - 0.5, 0.07, 0.07, top + 0.05, 0.09, ['#E0533D', '#E8ECEF', '#3E6E8E', '#C9A04A'][variant % 4]));
   if (variant % 3 === 0) smallPlant(g, X(0.06, 0.14), zc + 0.42, top + 0.05);
   if (variant % 2 === 1) deskLamp(g, X(0.08, 0.16), zc - 0.72, top + 0.05);
-  // 의자: 책상 밑으로 반쯤 밀어 넣어 캐릭터 자리 바로 뒤에
-  officeChair(g, facing === 'px' ? x0 + w - 0.02 : x0 + 0.02, zc, facing);
+  // 의자: 앉은 몸통이 상판 밖에 오도록 책상에서 조금 뺀 자리(layout.chairPosition)
+  officeChair(g, chair.x, chair.y, facing);
   return screen;
 }
 

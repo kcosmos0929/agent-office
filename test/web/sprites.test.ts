@@ -5,7 +5,7 @@ import path from 'node:path';
 import type { Status } from '../../src/shared/types.ts';
 import {
   ANCHOR, CELL, DIRS, DOT, FACES, LAYERS, LOOKS, PACE_FPS, STEP, UPRIGHT,
-  dirFor, faceFor, headTop, lookFor, partPath, planeOffset, planeSize, walkSpeed,
+  SEATED_ANCHOR, dirFor, faceFor, headTop, lookFor, partPath, planeOffset, planeSize, seatedDir, walkSpeed,
 } from '../../web/src/office/sprites/look.ts';
 
 const PARTS = path.resolve(import.meta.dirname, '../../web/public/characters/v15');
@@ -74,4 +74,10 @@ test('판: 1440×900 창에서 도트 하나 = 0.75 CSS 점, 발 기준점이 �
   }
   assert.ok(headTop() > 1.4 && headTop() < 1.7, String(headTop()));
   assert.ok(Math.abs(planeSize(0.8).w - 0.8 * w) < 1e-12);
+});
+
+test('앉은 그림: 책상 바깥 자리 NW·창 쪽 SE, 기준점은 의자 가운데 바닥(v16 pose.json)', () => {
+  assert.equal(seatedDir('px'), 'NW');
+  assert.equal(seatedDir('nx'), 'SE');
+  assert.deepEqual(SEATED_ANCHOR, { SE: [34, 85], NW: [29, 85] });
 });

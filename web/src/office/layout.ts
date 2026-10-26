@@ -87,7 +87,18 @@ const CROSS_Y = 9.2;
 /** 책상 묶음 양옆 세로 통로: 창 쪽, 유리벽 쪽 */
 const AISLE_X = { window: 1.0, glass: 6.4 };
 
-/** 0~7 → 사무실 책상 앞 자리, 그 밖(-1 등) → 로비 대기 자리 */
+/** 사무용 의자를 책상 가장자리 안쪽(0.02)에서 책상 반대쪽으로 빼는 거리 — 앉은 몸통이 상판에 묻히지 않게(Codex 앉기 v16 요청, 2026-10-26) */
+export const CHAIR_PULLBACK = 0.2;
+const CHAIR_TUCK = 0.02;
+
+/** 0~7 → 의자 가운데(바닥). 앉은 그림은 이 점에 맞춘다. 서 있는 자리(seatPosition)와 다르다 */
+export function chairPosition(seat: number, pullback = CHAIR_PULLBACK): Point {
+  const d = DESKS[seat];
+  const x = d.facing === 'px' ? d.x0 + DESK_DEPTH - CHAIR_TUCK + pullback : d.x0 + CHAIR_TUCK - pullback;
+  return { x, y: d.y0 + DESK_WIDTH / 2 };
+}
+
+/** 0~7 → 사무실 책상 앞 서 있는 자리(걷기·서기 그림의 발), 그 밖(-1 등) → 로비 대기 자리 */
 export function seatPosition(seat: number): Point {
   if (seat < 0 || seat > 7) return WAITING_SPOT;
   const d = DESKS[seat];
