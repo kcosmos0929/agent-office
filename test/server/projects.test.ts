@@ -121,3 +121,23 @@ test('makeWorkResolver: 위키 안 프로젝트 폴더 4종·코드 폴더·작�
   assert.equal(work('~/없는/폴더/x', vault), null);
   assert.equal(work('', vault), null);
 });
+
+test('makeWorkResolver: ~ 경로의 ..를 풀고, 심볼릭 링크는 실제 대상으로 판정, 없는 경로는 글자대로 (리뷰 P2)', () => {
+  const home = os.homedir();
+  const homeWork = makeWorkResolver({ entries: [{ slug: 'so', path: path.join(home, 'so-fake-proj').toLowerCase() }], titles: {}, known: new Set() }, { so: 'SO' }, VAULT);
+  assert.equal(homeWork('~/so-fake-proj/a.ts', VAULT), 'SO');
+  assert.equal(homeWork('~/so-fake-proj/../so-fake-other/a.py', VAULT), null);
+
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'so-link-'));
+  const so = path.join(root, 'dev', 'so');
+  const lst = path.join(root, 'dev', 'lst');
+  fs.mkdirSync(path.join(so, 'src'), { recursive: true });
+  fs.mkdirSync(path.join(lst, 'src'), { recursive: true });
+  fs.symlinkSync(lst, path.join(so, 'lst-link')); // 프로젝트 안에서 다른 저장소를 가리킴
+  fs.mkdirSync(path.join(root, 'elsewhere'));
+  fs.symlinkSync(so, path.join(root, 'elsewhere', 'so-link')); // 밖에서 프로젝트를 가리킴
+  const work = makeWorkResolver({ entries: [{ slug: 'so', path: so.toLowerCase() }, { slug: 'lst', path: lst.toLowerCase() }], titles: {}, known: new Set() }, { so: 'SO', lst: 'LST' }, path.join(root, 'vault'));
+  assert.equal(work(path.join(so, 'lst-link', 'src', 'a.py'), root), 'LST');
+  assert.equal(work(path.join(root, 'elsewhere', 'so-link', 'src', 'b.ts'), root), 'SO');
+  assert.equal(work(path.join(so, 'src', '새파일.ts'), root), 'SO'); // 아직 없는 파일(부모 폴더는 있음)
+});

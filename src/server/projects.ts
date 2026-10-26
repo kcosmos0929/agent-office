@@ -136,7 +136,7 @@ function makeMainRepoFinder(): (p: string) => string | null {
       if (st.isDirectory()) found = null; // 그 자체가 원래 저장소
       else if (st.isFile()) {
         const m = /^gitdir:\s*(.+?)\/\.git\/worktrees\//m.exec(fsSync.readFileSync(git, 'utf8'));
-        found = m ? normalize(m[1]) : null;
+        found = m ? realNormalize(m[1]) : null;
       }
     } catch {
       found = undefined; // .git 없음 → 위로 계속
@@ -154,20 +154,37 @@ function makeMainRepoFinder(): (p: string) => string | null {
   };
 }
 
+/** 실제 경로(심볼릭 링크를 따라감) — 아직 없는 경로는 있는 가장 가까운 윗폴더의 실제 경로에 나머지를 붙임. 그 뒤 normalize */
+function realNormalize(p: string): string {
+  let dir = path.resolve(p);
+  const rest: string[] = [];
+  for (let i = 0; i < 40; i++) {
+    try {
+      return normalize(path.join(fsSync.realpathSync.native(dir), ...rest));
+    } catch {
+      if (dir === path.dirname(dir)) break;
+      rest.unshift(path.basename(dir));
+      dir = path.dirname(dir);
+    }
+  }
+  return normalize(p);
+}
+
 /**
  * 세션이 만진 경로 → 프로젝트 이름표(모르면 null = 이름표를 바꾸지 않음).
  * 위키 안은 프로젝트 폴더만(공통 파일·library·handoff는 null), 밖은 허브의 project_path(작업 트리는 원래 저장소로).
  */
 export function makeWorkResolver(index: ProjectIndex, names: Record<string, string>, vaultPath: string): (p: string, cwd: string) => string | null {
-  const sorted = [...index.entries].sort((a, b) => b.path.length - a.path.length);
-  const vault = normalize(vaultPath);
+  // 비교는 모두 실제 경로로: 프로젝트 안에서 다른 저장소를 가리키는 링크·밖에서 프로젝트를 가리키는 링크를 바르게
+  const sorted = index.entries.map((e) => ({ ...e, path: realNormalize(e.path) })).sort((a, b) => b.path.length - a.path.length);
+  const vault = realNormalize(vaultPath);
   const label = makeLabel(names, index.titles);
   const mainRepo = makeMainRepoFinder();
   const byPath = (p: string) => sorted.find((e) => within(p, e.path));
   return (raw, cwd) => {
     if (!raw.trim()) return null;
-    const expanded = raw.startsWith('~') ? raw : path.resolve(cwd || '/', raw);
-    const p = normalize(expanded);
+    const home = raw === '~' || raw.startsWith('~/') ? path.join(os.homedir(), raw.slice(1)) : raw;
+    const p = realNormalize(path.resolve(cwd || '/', home)); // ~ 풀고 . · .. 정리 → 링크 따라감
     if (within(p, vault)) {
       const m = VAULT_PROJECT_DIR.exec(p.slice(vault.length + 1) + '/');
       return m && index.known.has(m[1]) ? label(m[1]) : null;
