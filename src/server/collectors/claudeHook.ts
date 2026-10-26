@@ -148,13 +148,15 @@ export function hookToEvents(payload: unknown, now: number, tools: ToolDialect =
       const input = p.tool_input !== null && typeof p.tool_input === 'object' ? (p.tool_input as Json) : {};
       const start: OfficeEvent = { ...base, type: 'tool-start', toolUseId: str(p.tool_use_id) ?? '', activity: tools.classify(tool, input), detail: tools.summarize(tool, p.tool_input) };
       // 질문 도구는 시작하자마자 사용자 답을 기다린다
-      if (tool === ASK_TOOL) return [start, { ...base, type: 'question', detail: null }];
-      // 상자 질문은 차례가 끝난 뒤에야 답을 기다린다 → 표시만 해 두고 Stop 때 ❓
-      if (tool === WRAP_UP && input.asks === true) return [start, { ...base, type: 'turn-ask' }];
-      return [start];
+      return tool === ASK_TOOL ? [start, { ...base, type: 'question', detail: null }] : [start];
     }
-    case 'PostToolUse':
-      return [{ ...base, type: 'tool-end', toolUseId: str(p.tool_use_id) ?? '' }];
+    case 'PostToolUse': {
+      const end: OfficeEvent = { ...base, type: 'tool-end', toolUseId: str(p.tool_use_id) ?? '' };
+      if (tool !== WRAP_UP) return [end];
+      // 상자가 실제로 뜬(성공한) 호출만 — 질문은 차례가 끝난 뒤에야 답을 기다리므로 표시만 해 두고 Stop 때 ❓
+      const input = p.tool_input !== null && typeof p.tool_input === 'object' ? (p.tool_input as Json) : {};
+      return [end, { ...base, type: 'wrap-up', asks: input.asks === true }];
+    }
     case 'PostToolUseFailure': {
       const end: OfficeEvent = { ...base, type: 'tool-end', toolUseId: str(p.tool_use_id) ?? '' };
       // 사용자가 도구 도중에 끊으면 Stop 훅이 오지 않는다 → 차례가 끝난 것으로

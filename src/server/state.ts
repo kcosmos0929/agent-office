@@ -314,7 +314,8 @@ export class OfficeState {
         const tools = [...entry.openTools.values()];
         this.clearWaits(entry);
         const helping = a.subagents.length > 0;
-        if (entry.stopError) {
+        if (entry.stopError || entry.turnEnded) {
+          // 메인 차례가 이미 끝남(도우미 대기만 풀림) → 차례 끝 표시(상자 질문이면 ❓, 도우미가 일하면 👥)
           this.finishTurn(entry, x.statusUpdatedAt);
         } else if (w === 'permission') {
           const last = tools.at(-1);
@@ -329,8 +330,9 @@ export class OfficeState {
         // 등록부는 백그라운드 도우미가 일하는 동안 busy라서(실측) 쉼이면 도우미 목록도 비운다
         this.clearWork(entry);
         a.subagents = [];
-        this.setStatus(a, 'done', x.statusUpdatedAt);
-        a.detail = null;
+        // Stop보다 먼저 올 수 있다 → 상자 질문은 남겨 두고 차례 끝 표시로(❓ 또는 ✅)
+        entry.turnEnded = true;
+        this.finishTurn(entry, x.statusUpdatedAt);
       } else if (this.opts.registryWaitRule && !w && groupOf(a.status) === 'working' && x.status === 'waiting'
         && now - x.statusUpdatedAt >= WAIT_GRACE_MS && (entry.lastHookAt ?? 0) < x.statusUpdatedAt) {
         // R2: 훅 없이 나를 기다림(앱이 질문·승인을 차례로 묻는 경우 등)
@@ -434,6 +436,7 @@ export class OfficeState {
         return;
       case 'prompt':
         entry.turnEnded = false;
+        entry.turnAsk = false; // 내가 답함
         this.clearWork(entry);
         // Codex 도우미는 그 차례에 묶인다 — Codex엔 등록부·idle 알림이 없어, 놓친 SubagentStop을 여기서 거둔다
         if (a.kind === 'codex') a.subagents = [];
@@ -469,8 +472,8 @@ export class OfficeState {
         entry.waitingMain = e.type;
         this.enterWait(entry, e.type, e.detail, e.at);
         return;
-      case 'turn-ask':
-        entry.turnAsk = true;
+      case 'wrap-up':
+        entry.turnAsk = e.asks; // 한 차례에 상자를 다시 띄우면 마지막 것이 기준
         return;
       case 'stop': {
         entry.turnEnded = true;
@@ -500,6 +503,7 @@ export class OfficeState {
         // 직접 /compact는 끝나면 내 차례, 자동 정리는 차례 도중이라 이어서 일함
         if (e.trigger === 'manual') {
           this.clearWork(entry);
+          entry.turnAsk = false; // 내가 /compact를 침 = 답함
           this.setStatus(a, 'done', e.at);
         } else {
           this.setStatus(a, 'thinking', e.at);
@@ -533,6 +537,7 @@ export class OfficeState {
         return;
       case 'session-end':
         this.clearWork(entry);
+        entry.turnAsk = false;
         a.subagents = [];
         this.setStatus(a, 'gone', e.at);
         a.detail = null;
@@ -546,8 +551,9 @@ export class OfficeState {
         // 입력을 기다린다는 알림: 일하던 중이었다면(Stop 없이 끝난 차례) 내 차례로. 승인 대기는 건드리지 않는다
         if (groupOf(a.status) !== 'working') return;
         this.clearWork(entry);
-        this.setStatus(a, 'done', e.at);
-        a.detail = null;
+        // Stop보다 먼저 올 수 있다 → 상자 질문은 남겨 두고 차례 끝 표시로(❓ 또는 ✅)
+        entry.turnEnded = true;
+        this.finishTurn(entry, e.at);
         return;
     }
   }
@@ -652,7 +658,6 @@ export class OfficeState {
   private clearWork(entry: Entry): void {
     entry.openTools.clear();
     entry.stopError = null;
-    entry.turnAsk = false;
     this.clearWaits(entry);
   }
 

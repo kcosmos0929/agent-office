@@ -147,13 +147,17 @@ test('AskUserQuestion: PreToolUse → tool-start + question, PermissionRequest �
   assert.deepEqual(kinds({ ...fx('ask-question'), hook_event_name: 'PermissionRequest' }), [{ type: 'question', detail: null }]);
 });
 
-test('다음 할 일 상자(wrap_up): 질문 있으면 tool-start + turn-ask, 없거나 다른 도구면 tool-start만', () => {
-  const p = { session_id: 's1', hook_event_name: 'PreToolUse', cwd: '/x', tool_name: 'mcp__ccd_turn__wrap_up', tool_use_id: 'w1', tool_input: { asks: true } };
-  const types = (q: object) => kinds(q).map((e) => e.type);
-  assert.deepEqual(types(p), ['tool-start', 'turn-ask']);
-  assert.deepEqual(types({ ...p, tool_input: {} }), ['tool-start']);
-  assert.deepEqual(types({ ...p, tool_name: 'Bash' }), ['tool-start']);
-  assert.deepEqual(types({ ...p, hook_event_name: 'PostToolUse' }), ['tool-end']);
+test('다음 할 일 상자(wrap_up): 성공한 호출(PostToolUse)에서만 wrap-up + 질문 여부, 시작·실패·중단·다른 도구는 그대로 (리뷰 P2)', () => {
+  const p = { session_id: 's1', hook_event_name: 'PostToolUse', cwd: '/x', tool_name: 'mcp__ccd_turn__wrap_up', tool_use_id: 'w1', tool_input: { asks: true } };
+  const end = { type: 'tool-end', toolUseId: 'w1' };
+  assert.deepEqual(kinds(p), [end, { type: 'wrap-up', asks: true }]);
+  // 질문 없는 상자도 알린다 — 한 차례에 상자를 다시 띄우면 마지막 것이 기준
+  assert.deepEqual(kinds({ ...p, tool_input: {} }), [end, { type: 'wrap-up', asks: false }]);
+  assert.deepEqual(kinds({ ...p, tool_name: 'Bash' }), [end]);
+  assert.deepEqual(kinds({ ...p, hook_event_name: 'PreToolUse' }).map((e) => e.type), ['tool-start']);
+  // 실패·중단된 상자는 화면에 안 떴으니 질문도 아님
+  assert.deepEqual(kinds({ ...p, hook_event_name: 'PostToolUseFailure' }), [end]);
+  assert.deepEqual(kinds({ ...p, hook_event_name: 'PostToolUseFailure', is_interrupt: true }), [end, { type: 'stop' }]);
 });
 
 test('Notification: 질문류 → question, 승인 → permission (둘 다 viaNotification), 한도 재개 3종', () => {

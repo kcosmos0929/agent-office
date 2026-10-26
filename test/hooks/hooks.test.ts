@@ -188,7 +188,7 @@ test('다음 할 일 상자(wrap_up): 질문이 있으면 "질문 있음" 표시
   const fake = await fakeServer();
   writeEndpoint(home, fake.port);
   const wrap = (tool_input: object, tool_name = 'mcp__ccd_turn__wrap_up') =>
-    run(HOOK, home, JSON.stringify({ session_id: 's1', hook_event_name: 'PreToolUse', tool_name, tool_use_id: 'w1', tool_input }));
+    run(HOOK, home, JSON.stringify({ session_id: 's1', hook_event_name: 'PostToolUse', tool_name, tool_use_id: 'w1', tool_input, tool_response: '비밀 결과' }));
   await wrap({ recap: '비밀 요약', ask: '비밀 질문?', actions: [{ label: '비밀 버튼', message: '비밀 답' }] });
   await wrap({ recap: '비밀 요약' });
   await wrap({ recap: '비밀 요약', ask: '  ' });

@@ -32,7 +32,7 @@ const ev = {
   compactEnd: (s: string, at: number, trigger: 'manual' | 'auto'): Ev => ({ ...b(s, at), type: 'compact-end', trigger }),
   quota: (s: string, at: number): Ev => ({ ...b(s, at), type: 'quota-wait' }),
   resume: (s: string, at: number): Ev => ({ ...b(s, at), type: 'resume' }),
-  turnAsk: (s: string, at: number): Ev => ({ ...b(s, at), type: 'turn-ask' }),
+  wrapUp: (s: string, at: number, asks = true): Ev => ({ ...b(s, at), type: 'wrap-up', asks }),
   idle: (s: string, at: number): Ev => ({ ...b(s, at), type: 'idle' }),
   stopErr: (s: string, at: number, error: string): Ev => ({ ...b(s, at), type: 'stop', error }),
 };
@@ -289,8 +289,8 @@ test('다음 할 일 상자 질문: 차례 중엔 그대로, 차례가 끝나면
   const st = make();
   st.apply(ev.prompt('s1', 0));
   st.apply(ev.tool('s1', 1, 'w1'));
-  st.apply(ev.turnAsk('s1', 1));
   st.apply(ev.end('s1', 2, 'w1'));
+  st.apply(ev.wrapUp('s1', 2));
   assert.equal(one(st).status, 'thinking');
   st.apply(ev.stop('s1', 3));
   assert.equal(one(st).status, 'question');
@@ -307,14 +307,14 @@ test('다음 할 일 상자 질문: 차례 중엔 그대로, 차례가 끝나면
 test('다음 할 일 상자 질문: 오류로 멈추면 ✅ + 오류가 먼저, 도우미가 아직 일해도 ❓가 먼저', () => {
   const st = make();
   st.apply(ev.prompt('s1', 0));
-  st.apply(ev.turnAsk('s1', 1));
+  st.apply(ev.wrapUp('s1', 1));
   st.apply(ev.stopErr('s1', 2, 'overloaded'));
   assert.equal(one(st).status, 'done');
   assert.equal(one(st).detail, '오류: overloaded');
 
   st.apply(ev.prompt('s2', 10));
   st.apply(ev.subStart('s2', 11, 'a'));
-  st.apply(ev.turnAsk('s2', 12));
+  st.apply(ev.wrapUp('s2', 12));
   st.apply(ev.stop('s2', 13));
   assert.equal(st.snapshot(13).agents.find((x) => x.id === 'claude:s2')?.status, 'question');
 });
@@ -322,7 +322,7 @@ test('다음 할 일 상자 질문: 오류로 멈추면 ✅ + 오류가 먼저, 
 test('다음 할 일 상자 질문: 차례 끝 뒤 등록부가 쉼(idle)으로 바뀌어도 ❓ 유지, 도우미 질문이 풀려도 ❓로', () => {
   const st = make();
   st.apply(ev.prompt('s1', 0));
-  st.apply(ev.turnAsk('s1', 1));
+  st.apply(ev.wrapUp('s1', 1));
   st.apply(ev.stop('s1', 2));
   st.applyRegistry(read(reg('s1', 'idle', 5)), 6);
   assert.equal(one(st).status, 'question');
@@ -332,16 +332,60 @@ test('다음 할 일 상자 질문: 차례 끝 뒤 등록부가 쉼(idle)으로 
   st.apply(ev.subStart('s1', 11, 'a'));
   st.apply(ev.tool('s1', 12, 'x', 'running', 'a'));
   st.apply(ev.question('s1', 12, 'a'));
-  st.apply(ev.turnAsk('s1', 13));
+  st.apply(ev.wrapUp('s1', 13));
   st.apply(ev.stop('s1', 14));
   st.apply(ev.end('s1', 15, 'x', 'a'));
   assert.equal(one(st).status, 'question');
 });
 
+test('다음 할 일 상자 질문: 도우미 승인 대기를 등록부(R1)로 풀어도, 그 도우미가 끝나 등록부가 쉼이 돼도 ❓ (리뷰 P2)', () => {
+  const st = make();
+  st.apply(ev.prompt('s1', 0));
+  st.apply(ev.subStart('s1', 1, 'a'));
+  st.apply(ev.tool('s1', 2, 'x', 'running', 'a'));
+  st.apply(ev.perm('s1', 3, 'a'));
+  st.apply(ev.wrapUp('s1', 4));
+  st.apply(ev.stop('s1', 5));
+  assert.equal(one(st).status, 'permission');
+  st.applyRegistry(read(reg('s1', 'busy', 10)), 11); // 도우미 승인 → 등록부 일함
+  assert.equal(one(st).status, 'question');
+  st.apply(ev.subStop('s1', 20, 'a'));
+  st.applyRegistry(read(reg('s1', 'idle', 30)), 31);
+  assert.equal(one(st).status, 'question');
+});
+
+test('다음 할 일 상자 질문: Stop보다 등록부 쉼(R6)·입력 대기 알림이 먼저 와도 ❓, 늦은 Stop에도 ❓ (리뷰 P2)', () => {
+  const st = make();
+  st.apply(ev.prompt('s1', 0));
+  st.apply(ev.tool('s1', 1, 'w1'));
+  st.apply(ev.end('s1', 2, 'w1'));
+  st.apply(ev.wrapUp('s1', 2));
+  st.applyRegistry(read(reg('s1', 'idle', 5)), 6);
+  assert.equal(one(st).status, 'question');
+  st.apply(ev.stop('s1', 7));
+  assert.equal(one(st).status, 'question');
+
+  st.apply(ev.prompt('s2', 10));
+  st.apply(ev.wrapUp('s2', 11));
+  st.apply(ev.idle('s2', 12));
+  assert.equal(st.snapshot(12).agents.find((x) => x.id === 'claude:s2')?.status, 'question');
+  st.apply(ev.stop('s2', 13));
+  assert.equal(st.snapshot(13).agents.find((x) => x.id === 'claude:s2')?.status, 'question');
+});
+
+test('다음 할 일 상자: 한 차례에 상자를 다시 띄우면 마지막 것이 기준(질문 없음이면 ✅)', () => {
+  const st = make();
+  st.apply(ev.prompt('s1', 0));
+  st.apply(ev.wrapUp('s1', 1));
+  st.apply(ev.wrapUp('s1', 2, false));
+  st.apply(ev.stop('s1', 3));
+  assert.equal(one(st).status, 'done');
+});
+
 test('다음 할 일 상자 질문 뒤 메시지 없이 다시 일함(백그라운드 작업이 끝나 이어 감 등) → 그 일을 보여 주고, 끝나면 ✅', () => {
   const st = make();
   st.apply(ev.prompt('s1', 0));
-  st.apply(ev.turnAsk('s1', 1));
+  st.apply(ev.wrapUp('s1', 1));
   st.apply(ev.stop('s1', 2));
   assert.equal(one(st).status, 'question');
   st.apply(ev.tool('s1', 10, 'r1', 'reading'));
