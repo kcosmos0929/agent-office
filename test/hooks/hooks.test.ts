@@ -183,6 +183,21 @@ test('검색 도구의 폴더(path)도 보냄 — 세션이 만지는 프로젝�
   assert.deepEqual(JSON.parse(fake.got[0].body).tool_input, { pattern: 'x', path: '/Users/seop/developer/lst_ss/src' });
 });
 
+test('다음 할 일 상자(wrap_up): 질문이 있으면 "질문 있음" 표시만 보내고 질문·요약·버튼 글은 안 보냄', async () => {
+  const home = tempHome();
+  const fake = await fakeServer();
+  writeEndpoint(home, fake.port);
+  const wrap = (tool_input: object, tool_name = 'mcp__ccd_turn__wrap_up') =>
+    run(HOOK, home, JSON.stringify({ session_id: 's1', hook_event_name: 'PostToolUse', tool_name, tool_use_id: 'w1', tool_input, tool_response: '비밀 결과' }));
+  await wrap({ recap: '비밀 요약', ask: '비밀 질문?', actions: [{ label: '비밀 버튼', message: '비밀 답' }] });
+  await wrap({ recap: '비밀 요약' });
+  await wrap({ recap: '비밀 요약', ask: '  ' });
+  await wrap({ ask: '비밀 질문?' }, 'Bash');
+  const inputs = fake.got.map((g) => JSON.parse(g.body).tool_input);
+  assert.deepEqual(inputs, [{ asks: true }, {}, {}, {}]);
+  assert.ok(!fake.got.some((g) => g.body.includes('비밀')));
+});
+
 test('인자 없으면 지금처럼 /api/claude/hook', async () => {
   const home = tempHome();
   const fake = await fakeServer();

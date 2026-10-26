@@ -10,6 +10,8 @@ const ASKS_ME = new Set(['elicitation_dialog', 'elicitation_url_dialog', 'agent_
 /** 사용량 한도 대기가 자동 재개 없이 끝남 → 내 차례 */
 const QUOTA_GAVE_UP = new Set(['quota_auto_resume_stale', 'quota_auto_resume_disabled']);
 const ASK_TOOL = 'AskUserQuestion';
+/** Claude 앱의 '다음 할 일' 상자 — 차례를 끝내며 부르고, 질문이 있으면 훅이 asks 표시만 보낸다 */
+const WRAP_UP = 'mcp__ccd_turn__wrap_up';
 
 export type Json = Record<string, unknown>;
 
@@ -148,8 +150,13 @@ export function hookToEvents(payload: unknown, now: number, tools: ToolDialect =
       // 질문 도구는 시작하자마자 사용자 답을 기다린다
       return tool === ASK_TOOL ? [start, { ...base, type: 'question', detail: null }] : [start];
     }
-    case 'PostToolUse':
-      return [{ ...base, type: 'tool-end', toolUseId: str(p.tool_use_id) ?? '' }];
+    case 'PostToolUse': {
+      const end: OfficeEvent = { ...base, type: 'tool-end', toolUseId: str(p.tool_use_id) ?? '' };
+      if (tool !== WRAP_UP) return [end];
+      // 상자가 실제로 뜬(성공한) 호출만 — 질문은 차례가 끝난 뒤에야 답을 기다리므로 표시만 해 두고 Stop 때 ❓
+      const input = p.tool_input !== null && typeof p.tool_input === 'object' ? (p.tool_input as Json) : {};
+      return [end, { ...base, type: 'wrap-up', asks: input.asks === true }];
+    }
     case 'PostToolUseFailure': {
       const end: OfficeEvent = { ...base, type: 'tool-end', toolUseId: str(p.tool_use_id) ?? '' };
       // 사용자가 도구 도중에 끊으면 Stop 훅이 오지 않는다 → 차례가 끝난 것으로
