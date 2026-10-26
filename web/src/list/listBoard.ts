@@ -1,11 +1,12 @@
 // 목록형 상황판. 글자는 전부 textContent로 넣는다(데이터를 innerHTML에 넣지 않음).
-import { groupOf, HAT_COLORS, KIND_COLOR, STATUS_LABEL } from '../../../src/shared/labels.ts';
+import { groupOf, STATUS_LABEL } from '../../../src/shared/labels.ts';
 import { sortForBoard } from '../../../src/shared/sort.ts';
 import type { Agent, AgentContext, Snapshot } from '../../../src/shared/types.ts';
 import { agentName, formatElapsed, formatReset } from '../format.ts';
 import { contextPct, gaugeLevel, rowGaugeText } from '../gauge.ts';
 import { renderStrip } from '../strip.ts';
-import { avatar } from './avatar.ts';
+import { avatarUrl } from '../office/sprites/compose.ts';
+import { faceFor, lookFor } from '../office/sprites/look.ts';
 
 function el(doc: Document, tag: string, cls: string, text?: string): HTMLElement {
   const e = doc.createElement(tag);
@@ -29,11 +30,20 @@ function gauge(doc: Document, c: AgentContext): HTMLElement {
   return g;
 }
 
+/** 오피스와 같은 사람(머리·옷)의 얼굴, 표정은 상태대로. 그림이 아직이면 빈 칸으로 두었다가 채운다 */
+function avatar(doc: Document, a: Agent): HTMLElement {
+  const img = el(doc, 'img', 'avatar');
+  img.setAttribute('alt', '');
+  const url = avatarUrl(lookFor(a.hat), faceFor(a.status), (u) => img.setAttribute('src', u));
+  if (url) img.setAttribute('src', url);
+  return img;
+}
+
 function row(doc: Document, a: Agent, now: number): HTMLElement {
   const group = groupOf(a.status);
   const r = el(doc, 'div', `row ${group}${a.status === 'stalled' ? ' stalled' : ''}`);
   r.setAttribute('data-agent', a.id);
-  r.appendChild(avatar(doc, KIND_COLOR[a.kind], HAT_COLORS[a.hat % HAT_COLORS.length]) as unknown as HTMLElement);
+  r.appendChild(avatar(doc, a));
   const meta = el(doc, 'div', 'meta');
   meta.append(el(doc, 'div', 'name', agentName(a)), el(doc, 'div', 'state', STATUS_LABEL[a.status]));
   const chips = el(doc, 'div', 'chips');
