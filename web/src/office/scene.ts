@@ -1,9 +1,9 @@
 // 사무실 장면: 배경(backdrop.ts) + 가구. 모두 코드로 만든 상자들 — 그림 파일 없음.
 import * as THREE from 'three';
 import { CSS2DObject } from 'three/examples/jsm/renderers/CSS2DRenderer.js';
-import { buildBackdrop } from './backdrop.ts';
+import { buildBackdrop, LINTEL_Y } from './backdrop.ts';
 import { armchair, beanBag, bigPlant, binders, bookshelf, boxStack, coatRack, copier, deskLamp, fileCabinet, fridge, FURN, lowCabinet, kitchenCounter, lowTable, officeChair, podDesk, podDivider, printer, receptionDesk, screenStand, shredder, smallPlant, sofa, stool, storageShelf, supplyCabinet, toilet, trashBin, vendingMachine, washbasin, waterCooler, whiteboard } from './furniture.ts';
-import { ARIA_DESK, ARIA_DESK_XS, ARIA_DESK_Y, DEV_DESK, DEV_DESKS, DESK_DEPTH, DESK_WIDTH, DESKS, MEETING_TABLE, POD_X0, POD_YS, ROOMS, meetingSpot } from './layout.ts';
+import { ARIA_DESK, ARIA_DESK_XS, ARIA_DESK_Y, BAND_DOORS, CORRIDOR, DEV_DESK, DEV_DESKS, DESK_DEPTH, FRONT_Y, PANTRY_X, ROOM_DOORS, SPLIT_X, DESK_WIDTH, DESKS, MEETING_TABLE, POD_X0, POD_YS, ROOMS, meetingSpot } from './layout.ts';
 
 export const WALL_H = 3.0;
 
@@ -30,14 +30,18 @@ export function block(x0: number, y0: number, w: number, d: number, h0: number, 
   return m;
 }
 
-/** 방 이름: 픽셀로 줄이면 흐려져서 화면 글자(HTML)로 바닥에 띄운다 */
-function roomLabel(text: string, x: number, y: number): CSS2DObject {
+/** 방 팻말: 문틀 가로대에 붙은 작은 판. 글자는 또렷하게 화면 글자(HTML)로 그리고, 벽 방향만큼 기울여 붙어 보이게 한다.
+ *  along = 벽이 놓인 방향(x: 화면 오른쪽 아래로, y: 왼쪽 아래로 뻗은 벽) */
+function roomSign(text: string, x: number, z: number, along: 'x' | 'y'): CSS2DObject {
   const el = document.createElement('div');
-  el.className = 'room-label';
-  el.textContent = text;
-  const label = new CSS2DObject(el);
-  label.position.set(x, 0.05, y);
-  return label;
+  el.className = `room-sign along-${along}`;
+  const plate = document.createElement('span');
+  plate.textContent = text;
+  el.appendChild(plate);
+  const sign = new CSS2DObject(el);
+  // 카메라 쪽 벽 면(+x 또는 +z)에 붙인다
+  sign.position.set(x + (along === 'y' ? 0.08 : 0), (LINTEL_Y + 2.04) / 2, z + (along === 'x' ? 0.08 : 0));
+  return sign;
 }
 
 export type OfficeScene = { group: THREE.Group; deskScreens: THREE.Mesh[] };
@@ -141,15 +145,15 @@ export function buildOffice(): OfficeScene {
   screenStand(g, 10.45, 9.65, 1.9);
   bigPlant(g, 14.3, 14.3);
 
-  // 방 이름 (각 방 앞쪽 가장자리 근처)
-  g.add(roomLabel(ROOMS.claude.label, 1.9, 12.6));
-  g.add(roomLabel(ROOMS.codex.label, 14.0, 3.7));
-  g.add(roomLabel(ROOMS.aria.label, 12.6, 8.2));
-  g.add(roomLabel(ROOMS.meeting.label, 13.9, 10.1));
-  g.add(roomLabel(ROOMS.storage.label, 1.2, 16.05));
-  g.add(roomLabel(ROOMS.restroom.label, 1.6, 17.85));
-  g.add(roomLabel(ROOMS.lounge.label, 7.6, 17.75));
-  g.add(roomLabel(ROOMS.pantry.label, 13.6, 17.75));
+  // 방 팻말: 문마다(사무실은 입구 복도에서 들어가는 곳)
+  g.add(roomSign(ROOMS.claude.label, (CORRIDOR.x0 + CORRIDOR.x1) / 2, FRONT_Y, 'x'));
+  g.add(roomSign(ROOMS.codex.label, SPLIT_X, ROOM_DOORS.codex.y, 'y'));
+  g.add(roomSign(ROOMS.aria.label, SPLIT_X, ROOM_DOORS.aria.y, 'y'));
+  g.add(roomSign(ROOMS.meeting.label, SPLIT_X, ROOM_DOORS.meeting.y, 'y'));
+  g.add(roomSign(ROOMS.storage.label, CORRIDOR.x0, BAND_DOORS.storage.y, 'y'));
+  g.add(roomSign(ROOMS.restroom.label, CORRIDOR.x0, BAND_DOORS.restroom.y, 'y'));
+  g.add(roomSign(ROOMS.lounge.label, CORRIDOR.x1, BAND_DOORS.lounge.y, 'y'));
+  g.add(roomSign(ROOMS.pantry.label, PANTRY_X, BAND_DOORS.pantry.y, 'y'));
 
   return { group: g, deskScreens };
 }

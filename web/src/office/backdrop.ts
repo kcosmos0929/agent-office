@@ -56,6 +56,8 @@ function rugBlock(x0: number, y0: number, w: number, d: number, tex: THREE.Canva
 
 /** 방 벽: 낮은 받침 + 반투명 유리(너머 캐릭터가 비쳐 보이게) + 위 레일, 1.5칸마다 세로 기둥 */
 const GLASS_H = 2.0;
+/** 문틀 가로대 아래 높이 */
+export const LINTEL_Y = 1.72;
 const INNER_T = 0.1;
 function glassWall(g: THREE.Group, x0: number, y0: number, w: number, d: number, frosted = false): void {
   const c = PALETTE.glassWall;
@@ -149,6 +151,15 @@ export function buildBackdrop(g: THREE.Group): void {
   glassWallY(g, CORRIDOR.x0, RESTROOM_Y, FZ, [BAND_DOORS.restroom], true);
   glassWallY(g, CORRIDOR.x1, inner, FZ, [BAND_DOORS.lounge]);
   glassWallY(g, PANTRY_X, inner, FZ, [BAND_DOORS.pantry]);
+
+  // 문틀 위 가로대(방 팻말이 붙는 곳): 옆 방 문·앞쪽 띠 문 + 입구 복도에서 사무실로 들어가는 곳
+  const head = (x: number, door: { y: number; w: number }) => g.add(block(x - INNER_T / 2, door.y - door.w / 2, INNER_T, door.w, LINTEL_Y, GLASS_H + 0.04 - LINTEL_Y, P.glassWall.frame));
+  for (const door of [ROOM_DOORS.codex, ROOM_DOORS.aria, ROOM_DOORS.meeting]) head(SPLIT_X, door);
+  head(CORRIDOR.x0, BAND_DOORS.storage);
+  head(CORRIDOR.x0, BAND_DOORS.restroom);
+  head(CORRIDOR.x1, BAND_DOORS.lounge);
+  head(PANTRY_X, BAND_DOORS.pantry);
+  g.add(block(CORRIDOR.x0, FRONT_Y - INNER_T / 2, CORRIDOR.x1 - CORRIDOR.x0, INNER_T, LINTEL_Y, GLASS_H + 0.04 - LINTEL_Y, P.glassWall.frame));
 
   // 흰 육각 테두리: 디오라마를 조금 띄워 감싸는 가는 막대 6개(선은 픽셀로 줄이면 끊겨 보여서 막대로)
   const gap = 0.25;
