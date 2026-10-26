@@ -133,6 +133,11 @@ export class OfficeView implements OfficeHost {
     this.invalidate();
   }
 
+  /** 다시 연결된 뒤 첫 스냅샷은 효과 없이 기준만 */
+  rebase(): void {
+    this.cast.rebase();
+  }
+
   private onPointer(e: PointerEvent): void {
     const rect = this.renderer.domElement.getBoundingClientRect();
     const ndc = new THREE.Vector2(((e.clientX - rect.left) / rect.width) * 2 - 1, -((e.clientY - rect.top) / rect.height) * 2 + 1);
@@ -178,7 +183,7 @@ export class OfficeView implements OfficeHost {
     this.pass.render(this.renderer, this.scene, this.camera);
     this.labels.render(this.scene, this.camera);
     this.frames++;
-    const fps = targetFps(this.poses, document.hidden);
+    const fps = targetFps(this.poses, document.hidden, this.cast.bursting(t));
     if (fps === 0) return;
     // requestAnimationFrame이 다음 화면 갱신까지 더 기다리니 그만큼 일찍 깨운다(16장/초를 지키려고)
     this.timer = setTimeout(() => {
