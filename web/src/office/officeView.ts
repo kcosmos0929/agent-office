@@ -42,6 +42,8 @@ export class OfficeView implements OfficeHost {
   private cast: Cast;
   private lastT = 0;
   private snap: Snapshot | null = null;
+  /** 스냅샷을 받은 때(브라우저 시각) — 서버 시각을 이어 세려고 */
+  private receivedAt = 0;
   private closeCard: (() => void) | null = null;
   private readonly pass = new PixelPass(PALETTE.bg);
   private readonly px: number;
@@ -70,7 +72,7 @@ export class OfficeView implements OfficeHost {
     this.office = buildOffice();
     splitTransparent(this.office.group); // 유리·칸막이는 사람 뒤에 한 번 더 합성(pixelPass)
     this.scene.add(this.office.group, this.tv.group);
-    this.cast = new Cast(this.scene, this.office, () => this.invalidate());
+    this.cast = new Cast(this.scene, this.office, () => this.invalidate(), () => (this.snap ? this.snap.now + (Date.now() - this.receivedAt) : Date.now()));
 
     this.camera.position.copy(TARGET).addScaledVector(VIEW_DIR, 30);
     this.camera.lookAt(TARGET);
@@ -122,6 +124,7 @@ export class OfficeView implements OfficeHost {
 
   update(s: Snapshot): void {
     this.snap = s;
+    this.receivedAt = Date.now();
     this.tv.update(s.usage, s.now);
     this.cast.sync(s);
     this.poses = this.cast.poses();

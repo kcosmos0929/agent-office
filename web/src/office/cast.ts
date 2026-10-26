@@ -5,8 +5,9 @@ import { WAIT_COLOR, groupOf } from '../../../src/shared/labels.ts';
 import { officeAgents } from './visible.ts';
 import type { Agent, Snapshot } from '../../../src/shared/types.ts';
 import { makeBubble, nameplateText } from './bubbles.ts';
-import { backwardFrom, facingAt, forwardFrom, meetingSpot, pathTo, seatPosition, waitingSpot, type Point } from './layout.ts';
-import { poseFor, type Pose } from './pose.ts';
+import { DOOR, backwardFrom, pathTo, routeBetween, segmentAt, simplifyPath, type Point } from './layout.ts';
+import { direct, type Plan } from './director.ts';
+import type { Pose } from './pose.ts';
 import type { OfficeScene } from './scene.ts';
 import { Figure } from './sprites/figure.ts';
 import { dirFor, faceFor, headTop, lookFor, PACE_FPS, STEP, WALK_FRAMES, type Dir, type Pace } from './sprites/look.ts';
@@ -21,8 +22,10 @@ type Actor = {
   plate: CSS2DObject | null;
   bubble: ReturnType<typeof makeBubble> | null;
   ring: THREE.Mesh | null;
-  /** 입구 → 머무는 곳 */
+  /** 지금 걷는 길 전체(출발 자리 → 목적지, 되짚은 구간 포함) — 걷는 중 목적지가 바뀌면 여기서 되짚는다 */
   route: Point[];
+  /** 가려는 곳(계획의 자리와 좌표로 견줌) */
+  target: Point;
   /** 남은 길(path[0] = 지금 위치) */
   path: Point[];
   pace: Pace;
@@ -37,6 +40,8 @@ type Actor = {
   agent: Agent | null;
   isSub: boolean;
   pose: Pose;
+  /** 머무를 때의 자세(계획) */
+  restPose: Pose;
 };
 
 function dist(a: Point, b: Point) {
@@ -46,56 +51,85 @@ function dist(a: Point, b: Point) {
 export class Cast {
   private readonly actors = new Map<string, Actor>();
   private first = true;
+  private agents: Agent[] | null = null;
   private readonly scene: THREE.Scene;
   private readonly office: OfficeScene;
   private readonly onChange: () => void;
+  /** 서버 시각(ms) — 쉼 자리가 몇 분마다 바뀌는 때를 화면끼리 맞추려고 */
+  private readonly clock: () => number;
 
-  constructor(scene: THREE.Scene, office: OfficeScene, onChange: () => void) {
+  constructor(scene: THREE.Scene, office: OfficeScene, onChange: () => void, clock: () => number = Date.now) {
     this.scene = scene;
     this.office = office;
     this.onChange = onChange;
+    this.clock = clock;
   }
 
   sync(s: Snapshot): void {
-    const seen = new Set<string>();
-    let subIndex = 0;
-    let waitIndex = 0;
     const agents = officeAgents(s.agents);
+    this.agents = agents;
+    const plans = direct(agents, this.clock());
+    this.follow(plans);
     for (const a of agents) {
-      seen.add(a.id);
-      const dest = a.seat >= 0 ? seatPosition(a.seat) : waitingSpot(waitIndex++);
-      let actor = this.actors.get(a.id);
-      if (!actor) {
-        if (a.status === 'gone') continue;
-        actor = this.create(a.id, a.hat, false, dest);
-      } else if (a.status === 'gone' && !actor.leaving) {
-        this.leave(actor);
-      } else if (a.status !== 'gone' && actor.leaving) {
-        actor.leaving = false;
-        this.walk(actor, forwardFrom(actor.route, this.pos(actor)), 'work');
-      }
+      const actor = this.actors.get(a.id);
+      if (!actor) continue;
       actor.agent = a;
       actor.figure.setFace(faceFor(a.status));
       actor.bubble?.set(a);
       if (actor.plate && actor.plate.element.textContent !== nameplateText(a)) actor.plate.element.textContent = nameplateText(a);
-      if (actor.ring) actor.ring.visible = a.status === 'permission';
-
-      for (const sub of a.subagents) {
-        const sid = `${a.id}/${sub.id}`;
-        seen.add(sid);
-        if (!this.actors.has(sid)) this.create(sid, a.hat, true, meetingSpot(subIndex));
-        subIndex++;
-      }
-    }
-    for (const [id, actor] of this.actors) {
-      if (!seen.has(id) && !actor.leaving) this.leave(actor);
     }
     this.paintScreens(agents);
     this.first = false;
   }
 
+  /** 계획을 따른다: 없는 배우는 만들고, 가려는 곳이 바뀌었으면 길을 다시 잡고, 계획에서 빠진 배우는 퇴근시킨다 */
+  private follow(plans: Map<string, Plan>): void {
+    for (const [id, plan] of plans) {
+      let actor = this.actors.get(id);
+      if (!actor) {
+        if (plan.leave) continue;
+        actor = this.create(id, plan);
+      }
+      actor.leaving = plan.leave;
+      actor.rest = plan.facing;
+      actor.restPose = plan.pose;
+      if (actor.ring) actor.ring.visible = !plan.leave && plan.effects.includes('ring');
+      if (actor.target.x !== plan.spot.x || actor.target.y !== plan.spot.y) this.redirect(actor, plan.spot, plan.pace);
+    }
+    for (const [id, actor] of this.actors) {
+      if (plans.has(id)) continue;
+      actor.leaving = true;
+      if (actor.ring) actor.ring.visible = false;
+      if (actor.target.x !== DOOR.x || actor.target.y !== DOOR.y) this.redirect(actor, DOOR, 'free');
+    }
+  }
+
+  /** 가려는 곳을 바꿈: 멈춰 있으면 거기서 새 길, 걷는 중이면 출발 자리로 되짚어 새 길로 이음(격자 방향 유지) */
+  private redirect(actor: Actor, spot: Point, pace: Pace): void {
+    const here = this.pos(actor);
+    let path: Point[];
+    if (actor.path.length > 1) {
+      const k = segmentAt(actor.route, here);
+      path = simplifyPath([...backwardFrom(actor.route, here), ...routeBetween(actor.route[0], spot).slice(1)]);
+      actor.route = [...actor.route.slice(0, k + 1), ...path];
+    } else {
+      path = routeBetween(here, spot);
+      actor.route = path.slice();
+    }
+    actor.target = spot;
+    if (!path.every((q) => Number.isFinite(q.x) && Number.isFinite(q.y))) {
+      console.warn('[synthetic-office] 길을 못 구함', here, spot);
+      path = [spot];
+      actor.route = [spot];
+      this.place(actor, spot);
+    }
+    this.walk(actor, path.slice(), pace);
+  }
+
   /** dt 초만큼 걷고, 방향·그림을 맞춘다 */
   animate(t: number, dt: number): void {
+    // 쉼 자리가 바뀌는 때를 곧바로 따라잡으려고 걷기 전에 계획을 다시 본다
+    if (this.agents) this.follow(direct(this.agents, this.clock()));
     for (const [id, actor] of this.actors) {
       if (actor.path.length > 1) {
         actor.clock += dt;
@@ -127,7 +161,7 @@ export class Cast {
         continue;
       }
       if (!walking) this.resetClock(actor);
-      actor.pose = walking ? 'walk' : actor.isSub ? 'type-fast' : actor.agent ? poseFor(actor.agent.status) : 'stand';
+      actor.pose = walking ? (actor.pace === 'free' ? 'stroll' : 'walk') : actor.restPose;
       // 업무 자세 그림이 오기 전까지 머무를 땐 서기 그림
       if (walking) actor.figure.show(actor.dir, (actor.phase + actor.steps) % WALK_FRAMES);
       else actor.figure.show(actor.rest, 'idle');
@@ -136,7 +170,7 @@ export class Cast {
   }
 
   poses(): Pose[] {
-    return [...this.actors.values()].map((a) => (a.path.length > 1 ? 'walk' : a.pose));
+    return [...this.actors.values()].map((a) => (a.path.length > 1 ? (a.pace === 'free' ? 'stroll' : 'walk') : a.pose));
   }
 
   /** 클릭한 캐릭터의 에이전트(하위 에이전트면 null) */
@@ -146,7 +180,9 @@ export class Cast {
     return hit ? (mains.find((a) => a.figure.mesh === hit.object)?.agent ?? null) : null;
   }
 
-  private create(id: string, hat: number, isSub: boolean, dest: Point): Actor {
+  private create(id: string, plan: Plan): Actor {
+    const { hat, isSub } = plan;
+    const dest = plan.spot;
     const scale = isSub ? SUB_SCALE : 1;
     const figure = new Figure(lookFor(hat), isSub ? 'focused' : 'neutral', scale, this.onChange);
     const group = new THREE.Group();
@@ -172,24 +208,15 @@ export class Cast {
       ring.visible = false;
       group.add(ring);
     }
-    const f = facingAt(dest);
     const route = this.first ? [dest] : pathTo(dest);
     const actor: Actor = {
-      group, figure, label, plate, bubble, ring, route, path: [route[0]], pace: 'work',
-      clock: 0, steps: 0, phase: 0, dir: 'SE', rest: dirFor(f.x, f.y), leaving: false, agent: null, isSub, pose: 'stand',
+      group, figure, label, plate, bubble, ring, route, target: dest, path: [route[0]], pace: plan.pace,
+      clock: 0, steps: 0, phase: 0, dir: 'SE', rest: plan.facing, leaving: false, agent: null, isSub, pose: 'stand', restPose: plan.pose,
     };
     this.actors.set(id, actor);
     this.place(actor, route[0]);
-    this.walk(actor, route.slice(), 'work'); // 일을 받아 오는 길 = 2배 걸음
+    this.walk(actor, route.slice(), plan.pace); // 일을 받아 오는 길 = 2배 걸음, 쉬러 오는 길 = 그림 그대로
     return actor;
-  }
-
-  /** 일이 끝나 나가는 길 = 그림 그대로 걸음 */
-  private leave(actor: Actor): void {
-    actor.leaving = true;
-    if (actor.route.length < 2) actor.route = pathTo(actor.route[0]);
-    this.walk(actor, backwardFrom(actor.route, this.pos(actor)), 'free');
-    if (actor.ring) actor.ring.visible = false;
   }
 
   private walk(actor: Actor, path: Point[], pace: Pace): void {

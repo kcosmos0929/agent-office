@@ -1,5 +1,5 @@
 // 화면 확인용: 켜져 있는 서버(SO_HOME의 endpoint.json)에 가짜 세션 신호를 보낸다. 실제 대화 내용 없음.
-// 사용: SO_HOME=/tmp/x node scripts/demo.ts [scene]   scene = all(기본) | subagent | end | accuracy
+// 사용: SO_HOME=/tmp/x node scripts/demo.ts [scene]   scene = all(기본) | subagent | end | wake | stop | accuracy
 // accuracy: ❓·🧹·⏳·대화 게이지 + (SO_CLAUDE_SESSIONS가 있으면) 그 폴더에 훅 없는 세션 등록부 파일
 // codex: Codex 세션 셋(📖 읽기 · ✏️ 고치기 · ❗ 승인)을 /api/codex/hook으로
 import fs from 'node:fs';
@@ -37,6 +37,13 @@ if (scene === 'all') {
   await hook('demo-read', `${DEV}/synthetic-office`, 'PreToolUse', { tool_name: 'Agent', tool_input: { description: '코드 찾기' }, tool_use_id: 't4' });
   await hook('demo-read', `${DEV}/synthetic-office`, 'SubagentStart', { agent_id: 'sub1', agent_type: 'Explore' });
   await hook('demo-read', `${DEV}/synthetic-office`, 'SubagentStart', { agent_id: 'sub2', agent_type: 'Explore' });
+} else if (scene === 'wake') {
+  // 쉬던 세션에 새 prompt: 휴게실에서 자리로 되짚어 돌아오는 장면
+  await hook('demo-wiki', '/Users/seop/Documents/CnC Wiki', 'UserPromptSubmit', {});
+  await hook('demo-wiki', '/Users/seop/Documents/CnC Wiki', 'PreToolUse', { tool_name: 'Edit', tool_input: { file_path: '/Users/seop/Documents/CnC Wiki/index.md' }, tool_use_id: 'w1' });
+} else if (scene === 'stop') {
+  // 다시 한 턴 끝냄: 그대로 두면 쉼 → 퇴근 순서로 간다
+  await hook('demo-wiki', '/Users/seop/Documents/CnC Wiki', 'Stop', {});
 } else if (scene === 'end') {
   await hook('demo-wiki', '/Users/seop/Documents/CnC Wiki', 'SessionEnd', { reason: 'other' });
 } else if (scene === 'codex') {
