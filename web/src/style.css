@@ -148,7 +148,13 @@ body:not(.view-list) .toolbar button.blink { border-color: var(--wait); animatio
   font: 11px/1 'Galmuri11', monospace; padding: 2px 4px; white-space: nowrap; color: #e6e9ee; background: rgba(28, 28, 31, 0.86);
   box-shadow: 0 0 0 1px rgba(230, 233, 238, 0.28); transform: translateY(10px); -webkit-font-smoothing: none;
 }
-.room-label { font: 11px/1 'Galmuri11', monospace; letter-spacing: 1px; color: #eef1f5; text-shadow: 1px 0 #1c1c1f, -1px 0 #1c1c1f, 0 1px #1c1c1f, 0 -1px #1c1c1f; white-space: nowrap; -webkit-font-smoothing: none; }
+.room-sign span {
+  display: inline-block; font: 11px/1 'Galmuri11', monospace; letter-spacing: 1px; color: #e6e9ee; background: #2b2d32; padding: 3px 6px 2px;
+  white-space: nowrap; box-shadow: 0 0 0 1px #6a6e77, 2px 2px 0 rgba(0, 0, 0, 0.5); -webkit-font-smoothing: none;
+}
+/* 아이소 벽 기울기(2:1 = 26.57°)만큼 비틀어 벽에 붙어 보이게 */
+.room-sign.along-x span { transform: skewY(26.57deg); }
+.room-sign.along-y span { transform: skewY(-26.57deg); }
 .card {
   position: absolute; z-index: 25; width: 240px; background: var(--panel); padding: 12px 14px; font: 12px/1.6 'Galmuri11', monospace;
   color: #e6e9ee; box-shadow: 0 0 0 1px var(--panel-line), 5px 5px 0 0 rgba(0, 0, 0, 0.5); -webkit-font-smoothing: none;
