@@ -28,6 +28,14 @@ async function boot(extra: Partial<Parameters<typeof startServer>[0]> = {}) {
   return { url: `http://127.0.0.1:${srv.port}`, port: srv.port, admin, srv };
 }
 
+async function bootWithWork(resolveWork: (p: string, cwd: string) => string | null) {
+  const config = loadConfig(home);
+  const state = new OfficeState({ idleMs: 30 * M, goneMs: 10 * M, stalledMs: 15 * M, forgetMs: 12 * 60 * M, resolveProject: () => 'CnC Wiki', startedAt: 0, registryWaitRule: false, resolveWork });
+  const srv = await startServer({ config, token: TOKEN, state, staticDir, listenPort: 0, host: '127.0.0.1' });
+  closers.push(srv.close);
+  return { url: `http://127.0.0.1:${srv.port}`, state };
+}
+
 function nextSnapshot(ws: WebSocket, pred: (s: Snapshot) => boolean): Promise<Snapshot> {
   return new Promise((resolve) => {
     ws.on('message', (data) => {
@@ -255,6 +263,20 @@ test('POST /api/codex/hook: 토큰 없으면 401, 있으면 204 후 스냅샷에
   assert.equal(r.status, 204);
   const snap = await got;
   assert.deepEqual([snap.agents[0].id, snap.agents[0].status], ['codex:x1', 'thinking']);
+  ws.close();
+});
+
+test('훅이 만진 경로로 프로젝트 이름표가 바뀜(Claude 파일 경로·Codex 상대 경로 패치)', { timeout: 5000 }, async () => {
+  const { url, state } = await bootWithWork((p, cwd) => (p.includes('lst_ss') || cwd.includes('lst_ss') && p.startsWith('src') ? '성수 LST' : null));
+  const ws = new WebSocket(url.replace('http', 'ws') + '/ws');
+  await nextSnapshot(ws, () => true);
+  const got = nextSnapshot(ws, (s) => s.agents.some((a) => a.project === '성수 LST'));
+  const body = JSON.stringify({ session_id: 'c9', cwd: '/vault', hook_event_name: 'PreToolUse', tool_name: 'Read', tool_use_id: 'r1', tool_input: { file_path: '/Users/seop/developer/lst_ss/a.py' } });
+  assert.equal((await fetch(url + '/api/claude/hook', { method: 'POST', headers: { authorization: `Bearer ${TOKEN}` }, body })).status, 204);
+  assert.equal((await got).agents.find((a) => a.sessionId === 'c9')!.project, '성수 LST');
+  const cx = JSON.stringify({ session_id: 'x8', cwd: '/Users/seop/developer/lst_ss', hook_event_name: 'PreToolUse', tool_name: 'apply_patch', tool_use_id: 'p1', tool_input: { files: ['src/b.py'] } });
+  await fetch(url + '/api/codex/hook', { method: 'POST', headers: { authorization: `Bearer ${TOKEN}` }, body: cx });
+  assert.equal(state.snapshot(0).agents.find((a) => a.sessionId === 'x8')!.project, '성수 LST');
   ws.close();
 });
 

@@ -949,3 +949,21 @@ test('Codex 자동 승인 스위치가 켜져 있으면 Codex 승인 요청(메�
   st.apply(cx(ev.perm('x1', 62_100)));
   assert.equal(st.snapshot(0).agents.find((a) => a.sessionId === 'x1')!.status, 'approving');
 });
+
+test('touchPaths: 만진 경로로 알아낸 마지막 프로젝트가 이름표, 못 알아내면 그대로, 시작 폴더가 바뀌어도 유지', () => {
+  const st = new OfficeState({
+    idleMs: 30 * M, goneMs: 10 * M, stalledMs: 15 * M, forgetMs: 12 * 60 * M, startedAt: 0, registryWaitRule: false,
+    resolveProject: (cwd) => (cwd === CWD ? '가로망 중심성' : 'CnC Wiki'),
+    resolveWork: (p) => (p.includes('/alpha/') ? 'Alpha' : p.includes('/beta/') ? 'Beta' : null),
+  });
+  st.apply(ev.prompt('c1', 0));
+  assert.equal(st.touchPaths('c1', ['/x/none'], CWD), false);
+  assert.equal(one(st).project, '가로망 중심성');
+  assert.equal(st.touchPaths('c1', ['/x/none', '/w/alpha/a.ts', '/w/beta/b.ts'], CWD), true);
+  assert.equal(one(st).project, 'Alpha');
+  st.touchPaths('c1', ['/w/beta/c.ts'], CWD);
+  assert.equal(one(st).project, 'Beta');
+  st.apply({ ...ev.prompt('c1', 1), cwd: '/Users/seop/Documents/CnC Wiki' });
+  assert.equal(one(st).project, 'Beta');
+  assert.equal(st.touchPaths('없음', ['/w/alpha/a.ts'], CWD), false);
+});

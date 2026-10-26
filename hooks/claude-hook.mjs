@@ -28,7 +28,7 @@ function endpoint() {
 // 서버 수집기(claudeHook.ts)가 실제로 쓰는 필드만 보낸다 — 큰 파일 내용·프롬프트·응답·도구 결과·정리 요약·오류 원문은 보내지 않음
 const KEEP = ['session_id', 'hook_event_name', 'cwd', 'transcript_path', 'session_title', 'agent_id', 'agent_type',
   'tool_name', 'tool_use_id', 'notification_type', 'message', 'is_interrupt', 'trigger', 'model'];
-const KEEP_INPUT = ['command', 'file_path', 'notebook_path', 'pattern', 'url', 'query', 'description', 'subagent_type', 'task_name'];
+const KEEP_INPUT = ['command', 'file_path', 'notebook_path', 'path', 'pattern', 'url', 'query', 'description', 'subagent_type', 'task_name'];
 const cut = (v) => (typeof v === 'string' && v.length > 300 ? v.slice(0, 300) : v);
 
 function minimize(d) {
