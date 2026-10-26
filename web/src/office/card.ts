@@ -55,8 +55,9 @@ export function showCard(container: HTMLElement, a: Agent, now: number, at: { x:
   container.appendChild(card);
   const w = container.clientWidth;
   const h = container.clientHeight;
-  card.style.left = `${Math.min(Math.max(12, at.x + 16), w - 252)}px`;
-  card.style.top = `${Math.min(Math.max(12, at.y - 40), h - card.offsetHeight - 12)}px`;
+  // 정수 픽셀에 둔다(소수점 위치면 도트 글자가 칸 사이에 걸려 흐려진다)
+  card.style.left = `${Math.round(Math.min(Math.max(12, at.x + 16), w - card.offsetWidth - 12))}px`;
+  card.style.top = `${Math.round(Math.min(Math.max(12, at.y - 40), h - card.offsetHeight - 12))}px`;
   const remove = () => card.remove();
   close.addEventListener('click', remove);
   return remove;
