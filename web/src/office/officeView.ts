@@ -13,7 +13,7 @@ import { buildOffice, type OfficeScene } from './scene.ts';
 import { GLASS_LAYER, PixelPass, splitTransparent } from './pixelPass.ts';
 import { FIGURE_LAYER } from './sprites/figure.ts';
 import { createTv } from './tv.ts';
-import { clampPan, dragToPan, isDrag, snapPan, type Pan } from './pan.ts';
+import { clampPan, Press, snapPan, type Pan } from './pan.ts';
 
 const TARGET = new THREE.Vector3(FLOOR_X / 2, 0.7, FLOOR_Z / 2);
 const VIEW_DIR = new THREE.Vector3(...VIEW).normalize();
@@ -35,8 +35,8 @@ export class OfficeView implements OfficeHost {
   private zoom = 1;
   /** 확대했을 때 끌어서 옮긴 만큼(1배 화면 안으로 묶음) */
   private pan: Pan = { x: 0, y: 0 };
-  /** 누른 채 움직이는 중 — 4px 넘게 움직이면 끌기, 아니면 손을 뗄 때 카드 */
-  private press: { id: number; x: number; y: number; start: Pan; dragging: boolean } | null = null;
+  /** 누른 채 움직이는 중 — 4px 넘게 움직이면 끌기(확대 중이면 옮기기), 아니면 손을 뗄 때 카드 */
+  private press: { id: number; p: Press } | null = null;
   /** 지금 화면에서 CSS 1px = 세계 몇 단위(끌기 환산용) */
   private worldPerPx = 1;
   private cast: Cast;
@@ -86,29 +86,25 @@ export class OfficeView implements OfficeHost {
     const canvas = this.renderer.domElement;
     canvas.style.touchAction = 'none'; // 끌기를 브라우저 스크롤·확대에 뺏기지 않게
     canvas.addEventListener('pointerdown', (e) => {
-      this.press = { id: e.pointerId, x: e.clientX, y: e.clientY, start: { ...this.pan }, dragging: false };
+      this.press = { id: e.pointerId, p: new Press(e.clientX, e.clientY, { ...this.pan }) };
       canvas.setPointerCapture(e.pointerId);
     });
     canvas.addEventListener('pointermove', (e) => {
-      const p = this.press;
-      if (!p || p.id !== e.pointerId) return;
-      const dx = e.clientX - p.x;
-      const dy = e.clientY - p.y;
-      if (!p.dragging) {
-        if (this.zoom <= 1 || !isDrag(dx, dy)) return;
-        p.dragging = true;
-        this.closeCard?.();
-        this.closeCard = null;
-      }
-      this.pan = dragToPan(p.start, dx, dy, this.worldPerPx);
+      const press = this.press;
+      if (!press || press.id !== e.pointerId) return;
+      const next = press.p.move(e.clientX, e.clientY, this.zoom, this.worldPerPx);
+      if (!next) return;
+      this.closeCard?.(); // 끌기 시작하면 열린 카드는 닫는다
+      this.closeCard = null;
+      this.pan = next;
       this.fit();
       this.invalidate();
     });
     canvas.addEventListener('pointerup', (e) => {
-      const p = this.press;
-      if (!p || p.id !== e.pointerId) return;
+      const press = this.press;
+      if (!press || press.id !== e.pointerId) return;
       this.press = null;
-      if (!p.dragging) this.onPointer(e); // 거의 안 움직였으면 누르기 = 캐릭터 카드
+      if (press.p.isClick) this.onPointer(e); // 거의 안 움직였을 때만 누르기 = 캐릭터 카드(1배 이하에서 끈 것도 아님)
       this.updateCursor();
     });
     canvas.addEventListener('pointercancel', () => {
@@ -227,6 +223,6 @@ export class OfficeView implements OfficeHost {
 
   /** 확대했을 때만 끌 수 있다는 표시(손), 끄는 중엔 쥔 손 */
   private updateCursor(): void {
-    this.renderer.domElement.style.cursor = this.press?.dragging ? 'grabbing' : this.zoom > 1 ? 'grab' : '';
+    this.renderer.domElement.style.cursor = this.press?.p.dragging(this.zoom) ? 'grabbing' : this.zoom > 1 ? 'grab' : '';
   }
 }

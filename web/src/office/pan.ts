@@ -29,3 +29,39 @@ export function dragToPan(start: Pan, dxPx: number, dyPx: number, worldPerPx: nu
 export function snapPan(p: Pan, worldPerDot: number): Pan {
   return { x: Math.round(p.x / worldPerDot) * worldPerDot || 0, y: Math.round(p.y / worldPerDot) * worldPerDot || 0 };
 }
+
+/**
+ * 누른 한 번(pointerdown~pointerup): 4px 넘게 움직였으면 확대 배율과 상관없이 누르기가 아니다(손을 떼도 카드 안 열림).
+ * 보는 창을 옮기는 건 확대했을 때(1배 넘게)만.
+ */
+export class Press {
+  private moved = false;
+  private readonly x: number;
+  private readonly y: number;
+  private readonly start: Pan;
+
+  constructor(x: number, y: number, start: Pan) {
+    this.x = x;
+    this.y = y;
+    this.start = start;
+  }
+
+  /** 지금 손 위치 → 옮길 위치(확대 중이고 끌기일 때), 아니면 null */
+  move(x: number, y: number, zoom: number, worldPerPx: number): Pan | null {
+    const dx = x - this.x;
+    const dy = y - this.y;
+    if (!this.moved && isDrag(dx, dy)) this.moved = true;
+    return this.moved && zoom > 1 ? dragToPan(this.start, dx, dy, worldPerPx) : null;
+  }
+
+  /** 손을 뗐을 때 누르기(카드 열기)인가 — 거의 안 움직였을 때만 */
+  get isClick(): boolean {
+    return !this.moved;
+  }
+
+  /** 끌어서 옮기는 중인가(쥔 손 커서·열린 카드 닫기) */
+  dragging(zoom: number): boolean {
+    return this.moved && zoom > 1;
+  }
+}
+
