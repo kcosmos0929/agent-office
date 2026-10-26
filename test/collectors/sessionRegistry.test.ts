@@ -15,7 +15,7 @@ const RAW = {
 
 test('parseRegistryFile: 쓰는 6개만 남기고 소켓 경로 등은 버림', () => {
   assert.deepEqual(parseRegistryFile(JSON.stringify(RAW)),
-    { sessionId: 'decaaa1f-x', pid: 15326, cwd: '/Users/seop/Documents/CnC Wiki', name: '작업실 애니메이션', status: 'busy', statusUpdatedAt: 1761180000000 });
+    { sessionId: 'decaaa1f-x', pid: 15326, cwd: '/Users/seop/Documents/CnC Wiki', name: '작업실 애니메이션', status: 'busy', statusUpdatedAt: 1761180000000, startedAt: 1 });
 });
 
 test('parseRegistryFile: interactive 아님·깨진 JSON·모르는 status·잘못된 pid → null, 긴 이름 80자, 이름 없으면 null', () => {

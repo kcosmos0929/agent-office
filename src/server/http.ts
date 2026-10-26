@@ -32,6 +32,8 @@ export type ServerOptions = {
   onAdmin?: (action: AdminAction) => void;
   /** 대화 게이지 읽기(테스트에서 바꿈) */
   readContext?: (file: string) => Promise<ContextReading>;
+  /** 설정 창에서 바꾼 값을 config.json에 저장 — 저장했으면 true(테스트에서 바꿈) */
+  saveConfig?: (patch: Partial<Config>) => boolean;
   /** Codex 세션 id → 제목(Codex 색인 파일, 테스트에서 바꿈). 없으면 Codex 제목을 안 읽음 */
   codexTitle?: (sessionId: string) => string | null;
 };
@@ -169,6 +171,30 @@ export function startServer(opts: ServerOptions): Promise<RunningServer> {
       const sameOrigin = !origin || origin === `http://127.0.0.1:${port}` || origin === `http://localhost:${port}`;
       if (!local || req.headers['x-so-admin'] !== '1' || !sameOrigin) return text(res, 403);
       const action = url.pathname.slice('/api/admin/'.length);
+      if (action === 'codex-auto-approve') {
+        // 설정 창 스위치: {on: boolean} → 바로 반영하고 config.json에 저장
+        const raw = await readBody(req);
+        let on: unknown;
+        try {
+          on = raw === null ? undefined : (JSON.parse(raw) as { on?: unknown }).on;
+        } catch {
+          on = undefined;
+        }
+        if (typeof on !== 'boolean') return text(res, 400);
+        // 저장이 된 뒤에만 반영 — 실패하면 화면(체크 되돌림)·서버·파일이 같은 값으로 남게
+        let saved: boolean;
+        try {
+          saved = opts.saveConfig ? opts.saveConfig({ codexAutoApprove: on }) : true;
+        } catch {
+          saved = false;
+        }
+        if (!saved) return text(res, 500);
+        const was = config.codexAutoApprove;
+        config.codexAutoApprove = on;
+        // 켜는 순간 이미 떠 있던 Codex 승인 대기(🛡️·❗)도 지운다
+        if (on && !was && state.dropCodexApprovals(now())) notify();
+        return text(res, 204);
+      }
       if (action !== 'restart' && action !== 'stop') return text(res, 404);
       text(res, 202);
       setImmediate(() => onAdmin(action));
@@ -255,7 +281,7 @@ export function startServer(opts: ServerOptions): Promise<RunningServer> {
       case '/api/health':
         return json(res, state.snapshot(now()).health);
       case '/api/client-config':
-        return json(res, { softSound: config.softSound, loopback: local });
+        return json(res, { softSound: config.softSound, loopback: local, codexAutoApprove: config.codexAutoApprove });
       case '/api/lan-info': {
         if (!local) return text(res, 404);
         const ip = lanAddress();

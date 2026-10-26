@@ -1,7 +1,7 @@
 // 서버 조립: 설정·토큰 → 프로젝트 이름표 → 상태 정리기 → HTTP/WebSocket → endpoint.json → 타이머.
 import fs from 'node:fs';
 import path from 'node:path';
-import { loadConfig } from './config.ts';
+import { loadConfig, saveConfigPatch } from './config.ts';
 import { startServer } from './http.ts';
 import { makeCodexTitleReader } from './collectors/codexTitles.ts';
 import { watchRegistry } from './collectors/sessionRegistry.ts';
@@ -39,6 +39,7 @@ async function main(): Promise<void> {
     resolveWork: (p, cwd) => work(p, cwd),
     startedAt: Date.now(),
     registryWaitRule: REGISTRY_WAIT_RULE,
+    codexAutoApprove: () => config.codexAutoApprove,
   });
 
   // 허브 문서가 바뀌면 이름표를 다시 읽는다 (위키는 읽기만)
@@ -57,7 +58,7 @@ async function main(): Promise<void> {
     console.warn('[synthetic-office] 허브 폴더를 지켜볼 수 없어요 — 이름표는 시작할 때 값으로 고정');
   }
 
-  const server = await startServer({ config, token, state, staticDir: path.join(REPO_ROOT, 'dist', 'web'), codexTitle: makeCodexTitleReader(codexSessionIndex()) });
+  const server = await startServer({ config, token, state, staticDir: path.join(REPO_ROOT, 'dist', 'web'), codexTitle: makeCodexTitleReader(codexSessionIndex()), saveConfig: (patch) => saveConfigPatch(home, patch) });
   const endpoint = homeFiles(home).endpoint;
   fs.writeFileSync(endpoint, JSON.stringify({ port: server.port, token, pid: process.pid }) + '\n', { mode: 0o600 });
   fs.chmodSync(endpoint, 0o600);
