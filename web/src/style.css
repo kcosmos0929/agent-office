@@ -187,7 +187,7 @@ body:not(.view-list) .toolbar button.blink { border-color: var(--wait); animatio
 
 /* ---------- 목록형: 기기가 다크 모드면 어두운 판 (오피스 화면은 늘 어두움) ---------- */
 @media (prefers-color-scheme: dark) {
-  html, body { background: #1c1c1f; }
+  html, body, .mini { background: #1c1c1f; }
   .board { background: var(--panel); box-shadow: 0 0 0 1px var(--panel-line); }
   .board-bar { background: #232529; }
   .board-title { color: var(--panel-muted); }
