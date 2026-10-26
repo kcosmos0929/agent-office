@@ -77,7 +77,7 @@ export function buildOffice(): OfficeScene {
   bigPlant(g, 0.35, 14.2);
   bigPlant(g, 0.35, 9.4);
   bigPlant(g, 6.75, 9.4);
-  bigPlant(g, 6.75, 14.2);
+  bigPlant(g, 6.75, 12.0); // 안내 데스크 옆(앞쪽은 대기 자리)
 
   // 창고(앞쪽 왼쪽 안): 뒷벽 철제 선반 + 바닥 상자 / 화장실(앞쪽 왼쪽 앞, 불투명 유리): 창가 쪽 변기 + 세면대·거울
   storageShelf(g, 0.2, 15.12, 1.9);

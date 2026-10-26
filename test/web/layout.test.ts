@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { IDLE_SPOTS, ROOMS, ROOM_DOORS, SPLIT_X, seatPosition, meetingSpot, DOOR, pathTo, facingAt, forwardFrom, backwardFrom, type Point } from '../../web/src/office/layout.ts';
+import { IDLE_SPOTS, ROOMS, ROOM_DOORS, SPLIT_X, seatPosition, meetingSpot, waitingSpot, DOOR, pathTo, facingAt, forwardFrom, backwardFrom, type Point } from '../../web/src/office/layout.ts';
 import { targetFps } from '../../web/src/office/fps.ts';
 
 const inside = (p: { x: number; y: number }, r: { x0: number; y0: number; x1: number; y1: number }) => p.x > r.x0 && p.x < r.x1 && p.y > r.y0 && p.y < r.y1;
@@ -53,7 +53,7 @@ test('pathTo: 입구에서 시작해 목적지에서 끝나고, 회의실로 갈
 });
 
 test('걷는 길은 바닥 격자 방향만(구간마다 x 또는 y 하나만 바뀜) — 비스듬한 4방향 그림과 맞춤', () => {
-  const dests = [...Array.from({ length: 8 }, (_, i) => seatPosition(i)), seatPosition(-1), ...Array.from({ length: 12 }, (_, i) => meetingSpot(i))];
+  const dests = [...Array.from({ length: 8 }, (_, i) => seatPosition(i)), seatPosition(-1), ...Array.from({ length: 5 }, (_, i) => waitingSpot(i)), ...Array.from({ length: 12 }, (_, i) => meetingSpot(i))];
   for (const d of dests) {
     const p = pathTo(d);
     for (let i = 1; i < p.length; i++) {
@@ -62,6 +62,16 @@ test('걷는 길은 바닥 격자 방향만(구간마다 x 또는 y 하나만 �
       assert.ok(dx < 1e-9 || dy < 1e-9, `${JSON.stringify(d)}: ${JSON.stringify(p[i - 1])} → ${JSON.stringify(p[i])}`);
     }
   }
+});
+
+test('자리 없는 세션은 로비 안내 데스크 앞에 흩어져 기다리고(5명까지 겹치지 않음) 데스크를 본다', () => {
+  const spots = Array.from({ length: 5 }, (_, k) => waitingSpot(k));
+  assert.equal(new Set(spots.map((p) => `${p.x},${p.y}`)).size, 5);
+  for (const p of spots) {
+    assert.ok(p.x > 4.4 && p.x < SPLIT_X - 0.5 && p.y > 13.5 && p.y < 15, JSON.stringify(p));
+    assert.deepEqual(facingAt(p), { x: 0, y: -1 });
+  }
+  assert.deepEqual(waitingSpot(0), seatPosition(-1));
 });
 
 test('머무는 곳에서 보는 방향: 책상 자리는 모니터 쪽, 회의실은 테이블 쪽', () => {

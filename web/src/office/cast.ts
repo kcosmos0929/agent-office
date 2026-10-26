@@ -4,7 +4,7 @@ import { CSS2DObject } from 'three/examples/jsm/renderers/CSS2DRenderer.js';
 import { WAIT_COLOR, groupOf } from '../../../src/shared/labels.ts';
 import type { Agent, Snapshot } from '../../../src/shared/types.ts';
 import { makeBubble, nameplateText } from './bubbles.ts';
-import { backwardFrom, facingAt, forwardFrom, meetingSpot, pathTo, seatPosition, type Point } from './layout.ts';
+import { backwardFrom, facingAt, forwardFrom, meetingSpot, pathTo, seatPosition, waitingSpot, type Point } from './layout.ts';
 import { poseFor, type Pose } from './pose.ts';
 import type { OfficeScene } from './scene.ts';
 import { Figure } from './sprites/figure.ts';
@@ -58,9 +58,10 @@ export class Cast {
   sync(s: Snapshot): void {
     const seen = new Set<string>();
     let subIndex = 0;
+    let waitIndex = 0;
     for (const a of s.agents) {
       seen.add(a.id);
-      const dest = seatPosition(a.seat);
+      const dest = a.seat >= 0 ? seatPosition(a.seat) : waitingSpot(waitIndex++);
       let actor = this.actors.get(a.id);
       if (!actor) {
         if (a.status === 'gone') continue;

@@ -67,8 +67,17 @@ export const ARIA_DESK_XS = [8.6, 10.9, 13.2];
 export const ARIA_DESK_Y = 5.7;
 export const ARIA_DESK = { w: 1.3, d: 0.6, h: 0.8 };
 
-/** 자리 없는 세션이 기다리는 곳: 로비 안내 데스크 앞 */
-const WAITING_SPOT: Point = { x: 5.4, y: 14.2 };
+/** 자리 없는 세션이 기다리는 곳: 로비 안내 데스크 앞. 앞줄 3명(1칸 간격), 뒷줄 2명(엇갈리게) — 이름표가 덜 겹치게 */
+const WAIT_SPOTS: readonly Point[] = [
+  { x: 4.7, y: 14.25 }, { x: 5.7, y: 14.25 }, { x: 6.7, y: 14.25 },
+  { x: 5.2, y: 14.75 }, { x: 6.2, y: 14.75 },
+];
+const WAITING_SPOT = WAIT_SPOTS[0];
+
+/** k번째 대기 자리(넘치면 처음부터 다시) */
+export function waitingSpot(k: number): Point {
+  return WAIT_SPOTS[Math.max(0, k) % WAIT_SPOTS.length];
+}
 /** 입구에서 곧게 들어오는 통로(x = DOOR.x)가 책상 구역 앞에서 만나는 가로 통로 */
 const CROSS_Y = 9.2;
 /** 책상 묶음 양옆 세로 통로: 창 쪽, 유리벽 쪽 */
@@ -124,7 +133,7 @@ export function facingAt(p: Point): Point {
     if (p.y > t.y1) return { x: 0, y: -1 };
     return p.x < t.x0 ? { x: 1, y: 0 } : { x: -1, y: 0 };
   }
-  if (p.x === WAITING_SPOT.x && p.y === WAITING_SPOT.y) return { x: 0, y: -1 };
+  if (WAIT_SPOTS.some((w) => w.x === p.x && w.y === p.y)) return { x: 0, y: -1 };
   return { x: 1, y: 0 };
 }
 
