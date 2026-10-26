@@ -5,6 +5,8 @@ import { atlasFor } from './atlas.ts';
 import { cellOf, COLS, DIRS, IDLE_COL, planeOffset, planeSize, type Dir, type Face, type Look } from './look.ts';
 
 export const FIGURE_LAYER = 1;
+/** 사람을 그린 기기 점에 남기는 스텐실 값(pixelPass가 그 점에만 유리를 따로 덮는다) */
+export const FIGURE_STENCIL = 1;
 
 const shadowMat = new THREE.MeshBasicMaterial({ color: '#000000', transparent: true, opacity: 0.28, depthWrite: false });
 
@@ -13,7 +15,7 @@ export class Figure {
   readonly root = new THREE.Group();
   readonly mesh: THREE.Mesh;
   private readonly shadow: THREE.Mesh;
-  private readonly material = new THREE.MeshBasicMaterial({ alphaTest: 0.5, visible: false });
+  private readonly material = new THREE.MeshBasicMaterial({ alphaTest: 0.5, visible: false, stencilWrite: true, stencilRef: FIGURE_STENCIL, stencilZPass: THREE.ReplaceStencilOp });
   private readonly look: Look;
   private readonly scale: number;
   private readonly onReady: () => void;
