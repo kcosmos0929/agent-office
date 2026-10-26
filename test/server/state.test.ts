@@ -1059,3 +1059,28 @@ test('Codex 도우미를 여러 차례 다시 써도(SubagentStop 없음) 각 �
   st.tick(6_000 + 20 * M);
   assert.equal(one(st).status, 'done');
 });
+
+test('Codex 차례가 끝난 뒤 도우미 승인이 풀려도(도구 끝·스위치로 지움) ✅로 돌아감, 영구 👥 아님 (리뷰 P2)', () => {
+  const cx = (e: Ev): Ev => ({ ...e, kind: 'codex' });
+  const st = make();
+  st.apply(cx(ev.prompt('x1', 0)));
+  st.apply(cx(ev.subStart('x1', 100, 'A')));
+  st.apply(cx(ev.stop('x1', 200)));
+  assert.equal(one(st).status, 'done');
+  st.apply(cx(ev.perm('x1', 300, 'A')));
+  assert.equal(one(st).status, 'approving');
+  st.apply(cx(ev.end('x1', 400, 'tA', 'A')));
+  assert.equal(one(st).status, 'done');
+  const sw = make();
+  sw.apply(cx(ev.prompt('x2', 0)));
+  sw.apply(cx(ev.subStart('x2', 100, 'A')));
+  sw.apply(cx(ev.stop('x2', 200)));
+  sw.apply(cx(ev.perm('x2', 300, 'A')));
+  sw.tick(6_000);
+  assert.equal(one(sw).status, 'permission');
+  assert.equal(sw.dropCodexApprovals(7_000), true);
+  assert.equal(one(sw).status, 'done');
+  // 다음 차례가 시작되면 다시 평소대로(메시지 → 💭)
+  sw.apply(cx(ev.prompt('x2', 8_000)));
+  assert.equal(one(sw).status, 'thinking');
+});
