@@ -39,7 +39,12 @@ export function ringBurst(elapsed: number): { scale: number; opacity: number } |
   return { scale: 1 + 0.8 * k, opacity: 1 - k };
 }
 
-/** 말풍선 위에 잠깐 뜨는 ✅ — 바깥 div는 CSS2D가 자리를 잡고(transform), 움직임은 안쪽 span의 CSS가 맡는다 */
+/** 링 퍼짐이 시작한 뒤 흐른 시간(rAF 시각과 시작 시각의 어긋남으로 음수가 되지 않게). 숨은 탭에서 오래 뒤 돌아오면 600ms를 넘어 퍼짐이 버려진다 */
+export function burstElapsed(t: number, startedAt: number): number {
+  return Math.max(0, t - startedAt);
+}
+
+/** 머리(말풍선) 왼쪽 옆에 잠깐 뜨는 ✅ — 바깥 div는 CSS2D가 자리를 잡고(transform), 움직임은 안쪽 span의 CSS가 맡는다 */
 export function makeSparkle(doc: Document): HTMLElement {
   const el = doc.createElement('div');
   el.className = 'sparkle';

@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { eventsFor, hopDots, makeSparkle, makeZzz, ringBurst } from '../../web/src/office/effects.ts';
+import { burstElapsed, eventsFor, hopDots, makeSparkle, makeZzz, ringBurst } from '../../web/src/office/effects.ts';
 import { fakeDocument, type FakeElement } from './fakeDom.ts';
 
 test('hopDots: 1초 중 앞 250ms만 2도트, 동작 줄이기면 0', () => {
@@ -42,4 +42,10 @@ test('반짝: div.sparkle 안에 ✅ 하나(움직임은 안쪽 span)', () => {
   assert.equal(el.className, 'sparkle');
   assert.equal(el.children.length, 1);
   assert.equal(el.children[0].textContent, '✅');
+});
+
+test('burstElapsed: 시각 어긋남은 0으로, 숨은 탭에서 오래 뒤면 600ms를 넘어 버려진다', () => {
+  assert.equal(burstElapsed(990, 1000), 0);
+  assert.equal(burstElapsed(1300, 1000), 300);
+  assert.equal(ringBurst(burstElapsed(61_000, 1000)), null);
 });

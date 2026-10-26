@@ -156,6 +156,7 @@ export class OfficeView implements OfficeHost {
     this.resizeObserver.disconnect();
     document.removeEventListener('visibilitychange', this.onVisibility);
     this.dprQuery?.removeEventListener('change', this.onDpr);
+    this.cast.dispose();
     this.pass.dispose();
     this.renderer.dispose();
     this.container.replaceChildren();

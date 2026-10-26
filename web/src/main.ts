@@ -136,10 +136,8 @@ export async function start(makeOffice: OfficeFactory | null): Promise<void> {
     },
     (up) => {
       connected = up;
-      if (up) {
-        awaitFresh = true; // 다시 연결: 새로 오는 스냅샷이 기준(반짝·링 퍼짐 없음) — 그 전엔 낡은 스냅샷을 오피스에 안 넘김
-        office?.rebase?.();
-      }
+      awaitFresh = up; // 다시 연결: 새로 오는 스냅샷이 기준(반짝·링 퍼짐 없음) — 그 전엔 낡은 스냅샷을 오피스에 안 넘김. 끊기면 풀어 둠(끊긴 채 만든 화면이 비지 않게)
+      if (up) office?.rebase?.();
       render();
     },
   );
@@ -166,6 +164,7 @@ function lazyOffice(container: HTMLElement): OfficeHost {
       view?.update(s);
     },
     rebase() {
+      last = null; // 아직 three.js를 받는 중이면 낡은 스냅샷을 버려, 불러온 뒤 첫 동기화가 새 스냅샷의 기준이 되게
       view?.rebase?.();
     },
     dispose() {

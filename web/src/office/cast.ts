@@ -5,7 +5,7 @@ import { WAIT_COLOR } from '../../../src/shared/labels.ts';
 import type { Agent, Snapshot, Status } from '../../../src/shared/types.ts';
 import { makeBubble, nameplateText } from './bubbles.ts';
 import { DOOR, backwardFrom, pathTo, routeBetween, segmentAt, simplifyPath, type Point } from './layout.ts';
-import { BURST_MS, eventsFor, hopDots, makeSparkle, makeZzz, ringBurst } from './effects.ts';
+import { BURST_MS, burstElapsed, eventsFor, type FxEvent, hopDots, makeSparkle, makeZzz, ringBurst } from './effects.ts';
 import { direct, type Plan } from './director.ts';
 import { paintRacks, rackStates } from './rack.ts';
 import { ScreenPainter, screenFrame } from './screens.ts';
@@ -25,12 +25,12 @@ type Actor = {
   ring: THREE.Mesh | null;
   /** 승인 뒤 퍼지는 바닥 링(평소엔 숨김) */
   burstRing: THREE.Mesh | null;
-  /** 링 퍼짐 시작 시각(null=없음, -1=다음 프레임에 시작) */
+  /** 링 퍼짐 시작 시각(performance.now 기준, null=없음) */
   burstAt: number | null;
   /** 이전 동기화의 상태(없으면 이번이 기준) */
   prev: Status | undefined;
   /** 떠 있는 ✅ 반짝 */
-  sparkles: Set<CSS2DObject>;
+  sparkles: Map<CSS2DObject, ReturnType<typeof setTimeout>>;
   /** 쉬는 중 머리 위 Z 셋 */
   zzz: CSS2DObject | null;
   /** 머무를 때의 몸짓 효과(계획) */
@@ -124,23 +124,28 @@ export class Cast {
 
   /** 링 퍼짐이 진행 중인가(렌더 속도를 올리려고) */
   bursting(t: number): boolean {
-    for (const a of this.actors.values()) if (a.burstAt !== null && (a.burstAt < 0 || t - a.burstAt < BURST_MS)) return true;
+    for (const a of this.actors.values()) if (a.burstAt !== null && burstElapsed(t, a.burstAt) < BURST_MS) return true;
     return false;
   }
 
-  private fire(actor: Actor, ev: 'sparkle' | 'burst'): void {
+  /** 화면을 그만 쓸 때: 떠 있는 반짝과 그 타이머를 정리 */
+  dispose(): void {
+    for (const actor of this.actors.values()) for (const o of [...actor.sparkles.keys()]) this.dropSparkle(actor, o);
+  }
+
+  private fire(actor: Actor, ev: FxEvent): void {
     if (ev === 'burst') {
-      actor.burstAt = -1;
+      actor.burstAt = performance.now(); // 숨은 탭이면 프레임이 멈춰 있다가 돌아올 때 600ms를 넘어 있어 버려진다
       return;
     }
     const obj = new CSS2DObject(makeSparkle(document));
     obj.position.set(0, headTop() + 0.12, 0);
     actor.group.add(obj);
-    actor.sparkles.add(obj);
-    setTimeout(() => this.dropSparkle(actor, obj), this.reduced ? 800 : 1000);
+    actor.sparkles.set(obj, setTimeout(() => this.dropSparkle(actor, obj), this.reduced ? 800 : 1000));
   }
 
   private dropSparkle(actor: Actor, obj: CSS2DObject): void {
+    clearTimeout(actor.sparkles.get(obj));
     actor.sparkles.delete(obj);
     actor.group.remove(obj);
     obj.element.remove();
@@ -248,15 +253,14 @@ export class Cast {
 
   private drawBurst(actor: Actor, t: number): void {
     const ring = actor.burstRing!;
-    if (actor.burstAt === -1) actor.burstAt = t;
-    const b = actor.burstAt === null ? null : ringBurst(t - actor.burstAt);
+    const b = actor.burstAt === null ? null : ringBurst(burstElapsed(t, actor.burstAt));
     if (!b) {
       actor.burstAt = null;
       ring.visible = false;
       return;
     }
     ring.visible = !actor.leaving;
-    ring.scale.setScalar(b.scale);
+    ring.scale.setScalar(this.reduced ? 1 : b.scale); // 동작 줄이기: 퍼지지 않고 흐려지기만
     (ring.material as THREE.MeshBasicMaterial).opacity = b.opacity;
   }
 
@@ -304,15 +308,17 @@ export class Cast {
       ring.position.y = 0.02;
       ring.visible = false;
       group.add(ring);
-      burstRing = new THREE.Mesh(new THREE.RingGeometry(0.34, 0.44, 40), new THREE.MeshBasicMaterial({ color: WAIT_COLOR, transparent: true, opacity: 1, side: THREE.DoubleSide }));
+      // 퍼지는 링: 의자·책상에 가리지 않게 깊이 검사를 끄고 나중에 그림, 바닥 링과 겹쳐 깜빡이지 않게 살짝 위
+      burstRing = new THREE.Mesh(new THREE.RingGeometry(0.5, 0.62, 40), new THREE.MeshBasicMaterial({ color: WAIT_COLOR, transparent: true, opacity: 1, side: THREE.DoubleSide, depthTest: false }));
       burstRing.rotation.x = -Math.PI / 2;
-      burstRing.position.y = 0.02;
+      burstRing.position.y = 0.06;
+      burstRing.renderOrder = 10;
       burstRing.visible = false;
       group.add(burstRing);
     }
     const route = this.first ? [dest] : pathTo(dest);
     const actor: Actor = {
-      group, figure, label, plate, bubble, ring, burstRing, burstAt: null, prev: undefined, sparkles: new Set(), zzz, effects: plan.effects, route, target: dest, path: [route[0]], pace: plan.pace,
+      group, figure, label, plate, bubble, ring, burstRing, burstAt: null, prev: undefined, sparkles: new Map(), zzz, effects: plan.effects, route, target: dest, path: [route[0]], pace: plan.pace,
       clock: 0, steps: 0, phase: 0, dir: 'SE', rest: plan.facing, leaving: false, agent: null, isSub, pose: 'stand', restPose: plan.pose,
     };
     this.actors.set(id, actor);
@@ -346,7 +352,7 @@ export class Cast {
       actor.burstRing.geometry.dispose();
       (actor.burstRing.material as THREE.Material).dispose();
     }
-    for (const o of [...actor.sparkles]) this.dropSparkle(actor, o);
+    for (const o of [...actor.sparkles.keys()]) this.dropSparkle(actor, o);
     actor.figure.dispose();
     this.scene.remove(actor.group);
     this.actors.delete(id);
