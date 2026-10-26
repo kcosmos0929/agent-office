@@ -10,7 +10,7 @@ import { Cast } from './cast.ts';
 import { PALETTE, officeLights } from './backdrop.ts';
 import { FIT, FLOOR_X, FLOOR_Z, VIEW_DIR as VIEW } from './layout.ts';
 import { buildOffice, type OfficeScene } from './scene.ts';
-import { PixelPass } from './pixelPass.ts';
+import { GLASS_LAYER, PixelPass, splitTransparent } from './pixelPass.ts';
 import { FIGURE_LAYER } from './sprites/figure.ts';
 import { createTv } from './tv.ts';
 
@@ -56,9 +56,12 @@ export class OfficeView implements OfficeHost {
     Object.assign(this.labels.domElement.style, { position: 'absolute', inset: '0', pointerEvents: 'none' });
     container.appendChild(this.labels.domElement);
 
-    this.scene.add(...officeLights());
+    const lights = officeLights();
+    for (const l of lights) l.layers.enable(GLASS_LAYER); // 유리 패스도 조명을 받게
+    this.scene.add(...lights);
 
     this.office = buildOffice();
+    splitTransparent(this.office.group); // 유리·칸막이는 사람 뒤에 한 번 더 합성(pixelPass)
     this.scene.add(this.office.group, this.tv.group);
     this.cast = new Cast(this.scene, this.office, () => this.invalidate());
 
@@ -170,7 +173,7 @@ export class OfficeView implements OfficeHost {
     const w = this.container.clientWidth || innerWidth;
     const h = this.container.clientHeight || innerHeight;
     this.renderer.setSize(w, h);
-    this.pass.setSize(w / this.px, h / this.px);
+    this.pass.setSize(w / this.px, h / this.px, w * devicePixelRatio, h * devicePixelRatio);
     this.labels.setSize(w, h);
     const aspect = w / h;
     const halfH = Math.max(FIT.h / 2, FIT.w / aspect / 2) / this.zoom;
