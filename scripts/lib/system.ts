@@ -63,14 +63,15 @@ export function writeSettingsIfUnchanged(settings: Record<string, unknown>, expe
   }
   fs.mkdirSync(path.dirname(target), { recursive: true });
   const tmp = target + '.synthetic-office.tmp';
-  fs.writeFileSync(tmp, JSON.stringify(settings, null, 2) + '\n', { mode: 0o600 });
-  JSON.parse(fs.readFileSync(tmp, 'utf8'));
-  if (currentRaw(target) !== expectedRaw) {
-    fs.rmSync(tmp, { force: true });
-    return false;
+  try {
+    fs.writeFileSync(tmp, JSON.stringify(settings, null, 2) + '\n', { mode: 0o600 });
+    JSON.parse(fs.readFileSync(tmp, 'utf8'));
+    if (currentRaw(target) !== expectedRaw) return false;
+    fs.renameSync(tmp, target);
+    return true;
+  } finally {
+    fs.rmSync(tmp, { force: true }); // 실패·포기했을 때 임시 파일을 남기지 않음(rename 뒤엔 이미 없음)
   }
-  fs.renameSync(tmp, target);
-  return true;
 }
 
 export type UpdateResult =
@@ -107,10 +108,16 @@ export function updateJsonFile(file: string, edit: Edit, backup: () => string | 
     const r = edit(read.settings);
     if (r.conflict) return { kind: 'conflict', message: r.conflict };
     if (!r.changed) return { kind: 'unchanged' };
-    const saved = backup();
-    if (r.remove ? removeIfUnchanged(file, read.raw) : writeSettingsIfUnchanged(r.next, read.raw, file)) {
-      return { kind: r.remove ? 'removed' : 'written', backup: saved };
+    // 백업·쓰기의 I/O 오류(권한·디스크)는 던지지 않고 conflict로 — 부르는 쪽이 멈출지(Claude) 경고만 할지(Codex) 정한다
+    let saved: string | null;
+    let done: boolean;
+    try {
+      saved = backup();
+      done = r.remove ? removeIfUnchanged(file, read.raw) : writeSettingsIfUnchanged(r.next, read.raw, file);
+    } catch (err) {
+      return { kind: 'conflict', message: `${file}을 쓰지 못했어요(${(err as NodeJS.ErrnoException).code ?? (err as Error).message})` };
     }
+    if (done) return { kind: r.remove ? 'removed' : 'written', backup: saved };
   }
   return { kind: 'busy' };
 }

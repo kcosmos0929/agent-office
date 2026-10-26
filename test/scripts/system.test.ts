@@ -112,3 +112,21 @@ test('backupSettings: 다른 파일·접두어로 <dir>/codex-hooks-설치전-�
   assert.match(path.basename(second), /^codex-hooks-설치전-\d{4}-\d{2}-\d{2}-\d{6}\.json$/);
   assert.equal(backupSettings('설치전', f + '.none', 'codex-hooks', dir), null);
 });
+
+test('updateJsonFile: 쓰기·백업 I/O 오류는 던지지 않고 conflict(오류 이름), 원본·폴더에 흔적 없음', () => {
+  const f = tmpFile('{"a":1}');
+  const dir = path.dirname(f);
+  fs.chmodSync(dir, 0o500);
+  try {
+    const r = updateJsonFile(f, addMine, () => null);
+    assert.equal(r.kind, 'conflict');
+    assert.match(r.kind === 'conflict' ? r.message : '', /EACCES/);
+  } finally {
+    fs.chmodSync(dir, 0o700);
+  }
+  assert.deepEqual(fs.readdirSync(dir), ['hooks.json']);
+  assert.equal(fs.readFileSync(f, 'utf8'), '{"a":1}');
+  const r2 = updateJsonFile(tmpFile('{}'), addMine, () => { throw Object.assign(new Error('꽉 참'), { code: 'ENOSPC' }); });
+  assert.equal(r2.kind, 'conflict');
+  assert.match(r2.kind === 'conflict' ? r2.message : '', /ENOSPC/);
+});
