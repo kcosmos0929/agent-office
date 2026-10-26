@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { hookToEvents, classifyTool, summarizeToolInput, clip } from '../../src/server/collectors/claudeHook.ts';
+import { hookToEvents, hookPaths, classifyTool, summarizeToolInput, clip } from '../../src/server/collectors/claudeHook.ts';
 import { fx } from '../helpers.ts';
 
 test('PreToolUse Bash → tool-start running', () => {
@@ -164,4 +164,14 @@ test('SessionStart의 model이 사건에 실림(없으면 안 실림)', () => {
   const [e] = hookToEvents({ session_id: 's1', cwd: '/x', hook_event_name: 'SessionStart', source: 'startup', model: 'claude-opus-5-5' }, 1);
   assert.equal(e.model, 'claude-opus-5-5');
   assert.equal(hookToEvents({ session_id: 's1', cwd: '/x', hook_event_name: 'SessionStart', source: 'clear' }, 1)[0].model, undefined);
+});
+
+test('hookPaths: 파일·폴더·Codex 파일 목록·셸 첫 줄의 경로(따옴표 안 공백 포함), 옵션·주소·경로 아닌 말은 뺌', () => {
+  assert.deepEqual(hookPaths({ tool_input: { file_path: '/a/b.ts' } }), ['/a/b.ts']);
+  assert.deepEqual(hookPaths({ tool_input: { path: 'src', pattern: 'x' } }), ['src']);
+  assert.deepEqual(hookPaths({ tool_input: { files: ['a.ts', '/x/b.md'] } }), ['a.ts', '/x/b.md']);
+  const command = 'cd ~/developer/x && rg "foo" "/Users/seop/Documents/CnC Wiki/AI-Sessions/wiki/projects/so/a.md" --glob=*/x https://example.com/a/b -n';
+  assert.deepEqual(hookPaths({ tool_input: { command } }), ['~/developer/x', '/Users/seop/Documents/CnC Wiki/AI-Sessions/wiki/projects/so/a.md']);
+  assert.deepEqual(hookPaths({ hook_event_name: 'Stop' }), []);
+  assert.deepEqual(hookPaths(null), []);
 });

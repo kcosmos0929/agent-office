@@ -1,4 +1,6 @@
 // CnC 위키 프로젝트 허브의 frontmatter(project, project_path)로 "세션 폴더 → 프로젝트 이름표"를 만든다. 위키는 읽기만.
+// 세션이 만지는 파일 경로로도 프로젝트를 알아낸다(makeWorkResolver) — CnC Wiki에서 연 세션도 실제 프로젝트로 보이게.
+import fsSync from 'node:fs';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
@@ -41,15 +43,34 @@ export function parseHub(markdown: string): ProjectEntry | null {
   return { slug, path: normalize(raw) };
 }
 
-export async function loadProjects(vaultPath: string): Promise<ProjectEntry[]> {
-  const root = path.join(vaultPath, 'AI-Sessions', 'wiki', 'projects');
-  let dirs: string[];
+const TITLE_MAX = 20;
+
+/** 허브의 첫 제목줄(# …)에서 '—' 앞부분. 길면 자른다. 이름표에 설정 이름이 없을 때 쓴다 */
+export function hubTitle(markdown: string): string | null {
+  const body = markdown.replace(/^---\n[\s\S]*?\n---\n?/, '');
+  const m = /^# (.+)$/m.exec(body);
+  if (!m) return null;
+  const t = m[1].split(' — ')[0].trim();
+  if (!t) return null;
+  return [...t].length > TITLE_MAX ? [...t].slice(0, TITLE_MAX).join('') + '…' : t;
+}
+
+/** entries = 코드 폴더(project_path)가 있는 허브, titles = 프로젝트 이름 → 허브 제목, known = 위키 안 프로젝트 폴더로 인정할 이름 */
+export type ProjectIndex = { entries: ProjectEntry[]; titles: Record<string, string>; known: Set<string> };
+
+async function subdirs(dir: string): Promise<string[]> {
   try {
-    dirs = await fs.readdir(root);
+    return (await fs.readdir(dir, { withFileTypes: true })).filter((d) => d.isDirectory()).map((d) => d.name);
   } catch {
     return [];
   }
+}
+
+export async function loadProjectIndex(vaultPath: string): Promise<ProjectIndex> {
+  const root = path.join(vaultPath, 'AI-Sessions', 'wiki', 'projects');
+  const dirs = await subdirs(root);
   const entries: ProjectEntry[] = [];
+  const titles: Record<string, string> = {};
   for (const dir of dirs) {
     let files: string[];
     try {
@@ -59,29 +80,131 @@ export async function loadProjects(vaultPath: string): Promise<ProjectEntry[]> {
     }
     for (const file of files.filter((f) => f.startsWith('00 ') && f.endsWith(' 허브.md'))) {
       try {
-        const entry = parseHub(await fs.readFile(path.join(root, dir, file), 'utf8'));
+        const markdown = await fs.readFile(path.join(root, dir, file), 'utf8');
+        const entry = parseHub(markdown);
         if (entry) entries.push(entry);
+        const title = hubTitle(markdown);
+        if (title) titles[entry?.slug ?? dir] = title;
       } catch {
         // 읽기 실패한 허브는 건너뛴다
       }
     }
   }
-  return entries;
+  const known = new Set([...dirs, ...(await subdirs(path.join(vaultPath, 'AI-Sessions', 'workspace', 'projects')))].map((d) => d.toLowerCase()));
+  return { entries, titles, known };
+}
+
+export async function loadProjects(vaultPath: string): Promise<ProjectEntry[]> {
+  return (await loadProjectIndex(vaultPath)).entries;
+}
+
+/** 이름표 글자: 설정의 짧은 이름 → 허브 제목('—' 앞부분) → 폴더 이름(-·_를 띄어쓰기로) */
+export function makeLabel(names: Record<string, string>, titles: Record<string, string>): (slug: string) => string {
+  return (slug) => names[slug] ?? titles[slug] ?? slug.replace(/[-_]+/g, ' ');
 }
 
 function within(child: string, parent: string): boolean {
   return child === parent || child.startsWith(parent + '/');
 }
 
-export function makeResolver(entries: ProjectEntry[], names: Record<string, string>, vaultPath: string): (cwd: string) => string {
+export function makeResolver(entries: ProjectEntry[], names: Record<string, string>, vaultPath: string, titles: Record<string, string> = {}): (cwd: string) => string {
   const sorted = [...entries].sort((a, b) => b.path.length - a.path.length);
   const vault = normalize(vaultPath);
+  const label = makeLabel(names, titles);
   return (cwd: string) => {
     if (!cwd) return UNKNOWN;
     const c = normalize(cwd);
     const hit = sorted.find((e) => within(c, e.path));
-    if (hit) return names[hit.slug] ?? hit.slug;
+    if (hit) return label(hit.slug);
     if (within(c, vault)) return VAULT_NAME;
     return path.basename(cwd.replace(/\/+$/, '')) || UNKNOWN;
   };
 }
+
+/** 위키 안에서 한 프로젝트에 딸린 폴더: wiki/projects·workspace/projects·raw/conversations·wiki/sources 아래 <이름>/… */
+const VAULT_PROJECT_DIR = /^ai-sessions\/(?:wiki\/projects|workspace\/projects|raw\/conversations|wiki\/sources)\/([^/]+)\//;
+
+/** 작업 트리 폴더(.git이 'gitdir: <원래 저장소>/.git/worktrees/…' 파일) → 원래 저장소 폴더. 아니면 null. 폴더별로 기억 */
+function makeMainRepoFinder(): (p: string) => string | null {
+  const cache = new Map<string, string | null>();
+  const look = (dir: string): string | null | undefined => {
+    if (cache.has(dir)) return cache.get(dir);
+    let found: string | null | undefined;
+    try {
+      const git = path.join(dir, '.git');
+      const st = fsSync.statSync(git);
+      if (st.isDirectory()) found = null; // 그 자체가 원래 저장소
+      else if (st.isFile()) {
+        const m = /^gitdir:\s*(.+?)\/\.git\/worktrees\//m.exec(fsSync.readFileSync(git, 'utf8'));
+        found = m ? realNormalize(m[1]) : null;
+      }
+    } catch {
+      found = undefined; // .git 없음 → 위로 계속
+    }
+    if (found !== undefined) cache.set(dir, found);
+    return found;
+  };
+  return (p) => {
+    let dir = p; // 경로 자체(폴더일 수 있음, 예: cd 대상)부터 위로
+    for (let i = 0; i < 12 && dir !== path.dirname(dir); i++, dir = path.dirname(dir)) {
+      const found = look(dir);
+      if (found !== undefined) return found === null ? null : found + p.slice(dir.length);
+    }
+    return null;
+  };
+}
+
+/**
+ * 경로를 앞에서부터 한 칸씩 실제 경로로: 링크를 먼저 따라간 뒤 ..를 적용한다(파일시스템과 같은 순서 —
+ * 'so/링크/..'는 링크 대상의 부모). 없는 칸은 글자대로 붙인다(새 파일 등).
+ */
+function realWalk(p: string, from: string): string {
+  let cur = p.startsWith('/') ? '/' : from;
+  for (const part of p.split('/')) {
+    if (!part || part === '.') continue;
+    if (part === '..') {
+      cur = path.dirname(cur);
+      continue;
+    }
+    const next = path.join(cur, part);
+    try {
+      cur = fsSync.realpathSync.native(next);
+    } catch {
+      cur = next;
+    }
+  }
+  return cur;
+}
+
+/** 실제 경로로 푼 뒤 normalize. 상대 경로는 base(이것도 실제 경로로 풂) 기준 */
+function realNormalize(p: string, base = '/'): string {
+  return normalize(realWalk(p, realWalk(base, '/')));
+}
+
+/**
+ * 세션이 만진 경로 → 프로젝트 이름표(모르면 null = 이름표를 바꾸지 않음).
+ * 위키 안은 프로젝트 폴더만(공통 파일·library·handoff는 null), 밖은 허브의 project_path(작업 트리는 원래 저장소로).
+ */
+export function makeWorkResolver(index: ProjectIndex, names: Record<string, string>, vaultPath: string): (p: string, cwd: string) => string | null {
+  // 비교는 모두 실제 경로로: 프로젝트 안에서 다른 저장소를 가리키는 링크·밖에서 프로젝트를 가리키는 링크를 바르게
+  const sorted = index.entries.map((e) => ({ ...e, path: realNormalize(e.path) })).sort((a, b) => b.path.length - a.path.length);
+  const vault = realNormalize(vaultPath);
+  const label = makeLabel(names, index.titles);
+  const mainRepo = makeMainRepoFinder();
+  const byPath = (p: string) => sorted.find((e) => within(p, e.path));
+  return (raw, cwd) => {
+    if (!raw.trim()) return null;
+    const tilde = raw === '~' || raw.startsWith('~/');
+    const p = tilde ? realNormalize(raw.slice(2), os.homedir()) : realNormalize(raw, cwd || '/'); // 링크를 따라가며 . · .. 정리
+    if (within(p, vault)) {
+      const m = VAULT_PROJECT_DIR.exec(p.slice(vault.length + 1) + '/');
+      return m && index.known.has(m[1]) ? label(m[1]) : null;
+    }
+    const hit = byPath(p);
+    if (hit) return label(hit.slug);
+    const main = mainRepo(p);
+    const wt = main ? byPath(main) : undefined;
+    return wt ? label(wt.slug) : null;
+  };
+}
+
