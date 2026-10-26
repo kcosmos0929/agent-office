@@ -1,4 +1,4 @@
-// 3D 오피스 화면: 렌더러·카메라(아이소메트릭 고정, 확대·축소만)·장면·TV·렌더 속도 조절.
+// 3D 오피스 화면: 렌더러·카메라(아이소메트릭 고정, 확대·축소만)·장면·TV·렌더 속도 조절. 사무실은 굵은 점, 사람은 가는 점(pixelPass).
 import * as THREE from 'three';
 import { CSS2DRenderer } from 'three/examples/jsm/renderers/CSS2DRenderer.js';
 import type { Snapshot } from '../../../src/shared/types.ts';
@@ -7,13 +7,15 @@ import { targetFps } from './fps.ts';
 import type { Pose } from './pose.ts';
 import { showCard } from './card.ts';
 import { Cast } from './cast.ts';
+import { PALETTE, officeLights } from './backdrop.ts';
+import { FIT, FLOOR_X, FLOOR_Z, VIEW_DIR as VIEW } from './layout.ts';
 import { buildOffice, type OfficeScene } from './scene.ts';
+import { GLASS_LAYER, PixelPass, splitTransparent } from './pixelPass.ts';
+import { FIGURE_LAYER } from './sprites/figure.ts';
 import { createTv } from './tv.ts';
 
-const TARGET = new THREE.Vector3(5, 0.7, 5);
-const VIEW_DIR = new THREE.Vector3(1, 0.82, 1).normalize();
-const FIT_W = 15.2; // 장면 폭(월드 단위)
-const FIT_H = 11.2; // 장면 높이
+const TARGET = new THREE.Vector3(FLOOR_X / 2, 0.7, FLOOR_Z / 2);
+const VIEW_DIR = new THREE.Vector3(...VIEW).normalize();
 
 export class OfficeView implements OfficeHost {
   readonly renderer: THREE.WebGLRenderer;
@@ -34,37 +36,38 @@ export class OfficeView implements OfficeHost {
   private lastT = 0;
   private snap: Snapshot | null = null;
   private closeCard: (() => void) | null = null;
+  private readonly pass = new PixelPass(PALETTE.bg);
+  private readonly px: number;
+  private dprQuery: MediaQueryList | null = null;
 
   constructor(container: HTMLElement) {
     this.container = container;
     this.renderer = new THREE.WebGLRenderer({ antialias: false });
-    const px = Number(new URLSearchParams(location.search).get('px') ?? 3);
-    this.renderer.setPixelRatio(1 / Math.max(1, px)); // 픽셀 스타일: 낮은 해상도로 그리고 CSS로 또렷하게 키움(?px=2~4)
-    this.renderer.setClearColor('#F4EFE8');
+    // 사무실 굵은 점 크기: CSS 점 px개 = 1칸(?px=1~4). 화면 자체는 기기 해상도로 그려 사람은 가는 점
+    this.px = Math.max(1, Number(new URLSearchParams(location.search).get('px') ?? 1) || 1);
+    this.renderer.setPixelRatio(devicePixelRatio);
+    this.renderer.setClearColor(PALETTE.bg);
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.BasicShadowMap;
+    this.renderer.shadowMap.autoUpdate = false; // pixelPass가 사무실 그릴 때만 갱신
     container.appendChild(this.renderer.domElement);
 
     this.labels = new CSS2DRenderer();
     Object.assign(this.labels.domElement.style, { position: 'absolute', inset: '0', pointerEvents: 'none' });
     container.appendChild(this.labels.domElement);
 
-    this.scene.add(new THREE.HemisphereLight('#FFFFFF', '#E8DCCB', 2.2));
-    const sun = new THREE.DirectionalLight('#FFF6E8', 1.6);
-    sun.position.set(1, 12, 9);
-    sun.target.position.set(5, 0, 5);
-    sun.castShadow = true;
-    sun.shadow.mapSize.set(1024, 1024);
-    Object.assign(sun.shadow.camera, { left: -9, right: 9, top: 9, bottom: -9, near: 1, far: 30 });
-    sun.shadow.radius = 4;
-    this.scene.add(sun, sun.target);
+    const lights = officeLights();
+    for (const l of lights) l.layers.enable(GLASS_LAYER); // 유리 패스도 조명을 받게
+    this.scene.add(...lights);
 
     this.office = buildOffice();
+    splitTransparent(this.office.group); // 유리·칸막이는 사람 뒤에 한 번 더 합성(pixelPass)
     this.scene.add(this.office.group, this.tv.group);
-    this.cast = new Cast(this.scene, this.office);
+    this.cast = new Cast(this.scene, this.office, () => this.invalidate());
 
     this.camera.position.copy(TARGET).addScaledVector(VIEW_DIR, 30);
     this.camera.lookAt(TARGET);
+    this.camera.layers.enable(FIGURE_LAYER);
 
     this.renderer.domElement.addEventListener('wheel', (e) => {
       e.preventDefault();
@@ -81,6 +84,7 @@ export class OfficeView implements OfficeHost {
     });
     this.resizeObserver.observe(container);
     document.addEventListener('visibilitychange', this.onVisibility);
+    this.watchDpr();
     this.fit();
     (globalThis as { __soView?: OfficeView }).__soView = this; // 화면 확인용 손잡이
     this.invalidate();
@@ -98,6 +102,7 @@ export class OfficeView implements OfficeHost {
     const rect = this.renderer.domElement.getBoundingClientRect();
     const ndc = new THREE.Vector2(((e.clientX - rect.left) / rect.width) * 2 - 1, -((e.clientY - rect.top) / rect.height) * 2 + 1);
     const ray = new THREE.Raycaster();
+    ray.layers.enable(FIGURE_LAYER);
     ray.setFromCamera(ndc, this.camera);
     const agent = this.cast.pick(ray);
     this.closeCard?.();
@@ -110,6 +115,8 @@ export class OfficeView implements OfficeHost {
     cancelAnimationFrame(this.raf);
     this.resizeObserver.disconnect();
     document.removeEventListener('visibilitychange', this.onVisibility);
+    this.dprQuery?.removeEventListener('change', this.onDpr);
+    this.pass.dispose();
     this.renderer.dispose();
     this.container.replaceChildren();
   }
@@ -133,27 +140,43 @@ export class OfficeView implements OfficeHost {
   private frame(t: number): void {
     if (this.disposed) return;
     this.animate(t);
-    this.renderer.render(this.scene, this.camera);
+    this.pass.render(this.renderer, this.scene, this.camera);
     this.labels.render(this.scene, this.camera);
     this.frames++;
     const fps = targetFps(this.poses, document.hidden);
     if (fps === 0) return;
+    // requestAnimationFrame이 다음 화면 갱신까지 더 기다리니 그만큼 일찍 깨운다(16장/초를 지키려고)
     this.timer = setTimeout(() => {
       this.raf = requestAnimationFrame((tt) => this.frame(tt));
-    }, 1000 / fps);
+    }, Math.max(0, 1000 / fps - 10));
   }
 
   private onVisibility = () => {
     if (!document.hidden) this.invalidate();
   };
 
+  /** 창을 레티나 ↔ 일반 모니터로 옮기면 기기 해상도가 바뀐다 */
+  private watchDpr(): void {
+    this.dprQuery?.removeEventListener('change', this.onDpr);
+    this.dprQuery = matchMedia(`(resolution: ${devicePixelRatio}dppx)`);
+    this.dprQuery.addEventListener('change', this.onDpr);
+  }
+
+  private onDpr = () => {
+    this.renderer.setPixelRatio(devicePixelRatio);
+    this.watchDpr();
+    this.fit();
+    this.invalidate();
+  };
+
   private fit(): void {
     const w = this.container.clientWidth || innerWidth;
     const h = this.container.clientHeight || innerHeight;
     this.renderer.setSize(w, h);
+    this.pass.setSize(w / this.px, h / this.px, w * devicePixelRatio, h * devicePixelRatio);
     this.labels.setSize(w, h);
     const aspect = w / h;
-    const halfH = Math.max(FIT_H / 2, FIT_W / aspect / 2) / this.zoom;
+    const halfH = Math.max(FIT.h / 2, FIT.w / aspect / 2) / this.zoom;
     Object.assign(this.camera, { left: -halfH * aspect, right: halfH * aspect, top: halfH, bottom: -halfH });
     this.camera.updateProjectionMatrix();
   }
