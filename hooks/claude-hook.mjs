@@ -29,6 +29,8 @@ function endpoint() {
 const KEEP = ['session_id', 'hook_event_name', 'cwd', 'transcript_path', 'session_title', 'agent_id', 'agent_type',
   'tool_name', 'tool_use_id', 'notification_type', 'message', 'is_interrupt', 'trigger', 'model'];
 const KEEP_INPUT = ['command', 'file_path', 'notebook_path', 'path', 'pattern', 'url', 'query', 'description', 'subagent_type', 'task_name'];
+/** Claude 앱이 차례를 끝낼 때 부르는 '다음 할 일' 상자 도구 */
+const WRAP_UP = 'mcp__ccd_turn__wrap_up';
 const cut = (v) => (typeof v === 'string' && v.length > 300 ? v.slice(0, 300) : v);
 
 function minimize(d) {
@@ -44,6 +46,8 @@ function minimize(d) {
     for (const k of KEEP_INPUT) if (d.tool_input[k] !== undefined) ti[k] = cut(d.tool_input[k]);
     // 서버는 셸 명령의 첫 줄만 쓴다 — heredoc(셸로 부른 apply_patch, cat <<EOF)의 본문은 보내지 않음
     if (typeof ti.command === 'string') ti.command = ti.command.split('\n')[0];
+    // 다음 할 일 상자에 질문이 있나만 보낸다(질문·요약·버튼 글은 안 보냄) — 차례가 끝나면 ❓로
+    if (d.tool_name === WRAP_UP && typeof d.tool_input.ask === 'string' && d.tool_input.ask.trim()) ti.asks = true;
     out.tool_input = ti;
   }
   return out;

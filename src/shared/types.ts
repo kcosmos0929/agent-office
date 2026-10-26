@@ -38,6 +38,8 @@ export type OfficeEvent = EventBase & (
   /** viaNotification: 늦게 올 수 있는 Notification 훅에서 왔음(PermissionRequest가 아니라) */
   | { type: 'permission'; detail: string; viaNotification?: true }
   | { type: 'question'; detail: string | null; viaNotification?: true }
+  /** Claude 앱의 '다음 할 일' 상자가 떴음(성공한 호출만). asks = 질문이 있음 → 차례가 끝나면 ✅ 대신 ❓ */
+  | { type: 'wrap-up'; asks: boolean }
   | { type: 'compact-start'; trigger: CompactTrigger }
   | { type: 'compact-end'; trigger: CompactTrigger }
   /** 사용량 한도에 걸려 멈춤 */
