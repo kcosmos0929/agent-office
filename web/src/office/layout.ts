@@ -62,6 +62,10 @@ export const DESKS: Desk[] = ([[1, 'px'], [0, 'px'], [1, 'nx'], [0, 'nx']] as co
   [0, 1].map((k) => ({ x0: facing === 'px' ? POD_X0 + DESK_DEPTH : POD_X0, y0: POD_YS[pod] + k * (DESK_WIDTH + DESK_GAP), facing })),
 );
 
+/** 개발실(Codex) 책상 3개: 한 줄, 큰 모니터가 앞(+y)을 보고 사람은 앞쪽 의자에. Codex 자리 연결은 3단계에서 */
+export const DEV_DESKS: readonly Point[] = [{ x: 7.9, y: 1.8 }, { x: 10.2, y: 1.8 }, { x: 12.5, y: 1.8 }];
+export const DEV_DESK = { w: 2.0, d: 0.9 };
+
 /** 비서실 스탠딩 책상 3개(한 줄, 사람은 책상 앞 +y 쪽에 서서 일함) — ARIA 에이전트 여럿을 위한 자리 */
 export const ARIA_DESK_XS = [8.6, 10.9, 13.2];
 export const ARIA_DESK_Y = 5.7;

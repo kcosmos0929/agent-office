@@ -3,7 +3,7 @@ import * as THREE from 'three';
 import { CSS2DObject } from 'three/examples/jsm/renderers/CSS2DRenderer.js';
 import { buildBackdrop } from './backdrop.ts';
 import { armchair, beanBag, bigPlant, binders, bookshelf, boxStack, coatRack, copier, deskLamp, fileCabinet, fridge, FURN, lowCabinet, kitchenCounter, lowTable, officeChair, podDesk, podDivider, printer, receptionDesk, screenStand, shredder, smallPlant, sofa, stool, storageShelf, supplyCabinet, toilet, trashBin, vendingMachine, washbasin, waterCooler, whiteboard } from './furniture.ts';
-import { ARIA_DESK, ARIA_DESK_XS, ARIA_DESK_Y, DESK_DEPTH, DESK_WIDTH, DESKS, MEETING_TABLE, POD_X0, POD_YS, ROOMS, meetingSpot } from './layout.ts';
+import { ARIA_DESK, ARIA_DESK_XS, ARIA_DESK_Y, DEV_DESK, DEV_DESKS, DESK_DEPTH, DESK_WIDTH, DESKS, MEETING_TABLE, POD_X0, POD_YS, ROOMS, meetingSpot } from './layout.ts';
 
 export const WALL_H = 3.0;
 
@@ -103,17 +103,20 @@ export function buildOffice(): OfficeScene {
   stool(g, 13.55, 16.95);
   trashBin(g, 14.6, 17.6);
 
-  // 개발실(Codex): 서버랙 + 책상과 큰 모니터
+  // 개발실(Codex): 서버랙 + 큰 모니터 책상 3개
   for (const x0 of [12.0, 13.0, 14.0]) {
     g.add(block(x0, 0.2, 0.8, 0.8, 0, 1.7, '#3C4656'));
     for (let k = 0; k < 4; k++) g.add(block(x0 + 0.15, 1.0, 0.08, 0.02, 0.35 + k * 0.36, 0.06, k % 2 ? '#7CE0A3' : '#5BC0EB', { emissive: k % 2 ? '#7CE0A3' : '#5BC0EB' }));
   }
-  lowTable(g, 8.8, 1.8, 2.0, 0.9, 0.58);
-  g.add(block(9.2, 1.88, 1.2, 0.12, 0.63, 0.7, FURN.monitor));
-  const codexScreen = new THREE.Mesh(new THREE.PlaneGeometry(1.04, 0.53), new THREE.MeshBasicMaterial({ color: '#CFF1E6' }));
-  codexScreen.position.set(9.8, 0.63 + 0.35, 2.005);
-  g.add(codexScreen);
-  officeChair(g, 9.8, 3.0, 'pz');
+  for (const { x: x0, y: y0 } of DEV_DESKS) {
+    const cx = x0 + DEV_DESK.w / 2;
+    lowTable(g, x0, y0, DEV_DESK.w, DEV_DESK.d, 0.58);
+    g.add(block(cx - 0.6, y0 + 0.08, 1.2, 0.12, 0.63, 0.7, FURN.monitor));
+    const screen = new THREE.Mesh(new THREE.PlaneGeometry(1.04, 0.53), new THREE.MeshBasicMaterial({ color: '#CFF1E6' }));
+    screen.position.set(cx, 0.63 + 0.35, y0 + 0.205);
+    g.add(screen);
+    officeChair(g, cx, y0 + 1.2, 'pz');
+  }
 
   // 비서실(ARIA): 스탠딩 책상 3개(높은 나무 상판 + 검은 다리 둘 + 모니터) + 큰 화분
   const sd = ARIA_DESK;
@@ -140,7 +143,7 @@ export function buildOffice(): OfficeScene {
 
   // 방 이름 (각 방 앞쪽 가장자리 근처)
   g.add(roomLabel(ROOMS.claude.label, 1.9, 12.6));
-  g.add(roomLabel(ROOMS.codex.label, 12.2, 2.6));
+  g.add(roomLabel(ROOMS.codex.label, 14.0, 3.7));
   g.add(roomLabel(ROOMS.aria.label, 12.6, 8.2));
   g.add(roomLabel(ROOMS.meeting.label, 13.9, 10.1));
   g.add(roomLabel(ROOMS.storage.label, 1.2, 16.05));
