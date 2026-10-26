@@ -167,22 +167,23 @@ body:not(.view-list) .toolbar button.blink { border-color: var(--wait); animatio
 /* 아이소 벽 기울기(2:1 = 26.57°)만큼 비틀어 벽에 붙어 보이게 */
 .room-sign.along-x span { transform: skewY(26.57deg); }
 .room-sign.along-y span { transform: skewY(-26.57deg); }
+/* 카드 글자는 갈무리가 설계된 크기로만 쓴다(Galmuri11·GalmuriMono11 = 12px, Galmuri14 = 15px). 1px만 작아도 획이 빠져 글자가 깨진다 */
 .card {
-  position: absolute; z-index: 25; width: 240px; background: var(--panel); padding: 12px 14px; font: 12px/1.6 'Galmuri11', monospace;
+  position: absolute; z-index: 25; width: 264px; background: var(--panel); padding: 12px 14px; font: 12px/18px 'Galmuri11', monospace;
   color: #e6e9ee; box-shadow: 0 0 0 1px var(--panel-line), 5px 5px 0 0 rgba(0, 0, 0, 0.5); -webkit-font-smoothing: none;
 }
-.card-head { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--panel-muted); }
+.card-head { display: flex; align-items: center; gap: 6px; color: var(--panel-muted); }
 .card-swatch { width: 10px; height: 10px; }
 .card-close { margin-left: auto; border: 0; background: none; cursor: pointer; color: var(--panel-muted); font: inherit; }
-.card-title { font: 14px/1.4 'Galmuri14', monospace; margin: 2px 0 6px; }
+.card-title { font: 15px/20px 'Galmuri14', monospace; margin: 3px 0 6px; }
 .card-pill { padding: 1px 6px; }
 .card-state { color: var(--panel-muted); }
-.card-detail { margin-top: 6px; font: 11px/1.5 'GalmuriMono11', monospace; background: #1f2125; padding: 5px 7px; word-break: break-all; }
+.card-detail { margin-top: 6px; font: 12px/18px 'GalmuriMono11', monospace; background: #1f2125; padding: 5px 7px; word-break: break-all; }
 .card-project { margin-top: 6px; color: var(--panel-muted); }
 .card-project b { color: #e6e9ee; font-weight: 400; }
-.card-cwd { color: #7d838c; font-size: 11px; }
-.card-context { margin-top: 6px; color: var(--panel-muted); font-size: 11px; }
-.card .tag-hookless { background: #3a3d44; color: #b8bec7; border-radius: 0; }
+.card-cwd { color: #7d838c; }
+.card-context { margin-top: 6px; color: var(--panel-muted); }
+.card .tag-hookless { font: inherit; background: #3a3d44; color: #b8bec7; border-radius: 0; }
 .tv-label { font: 11px/1.35 'Galmuri11', monospace; color: #7ce0a3; text-align: center; white-space: nowrap; -webkit-font-smoothing: none; pointer-events: none; }
 .tv-label .tv-sub { color: #9aa5b4; }
 
