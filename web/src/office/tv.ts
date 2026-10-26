@@ -20,6 +20,12 @@ export function tvLines(u: Usage | null, now: number): { main: string; pct: numb
   };
 }
 
+/** 캔버스 칸에 쓸 화면 색(sRGB) 바이트. THREE.Color의 r/g/b는 선형 값이라 그대로 쓰면 sRGB 텍스처에서 한 번 더 어두워진다 */
+export function inkBytes(color: string): [number, number, number] {
+  const c = new THREE.Color(color).getRGB({ r: 0, g: 0, b: 0 }, THREE.SRGBColorSpace);
+  return [c.r, c.g, c.b].map((v) => Math.round(v * 255)) as [number, number, number];
+}
+
 /** 가운데 맞춘 픽셀 글씨: 캔버스 글자의 흐린 가장자리를 없애(반쯤 칠한 칸 → 꽉 채움/빈칸) 도트처럼 또렷하게 */
 function pixelText(ctx: CanvasRenderingContext2D, text: string, y: number, font: string, color: string): void {
   const tmp = document.createElement('canvas');
@@ -32,8 +38,7 @@ function pixelText(ctx: CanvasRenderingContext2D, text: string, y: number, font:
   t.fillText(text, Math.round((W - t.measureText(text).width) / 2), y);
   const src = t.getImageData(0, 0, W, H).data;
   const out = ctx.getImageData(0, 0, W, H);
-  const c = new THREE.Color(color);
-  const rgb = [c.r, c.g, c.b].map((v) => Math.round(v * 255));
+  const rgb = inkBytes(color);
   for (let i = 0; i < src.length; i += 4) {
     if (src[i + 3] < 110) continue;
     out.data[i] = rgb[0];
