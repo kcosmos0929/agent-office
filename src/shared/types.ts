@@ -32,7 +32,8 @@ export type OfficeEvent = EventBase & (
   | { type: 'session-end' }
   /** 입력을 기다린다는 알림(Stop 없이 끝난 차례 대비) */
   | { type: 'idle' }
-  | { type: 'tool-start'; toolUseId: string; activity: Activity; detail: string }
+  /** spawn = Codex 도우미 띄우기 도구(spawn_agent)일 때만 — 끝난 뒤에도 기다리기 전까지 👥 유지용 표시 */
+  | { type: 'tool-start'; toolUseId: string; activity: Activity; detail: string; spawn?: true }
   | { type: 'tool-end'; toolUseId: string }
   /** viaNotification: 늦게 올 수 있는 Notification 훅에서 왔음(PermissionRequest가 아니라) */
   | { type: 'permission'; detail: string; viaNotification?: true }

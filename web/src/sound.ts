@@ -18,6 +18,11 @@ export function soundEvents(prev: Snapshot | null, next: Snapshot): SoundKind[] 
   return out;
 }
 
+/** 새로 고침 직전에 소리가 켜져 있었음을 sessionStorage에 남기는 값. 정확히 '1'일 때만 복원한다 */
+export function shouldRestoreSound(stored: string | null): boolean {
+  return stored === '1';
+}
+
 /** 브라우저는 사용자가 한 번 눌러야 소리를 낼 수 있다 → enable()은 버튼 클릭에서 부른다 */
 export class SoundPlayer {
   private ctx: AudioContext | null = null;

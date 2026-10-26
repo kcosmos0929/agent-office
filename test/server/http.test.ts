@@ -21,7 +21,7 @@ after(async () => { for (const c of closers) await c(); });
 
 async function boot(extra: Partial<Parameters<typeof startServer>[0]> = {}) {
   const config = loadConfig(home);
-  const state = new OfficeState({ idleMs: 30 * M, goneMs: 10 * M, stalledMs: 15 * M, forgetMs: 12 * 60 * M, resolveProject: () => '가로망 중심성', startedAt: 0, registryWaitRule: false });
+  const state = new OfficeState({ restMs: 30 * M, leaveMs: 120 * M, goneMs: 10 * M, stalledMs: 15 * M, forgetMs: 12 * 60 * M, resolveProject: () => '가로망 중심성', startedAt: 0, registryWaitRule: false });
   const admin: string[] = [];
   const srv = await startServer({ config, token: TOKEN, state, staticDir, listenPort: 0, host: '127.0.0.1', onAdmin: (a) => admin.push(a), ...extra });
   closers.push(srv.close);
@@ -30,7 +30,7 @@ async function boot(extra: Partial<Parameters<typeof startServer>[0]> = {}) {
 
 async function bootWithWork(resolveWork: (p: string, cwd: string) => string | null) {
   const config = loadConfig(home);
-  const state = new OfficeState({ idleMs: 30 * M, goneMs: 10 * M, stalledMs: 15 * M, forgetMs: 12 * 60 * M, resolveProject: () => 'CnC Wiki', startedAt: 0, registryWaitRule: false, resolveWork });
+  const state = new OfficeState({ restMs: 30 * M, leaveMs: 120 * M, goneMs: 10 * M, stalledMs: 15 * M, forgetMs: 12 * 60 * M, resolveProject: () => 'CnC Wiki', startedAt: 0, registryWaitRule: false, resolveWork });
   const srv = await startServer({ config, token: TOKEN, state, staticDir, listenPort: 0, host: '127.0.0.1' });
   closers.push(srv.close);
   return { url: `http://127.0.0.1:${srv.port}`, state };
@@ -125,13 +125,27 @@ test('정적 파일 경로 탈출 막기', async () => {
 
 test('client-config와 healthz, lan-info는 루프백만', async () => {
   const local = await boot();
-  assert.deepEqual(await (await fetch(local.url + '/api/client-config')).json(), { softSound: true, loopback: true, codexAutoApprove: true });
+  assert.deepEqual(await (await fetch(local.url + '/api/client-config')).json(), { softSound: true, loopback: true, codexAutoApprove: true, build: null });
   assert.equal(await (await fetch(local.url + '/healthz')).text(), 'ok');
   const remote = await boot({ isLoopback: () => false });
   const cookie = { cookie: 'so_token=' + TOKEN };
-  assert.deepEqual(await (await fetch(remote.url + '/api/client-config', { headers: cookie })).json(), { softSound: true, loopback: false, codexAutoApprove: true });
+  assert.deepEqual(await (await fetch(remote.url + '/api/client-config', { headers: cookie })).json(), { softSound: true, loopback: false, codexAutoApprove: true, build: null });
   assert.equal((await fetch(remote.url + '/healthz', { headers: cookie })).status, 404);
   assert.equal((await fetch(remote.url + '/api/lan-info', { headers: cookie })).status, 404);
+});
+
+test('빌드 지문: client-config와 첫 스냅샷 메시지에 같은 값(옵션 없으면 null)', async () => {
+  const withBuild = await boot({ build: 'abc123def456' });
+  assert.equal((await (await fetch(withBuild.url + '/api/client-config')).json()).build, 'abc123def456');
+  const ws = new WebSocket(withBuild.url.replace('http', 'ws') + '/ws');
+  const first = (await nextSnapshot(ws, () => true)) as Snapshot & { build?: string | null };
+  assert.equal(first.build, 'abc123def456');
+  ws.close();
+  const without = await boot();
+  const ws2 = new WebSocket(without.url.replace('http', 'ws') + '/ws');
+  const first2 = (await nextSnapshot(ws2, () => true)) as Snapshot & { build?: string | null };
+  assert.equal(first2.build, null);
+  ws2.close();
 });
 
 test('admin: 루프백 + X-SO-Admin 헤더 + 같은 출처만', async () => {
@@ -204,7 +218,8 @@ test('loadConfig: 없으면 기본값 파일 생성', () => {
   const h = fs.mkdtempSync(path.join(os.tmpdir(), 'so-cfg-'));
   const c = loadConfig(h);
   assert.equal(c.port, 4310);
-  assert.equal(c.idleMinutes, 30);
+  assert.equal(c.restMinutes, 10);
+  assert.equal(c.leaveMinutes, 120);
   assert.equal(c.goneMinutes, 10);
   assert.equal(c.stalledMinutes, 15);
   assert.equal(c.forgetHours, 12);
@@ -213,10 +228,13 @@ test('loadConfig: 없으면 기본값 파일 생성', () => {
   assert.equal(c.wikiPath, path.join(os.homedir(), 'Documents', 'CnC Wiki'));
   assert.equal(c.projectNames['lst-seongsu'], '성수 LST');
   assert.ok(fs.existsSync(path.join(h, 'config.json')));
-  fs.writeFileSync(path.join(h, 'config.json'), JSON.stringify({ port: 5000, idleMinutes: 5 }));
+  fs.writeFileSync(path.join(h, 'config.json'), JSON.stringify({ port: 5000, restMinutes: 5 }));
   const c2 = loadConfig(h);
   assert.equal(c2.port, 5000);
-  assert.equal(c2.idleMinutes, 5);
+  assert.equal(c2.restMinutes, 5);
+  assert.equal(c2.leaveMinutes, 120);
+  fs.writeFileSync(path.join(h, 'config.json'), JSON.stringify({ idleMinutes: 30 }));
+  assert.equal(loadConfig(h).restMinutes, 10, '옛 idleMinutes는 더 읽지 않음');
   assert.equal(c2.goneMinutes, 10);
   fs.writeFileSync(path.join(h, 'config.json'), '{깨짐');
   assert.equal(loadConfig(h).port, 4310);

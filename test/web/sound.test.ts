@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { soundEvents } from '../../web/src/sound.ts';
+import { shouldRestoreSound, soundEvents } from '../../web/src/sound.ts';
 import type { Agent, Snapshot, Status } from '../../src/shared/types.ts';
 
 const agent = (id: string, status: Status) => ({ id, status }) as Agent;
@@ -33,4 +33,9 @@ test('soundEvents: ❓도 urgent, ❗↔❓는 다시 안 울림, ⏳·🧹는 �
 test('soundEvents: 🛡️ 승인 확인 중은 조용, 5초 뒤 ❗가 될 때 울림', () => {
   assert.deepEqual(soundEvents(snap(agent('a', 'running')), snap(agent('a', 'approving'))), []);
   assert.deepEqual(soundEvents(snap(agent('a', 'approving')), snap(agent('a', 'permission'))), ['urgent']);
+});
+
+test('새로 고침 뒤 소리 복원: 저장된 값이 "1"일 때만', () => {
+  assert.equal(shouldRestoreSound('1'), true);
+  for (const v of [null, '', '0', 'true']) assert.equal(shouldRestoreSound(v), false, String(v));
 });

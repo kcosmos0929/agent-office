@@ -47,5 +47,6 @@ export function codexHookToEvents(payload: unknown, now: number): OfficeEvent[] 
   const events = p.hook_event_name === 'Interrupt'
     ? hookToEvents({ ...p, hook_event_name: 'Stop' }, now, CODEX_TOOLS).map((e) => (e.type === 'stop' ? { ...e, interrupted: true } : e))
     : hookToEvents(p, now, CODEX_TOOLS);
-  return events.map(({ transcriptPath, title, ...e }) => ({ ...e, kind: 'codex' }) as OfficeEvent);
+  const spawn = p.hook_event_name === 'PreToolUse' && typeof p.tool_name === 'string' && isSpawn(p.tool_name);
+  return events.map(({ transcriptPath, title, ...e }) => ({ ...e, kind: 'codex', ...(spawn && e.type === 'tool-start' ? { spawn: true } : {}) }) as OfficeEvent);
 }

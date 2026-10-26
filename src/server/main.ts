@@ -2,6 +2,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { loadConfig, saveConfigPatch } from './config.ts';
+import { buildId } from './build.ts';
 import { startServer } from './http.ts';
 import { makeCodexTitleReader } from './collectors/codexTitles.ts';
 import { watchRegistry } from './collectors/sessionRegistry.ts';
@@ -31,7 +32,9 @@ async function main(): Promise<void> {
   let resolver = makeResolver(index.entries, config.projectNames, config.wikiPath, index.titles);
   let work = makeWorkResolver(index, config.projectNames, config.wikiPath);
   const state = new OfficeState({
-    idleMs: config.idleMinutes * MINUTE,
+    restMs: config.restMinutes * MINUTE,
+    // 퇴근이 쉬기보다 빠르면 😴가 한 틱만 보이고 바로 👋가 되므로, 퇴근은 적어도 쉬기 뒤로
+    leaveMs: Math.max(config.leaveMinutes, config.restMinutes) * MINUTE,
     goneMs: config.goneMinutes * MINUTE,
     stalledMs: config.stalledMinutes * MINUTE,
     forgetMs: config.forgetHours * 60 * MINUTE,
@@ -58,7 +61,8 @@ async function main(): Promise<void> {
     console.warn('[synthetic-office] 허브 폴더를 지켜볼 수 없어요 — 이름표는 시작할 때 값으로 고정');
   }
 
-  const server = await startServer({ config, token, state, staticDir: path.join(REPO_ROOT, 'dist', 'web'), codexTitle: makeCodexTitleReader(codexSessionIndex()), saveConfig: (patch) => saveConfigPatch(home, patch) });
+  const staticDir = path.join(REPO_ROOT, 'dist', 'web');
+  const server = await startServer({ config, token, state, staticDir, build: buildId(staticDir), codexTitle: makeCodexTitleReader(codexSessionIndex()), saveConfig: (patch) => saveConfigPatch(home, patch) });
   const endpoint = homeFiles(home).endpoint;
   fs.writeFileSync(endpoint, JSON.stringify({ port: server.port, token, pid: process.pid }) + '\n', { mode: 0o600 });
   fs.chmodSync(endpoint, 0o600);

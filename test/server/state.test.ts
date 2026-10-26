@@ -7,9 +7,9 @@ import { M } from '../helpers.ts';
 
 const CWD = '/Users/seop/developer/street-centrality-bus';
 
-function make(o: { startedAt?: number; rule?: boolean } = {}) {
+function make(o: { startedAt?: number; rule?: boolean; rest?: number; leave?: number } = {}) {
   return new OfficeState({
-    idleMs: 30 * M, goneMs: 10 * M, stalledMs: 15 * M, forgetMs: 12 * 60 * M, resolveProject: (cwd) => (cwd === CWD ? '가로망 중심성' : 'x'),
+    restMs: o.rest ?? 30 * M, leaveMs: o.leave ?? 120 * M, goneMs: 10 * M, stalledMs: 15 * M, forgetMs: 12 * 60 * M, resolveProject: (cwd) => (cwd === CWD ? '가로망 중심성' : 'x'),
     startedAt: o.startedAt ?? 0, registryWaitRule: o.rule ?? false,
   });
 }
@@ -1069,7 +1069,7 @@ test('겹친 Codex 승인: 오래된 요청이 풀리고 새 요청만 남으면
 test('Codex 자동 승인 스위치가 켜져 있으면 Codex 승인 요청(메인·도우미)은 무시하고 하던 일을 그대로, Claude는 그대로 ❗', () => {
   let auto = true;
   const st = new OfficeState({
-    idleMs: 30 * M, goneMs: 10 * M, stalledMs: 15 * M, forgetMs: 12 * 60 * M, startedAt: 0, registryWaitRule: false,
+    restMs: 30 * M, leaveMs: 120 * M, goneMs: 10 * M, stalledMs: 15 * M, forgetMs: 12 * 60 * M, startedAt: 0, registryWaitRule: false,
     resolveProject: () => 'x', codexAutoApprove: () => auto,
   });
   const cx = (e: Ev): Ev => ({ ...e, kind: 'codex' });
@@ -1142,7 +1142,7 @@ test('시작 신호를 받은 세션은 등록부 idle로는 보이지 않음(�
 
 test('touchPaths: 만진 경로로 알아낸 마지막 프로젝트가 이름표, 못 알아내면 그대로, 시작 폴더가 바뀌어도 유지', () => {
   const st = new OfficeState({
-    idleMs: 30 * M, goneMs: 10 * M, stalledMs: 15 * M, forgetMs: 12 * 60 * M, startedAt: 0, registryWaitRule: false,
+    restMs: 30 * M, leaveMs: 120 * M, goneMs: 10 * M, stalledMs: 15 * M, forgetMs: 12 * 60 * M, startedAt: 0, registryWaitRule: false,
     resolveProject: (cwd) => (cwd === CWD ? '가로망 중심성' : 'CnC Wiki'),
     resolveWork: (p) => (p.includes('/alpha/') ? 'Alpha' : p.includes('/beta/') ? 'Beta' : null),
   });
@@ -1221,4 +1221,272 @@ test('Codex 차례가 끝난 뒤 도우미 승인이 풀려도(도구 끝·스�
   // 다음 차례가 시작되면 다시 평소대로(메시지 → 💭)
   sw.apply(cx(ev.prompt('x2', 8_000)));
   assert.equal(one(sw).status, 'thinking');
+});
+
+test('✅ 10분 → 😴, 차례가 끝나고 2시간 → 👋, 10분 뒤 숨김(지우지 않음)', () => {
+  const st = make({ rest: 10 * M, leave: 120 * M });
+  st.apply(ev.prompt('s1', 0)); st.apply(ev.stop('s1', 1 * M));
+  st.tick(11 * M); assert.equal(one(st).status, 'idle');
+  assert.equal(st.tick(121 * M - 1), false);
+  assert.equal(st.tick(121 * M), true); assert.equal(one(st).status, 'gone');
+  st.tick(131 * M); assert.deepEqual(st.snapshot(0).agents, []);
+});
+
+for (const kind of ['claude', 'codex'] as const) {
+  test(`자동 퇴근해 숨은 세션은 다시 일하면 새 모자·자리로 돌아옴(${kind})`, () => {
+    const st = make({ rest: 10 * M, leave: 120 * M });
+    const k = { kind };
+    st.apply({ ...ev.prompt('s1', 0), ...k, title: '내 제목' } as Ev); st.apply({ ...ev.stop('s1', 1 * M), ...k });
+    st.tick(11 * M); st.tick(121 * M); st.tick(131 * M);
+    assert.deepEqual(st.snapshot(0).agents, []);
+    st.apply({ ...ev.prompt('s2', 132 * M), ...k });
+    assert.deepEqual([one(st).id, one(st).hat, one(st).seat], [`${kind}:s2`, 0, 0]);
+    st.apply({ ...ev.prompt('s1', 133 * M), ...k });
+    const s1 = st.snapshot(0).agents.find((a) => a.sessionId === 's1')!;
+    assert.deepEqual([s1.status, s1.hat, s1.seat], ['thinking', 1, 1]);
+    assert.equal(s1.title, '내 제목', '숨기만 했지 지우지 않았다');
+    // 다시 일한 뒤에는 보통 세션처럼: 이번엔 지금처럼 SessionEnd 퇴근이면 지움
+    st.apply({ ...ev.end_('s1', 134 * M), ...k });
+    st.tick(145 * M);
+    assert.equal(st.snapshot(0).agents.some((a) => a.sessionId === 's1'), false);
+  });
+}
+
+test('숨긴 뒤의 tick은 아무것도 안 바꿈(1초마다 화면을 다시 보내지 않게)', () => {
+  const st = make({ rest: 10 * M, leave: 120 * M });
+  st.apply(ev.prompt('s1', 0)); st.apply(ev.stop('s1', 1 * M));
+  st.tick(11 * M); st.tick(121 * M); assert.equal(st.tick(131 * M), true);
+  assert.equal(st.tick(132 * M), false);
+});
+
+test('창 닫은 퇴근(SessionEnd)은 지금처럼 10분 뒤 지움', () => {
+  const st = make({ rest: 10 * M, leave: 120 * M });
+  st.apply({ ...ev.prompt('s1', 0), title: '옛 제목' } as Ev); st.apply(ev.end_('s1', 1 * M));
+  assert.equal(one(st).status, 'gone');
+  st.tick(11 * M); assert.deepEqual(st.snapshot(0).agents, []);
+  // 지워졌다는 증거: 같은 id가 다시 시작해도 앞서 붙은 제목이 없다
+  st.apply(ev.prompt('s1', 12 * M)); assert.equal(one(st).title, null);
+});
+
+test('⏳ 토큰 기다림·… 응답 없음은 쉬기·퇴근 규칙을 타지 않음', () => {
+  const st = make({ rest: 10 * M, leave: 120 * M });
+  st.apply(ev.prompt('q', 0)); st.apply(ev.quota('q', 1 * M));
+  st.apply(ev.prompt('t', 0));
+  st.tick(16 * M); st.tick(200 * M);
+  const by = (id: string) => st.snapshot(0).agents.find((a) => a.sessionId === id)!;
+  assert.equal(by('q').status, 'quota');
+  assert.equal(by('t').status, 'stalled');
+});
+
+test('등록부 idle은 자동 퇴근을 되돌리지 않음(훅 없는 세션 포함)', () => {
+  const st = make({ rest: 10 * M, leave: 120 * M });
+  st.applyRegistry(read(reg('r1', 'busy', 1000)), 2000);
+  st.applyRegistry(read(reg('r1', 'idle', 5000)), 6000);
+  st.tick(5000 + 10 * M); assert.equal(one(st).status, 'idle');
+  st.tick(5000 + 120 * M); assert.equal(one(st).status, 'gone');
+  st.applyRegistry(read(reg('r1', 'idle', 5000)), 5000 + 121 * M);
+  assert.equal(one(st).status, 'gone');
+  st.tick(5000 + 131 * M); assert.deepEqual(st.snapshot(0).agents, []);
+  st.applyRegistry(read(reg('r1', 'idle', 5000)), 5000 + 132 * M);
+  st.applyRegistry(read(reg('r1', 'idle', 5000)), 5000 + 134 * M);
+  assert.deepEqual(st.snapshot(0).agents, []);
+  st.applyRegistry(read(reg('r1', 'busy', 5000 + 140 * M)), 5000 + 140 * M + 1000);
+  assert.equal(one(st).status, 'thinking');
+});
+
+test('등록부 busy는 훅이 있던 자동 퇴근 세션도 다시 보이게 함', () => {
+  const st = make({ rest: 10 * M, leave: 120 * M });
+  st.apply(ev.prompt('s1', 0)); st.apply(ev.stop('s1', 1 * M));
+  st.applyRegistry(read(reg('s1', 'idle', 1 * M)), 2 * M);
+  st.tick(11 * M); st.tick(121 * M); st.tick(131 * M);
+  assert.deepEqual(st.snapshot(0).agents, []);
+  st.applyRegistry(read(reg('s1', 'idle', 1 * M)), 132 * M);
+  assert.deepEqual(st.snapshot(0).agents, []);
+  st.applyRegistry(read(reg('s1', 'busy', 140 * M)), 140 * M + 1000);
+  assert.equal(one(st).status, 'thinking');
+});
+
+test('자동 퇴근 뒤 SessionEnd는 숨기지 않고 10분 뒤 지움', () => {
+  const st = make({ rest: 10 * M, leave: 120 * M });
+  st.apply({ ...ev.prompt('s1', 0), title: '옛 제목' } as Ev); st.apply(ev.stop('s1', 1 * M));
+  st.tick(11 * M); st.tick(121 * M);
+  assert.equal(one(st).status, 'gone');
+  st.apply(ev.end_('s1', 122 * M));
+  st.tick(132 * M);
+  st.apply(ev.prompt('s1', 133 * M));
+  assert.equal(one(st).title, null, '지워졌다가 새로 시작');
+});
+
+test('숨은 자동 퇴근 세션은 낡은 도구 끝 신호로 되살아나거나 지워지지 않고, 일 신호에야 돌아옴', () => {
+  const st = make({ rest: 10 * M, leave: 120 * M });
+  st.apply({ ...ev.prompt('s1', 0), title: '내 제목' } as Ev); st.apply(ev.stop('s1', 1 * M));
+  st.tick(11 * M); st.tick(121 * M); st.tick(131 * M);
+  st.apply(ev.end('s1', 140 * M, 't9'));
+  st.apply(ev.subStop('s1', 141 * M, 'x'));
+  st.tick(150 * M); st.tick(300 * M);
+  assert.deepEqual(st.snapshot(0).agents, []);
+  st.apply(ev.prompt('s1', 301 * M));
+  assert.deepEqual([one(st).status, one(st).title], ['thinking', '내 제목']);
+});
+
+test('숨은 훅 없는 세션은 퇴근보다 오래된 busy를 두 번 받아도 숨은 채', () => {
+  const st = make({ rest: 10 * M, leave: 120 * M });
+  st.applyRegistry(read(reg('r1', 'busy', 1000)), 2000);
+  st.applyRegistry(read(reg('r1', 'idle', 5000)), 6000);
+  st.tick(5000 + 10 * M); st.tick(5000 + 120 * M); st.tick(5000 + 131 * M);
+  assert.deepEqual(st.snapshot(0).agents, []);
+  st.applyRegistry(read(reg('r1', 'busy', 2000)), 5000 + 132 * M);
+  st.applyRegistry(read(reg('r1', 'busy', 2000)), 5000 + 134 * M);
+  assert.deepEqual(st.snapshot(0).agents, []);
+});
+
+// spawn_agent가 끝나도 wait_agent가 시작되기 전까지 👥를 유지한다(Codex만) — 사이의 💭 깜빡임 방지
+test('Codex 도우미 띄우기 → 기다리기 사이에 💭 없음(도우미 시작이 띄우기 끝 앞이든 뒤든)', () => {
+  for (const subBefore of [true, false]) {
+    const st = make();
+    const cx = (e: Ev): Ev => ({ ...e, kind: 'codex' });
+    const spawn = { ...ev.tool('x1', 100, 'S', 'delegating'), spawn: true } as Ev;
+    const seen: string[] = [];
+    st.apply(cx(ev.prompt('x1', 0)));
+    st.apply(cx(spawn)); seen.push(one(st).status);
+    if (subBefore) st.apply(cx(ev.subStart('x1', 150, 'A')));
+    st.apply(cx(ev.end('x1', 200, 'S')));
+    if (!subBefore) st.apply(cx(ev.subStart('x1', 250, 'A')));
+    seen.push(one(st).status);
+    st.apply(cx(ev.tool('x1', 300, 'W', 'delegating'))); seen.push(one(st).status);
+    st.apply(cx(ev.end('x1', 400, 'W'))); seen.push(one(st).status);
+    assert.deepEqual(seen, ['delegating', 'delegating', 'delegating', 'thinking'], `subBefore=${subBefore}`);
+  }
+});
+
+test('Claude Agent 도구 끝은 지금처럼 💭(spawn 표시 없음)', () => {
+  const st = make();
+  st.apply(ev.prompt('c1', 0));
+  st.apply(ev.tool('c1', 100, 'S', 'delegating'));
+  st.apply(ev.end('c1', 200, 'S'));
+  assert.equal(one(st).status, 'thinking');
+});
+
+test('Codex 띄우기 끝 → 도우미 시작·끝(차례 안 끝남) → 💭, 차례 끝 뒤 도우미 끝은 ✅', () => {
+  const st = make();
+  const cx = (e: Ev): Ev => ({ ...e, kind: 'codex' });
+  st.apply(cx(ev.prompt('x1', 0)));
+  st.apply(cx({ ...ev.tool('x1', 100, 'S', 'delegating'), spawn: true } as Ev));
+  st.apply(cx(ev.end('x1', 200, 'S')));
+  st.apply(cx(ev.subStart('x1', 250, 'A')));
+  assert.equal(one(st).status, 'delegating');
+  st.apply(cx(ev.subStop('x1', 300, 'A')));
+  assert.equal(one(st).status, 'thinking');
+  // 차례가 끝난 뒤 도우미가 끝나면 ✅
+  const st2 = make();
+  st2.apply(cx(ev.prompt('x2', 0)));
+  st2.apply(cx(ev.subStart('x2', 100, 'A')));
+  st2.apply(cx(ev.stop('x2', 200)));
+  st2.apply(cx(ev.subStop('x2', 300, 'A')));
+  assert.equal(one(st2).status, 'done');
+});
+
+test('퇴근이 한참 늦게 걸리면(서버 재시작·잠자기 뒤) 👋 없이 곧바로 숨김', () => {
+  const st = make({ rest: 10 * M, leave: 120 * M });
+  st.apply(ev.prompt('s1', 0)); st.apply(ev.stop('s1', 1 * M));
+  const seen: string[] = [];
+  for (const t of [181 * M, 182 * M, 183 * M]) {
+    st.tick(t);
+    seen.push(...st.snapshot(0).agents.map((a) => a.status));
+  }
+  assert.deepEqual(seen, ['idle'], '😴 한 번 보인 뒤로는 👋 없이 숨음');
+  assert.deepEqual(st.snapshot(0).agents, []);
+  st.apply(ev.prompt('s1', 184 * M));
+  assert.equal(one(st).status, 'thinking', '숨기만 했으니 일하면 돌아옴');
+});
+
+test('도우미 없이 👥만 남은 Codex 세션(띄운 뒤 Codex가 죽음)은 응답 없음 …', () => {
+  const st = make();
+  const cx = (e: Ev): Ev => ({ ...e, kind: 'codex' });
+  st.apply(cx(ev.prompt('x1', 0)));
+  st.apply(cx({ ...ev.tool('x1', 100, 'S', 'delegating'), spawn: true } as Ev));
+  st.apply(cx(ev.end('x1', 200, 'S')));
+  assert.equal(one(st).status, 'delegating');
+  st.tick(200 + 15 * M); assert.equal(one(st).status, 'stalled');
+});
+
+test('살아 있는 도우미가 있는 👥는 응답 없음으로 바꾸지 않음', () => {
+  const st = make();
+  const cx = (e: Ev): Ev => ({ ...e, kind: 'codex' });
+  st.apply(cx(ev.prompt('x1', 0)));
+  st.apply(cx({ ...ev.tool('x1', 100, 'S', 'delegating'), spawn: true } as Ev));
+  st.apply(cx(ev.subStart('x1', 150, 'A')));
+  st.apply(cx(ev.end('x1', 200, 'S')));
+  st.tick(200 + 30 * M); assert.equal(one(st).status, 'delegating');
+});
+
+test('숨은 자동 퇴근 세션에 온 도우미 시작 신호는 무시(다시 일할 때 낡은 도우미가 안 딸려 옴)', () => {
+  const st = make({ rest: 10 * M, leave: 120 * M });
+  st.apply(ev.prompt('s1', 0)); st.apply(ev.stop('s1', 1 * M));
+  st.tick(11 * M); st.tick(121 * M); st.tick(131 * M);
+  assert.deepEqual(st.snapshot(0).agents, []);
+  st.apply(ev.subStart('s1', 140 * M, 'ghost'));
+  assert.deepEqual(st.snapshot(0).agents, [], '도우미 신호로는 돌아오지 않음');
+  st.apply(ev.prompt('s1', 150 * M));
+  assert.equal(one(st).status, 'thinking');
+  assert.equal(one(st).subagents.length, 0);
+});
+
+// 두 기능이 만나는 곳(main 병합): 쉬기·퇴근(생동감)과 다음 할 일 상자 질문(turn-ask)
+test('다음 할 일 상자 ❓는 쉬기·퇴근 규칙을 타지 않음(답할 때까지 그대로), 답하고 질문 없이 끝나면 ✅', () => {
+  const st = make({ rest: 10 * M, leave: 120 * M });
+  st.apply(ev.prompt('s1', 0)); st.apply(ev.wrapUp('s1', 1)); st.apply(ev.stop('s1', 2));
+  for (const t of [11 * M, 121 * M, 131 * M, 300 * M]) st.tick(t);
+  assert.equal(one(st).status, 'question');
+  st.apply(ev.prompt('s1', 301 * M)); st.apply(ev.stop('s1', 302 * M));
+  assert.equal(one(st).status, 'done');
+});
+
+test('자동 퇴근은 남은 상자 질문 표시도 지움(오류 ✅로 끝난 차례) → 등록부로 돌아와 차례가 끝나면 ❓ 아닌 ✅', () => {
+  const st = make({ rest: 10 * M, leave: 120 * M });
+  st.apply(ev.prompt('s1', 0)); st.apply(ev.wrapUp('s1', 1)); st.apply(ev.stopErr('s1', 2, 'overloaded'));
+  assert.equal(one(st).status, 'done');
+  st.tick(11 * M); st.tick(200 * M); // 😴 → 늦게 걸린 퇴근이라 곧바로 숨김
+  assert.deepEqual(st.snapshot(0).agents, []);
+  st.applyRegistry(read(reg('s1', 'busy', 201 * M)), 201 * M + 1000); // 이어서 일함
+  assert.equal(one(st).status, 'thinking');
+  st.applyRegistry(read(reg('s1', 'idle', 202 * M)), 202 * M + 1000); // R6: Stop 없이 차례 끝
+  assert.equal(one(st).status, 'done');
+});
+
+test('자동 퇴근 뒤 등록부 대기(❓ 추측) → busy로 돌아오면 ✅ 아닌 💭(끝난 차례 표시가 남지 않음)', () => {
+  for (const hidden of [false, true]) {
+    const st = make({ rest: 10 * M, leave: 120 * M });
+    st.apply(ev.prompt('s1', 0)); st.apply(ev.stop('s1', 1 * M));
+    st.tick(11 * M); st.tick(121 * M);
+    if (hidden) st.tick(131 * M);
+    st.applyRegistry(read(reg('s1', 'waiting', 140 * M)), 140 * M + 1000);
+    assert.equal(one(st).status, 'question', `대기 추측(숨김=${hidden})`);
+    st.applyRegistry(read(reg('s1', 'busy', 141 * M)), 141 * M + 1000);
+    assert.equal(one(st).status, 'thinking', `일하는 중(숨김=${hidden})`);
+  }
+});
+
+test('숨은 자동 퇴근 세션에 늦게 온 상자 신호는 무시 → 돌아와도 낡은 ❓ 없음', () => {
+  const st = make({ rest: 10 * M, leave: 120 * M });
+  st.apply(ev.prompt('s1', 0)); st.apply(ev.stop('s1', 1 * M));
+  st.tick(11 * M); st.tick(121 * M); st.tick(131 * M);
+  assert.deepEqual(st.snapshot(0).agents, []);
+  st.apply(ev.wrapUp('s1', 140 * M, true));
+  assert.deepEqual(st.snapshot(0).agents, [], '상자 신호만으로는 안 돌아옴');
+  st.applyRegistry(read(reg('s1', 'busy', 150 * M)), 150 * M + 1000);
+  assert.equal(one(st).status, 'thinking');
+  st.applyRegistry(read(reg('s1', 'idle', 151 * M)), 151 * M + 1000);
+  assert.equal(one(st).status, 'done');
+});
+
+test('숨은 자동 퇴근 세션에 SessionEnd가 오면 10분 뒤 지움(옛 제목이 남지 않음)', () => {
+  const st = make({ rest: 10 * M, leave: 120 * M });
+  st.apply({ ...ev.prompt('s1', 0), title: '옛 제목' } as Ev); st.apply(ev.stop('s1', 1 * M));
+  st.tick(11 * M); st.tick(121 * M); st.tick(131 * M);
+  assert.deepEqual(st.snapshot(0).agents, []);
+  st.apply(ev.end_('s1', 140 * M));
+  st.tick(151 * M);
+  st.apply(ev.prompt('s1', 152 * M));
+  assert.equal(one(st).title, null, '지워졌다가 새로 시작');
 });

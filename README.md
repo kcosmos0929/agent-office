@@ -7,3 +7,16 @@
 
 ## 글꼴
 오피스 화면의 픽셀 글꼴은 [갈무리(Galmuri)](https://github.com/quiple/galmuri) — SIL Open Font License 1.1 (`web/src/fonts/OFL.txt`).
+
+## 설정
+`~/.synthetic-office/config.json`에서 바꾼다(없는 키는 기본값).
+
+| 키 | 기본 | 뜻 |
+|---|---|---|
+| `restMinutes` | 10 | 차례가 끝난(✅) 뒤 이만큼 지나면 😴 쉬는 중 |
+| `leaveMinutes` | 120 | 차례가 끝난 뒤 이만큼 지나면 👋 자동 퇴근, 그 10분 뒤(`goneMinutes`) 화면에서 숨김(지우지 않아 다시 일하면 돌아옴). `restMinutes`보다 작게 적어도 `restMinutes`로 올려 쓴다 |
+
+예전 `idleMinutes`는 더 읽지 않는다.
+
+## 새 버전 반영
+서버를 새 화면 빌드(`npm run build:web`)로 다시 켜면, 열려 있던 대시보드 탭이 한 번 저절로 새로 고침된다. 이때 Chrome '항상 위 작은 창'(PiP)은 페이지가 다시 불러와지며 닫히니 다시 열면 된다. 켜 둔 소리와 오피스/목록 선택은 되살리지만, 새로 고친 뒤 브라우저가 소리를 막으면 🔔를 한 번 다시 눌러야 한다.

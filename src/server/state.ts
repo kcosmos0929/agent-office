@@ -6,7 +6,10 @@ import type { ContextReading } from './collectors/contextUsage.ts';
 import { contextWindow } from '../shared/contextWindow.ts';
 
 export type StateOptions = {
-  idleMs: number;
+  /** ✅ 차례가 끝나고 이만큼 지나면 😴(쉬는 중) */
+  restMs: number;
+  /** 차례가 끝난 때부터 이만큼 지나면 👋(자동 퇴근) — 😴 시간도 포함한 총 시간 */
+  leaveMs: number;
   goneMs: number;
   stalledMs: number;
   /** 이 시간 동안 아무 신호가 없으면 상태와 상관없이 정리(종료 신호 없이 닫힌 세션) */
@@ -41,7 +44,7 @@ const WAIT_GRACE_MS = 2_000;
 /** 훅 없는 세션: 등록부 값 → 화면 상태 */
 const MIRROR: Record<RegistryStatus, Status> = { busy: 'thinking', waiting: 'question', idle: 'done' };
 
-type OpenTool = { activity: Activity; detail: string };
+type OpenTool = { activity: Activity; detail: string; spawn?: true };
 
 type Entry = {
   agent: Agent;
@@ -79,6 +82,10 @@ type Entry = {
   waitGuessed: boolean;
   /** 메인 차례가 오류(StopFailure)로 끝났으면 그 종류 — 도우미 대기가 풀린 뒤에도 '오류'로 보이게 */
   stopError: string | null;
+  /** 차례가 끝난(✅) 시각 — 😴가 될 때 기억해 두고 퇴근까지 잰다 */
+  restFrom: number | null;
+  /** 오래 쉬어서 자동으로 퇴근했나(창을 닫은 퇴근과 구분) — 그렇다면 지우지 않고 숨겨 두었다가 다시 일하면 돌아온다 */
+  autoGone: boolean;
 };
 
 export class OfficeState {
@@ -124,15 +131,33 @@ export class OfficeState {
       a.project = entry.workProject ?? this.opts.resolveProject(e.cwd);
     }
 
+    const hiddenAuto = entry.autoGone && !entry.engaged; // 자동 퇴근해 숨은 세션
+    // 숨은 세션에 홀로 온 도우미 신호는 일 신호가 아니다 — 낡은 도우미가 다시 일할 때 딸려 오지 않게 무시
+    if (hiddenAuto && (e.type === 'subagent-start' || e.type === 'subagent-stop')) return this.fingerprint() !== before;
     if (!NOT_WORK.has(e.type)) this.engage(entry);
     // Codex 자동 승인: AI가 곧 허용하는데 '승인됐다'는 신호가 없어 긴 명령 내내 대기로 보이므로 무시하고 하던 일을 그대로
-    if (e.type === 'permission' && a.kind === 'codex' && this.opts.codexAutoApprove?.()) return this.fingerprint() !== before;
+    if (e.type === 'permission' && a.kind === 'codex' && this.opts.codexAutoApprove?.()) {
+      this.settleAutoGone(entry, hiddenAuto);
+      return this.fingerprint() !== before;
+    }
     if (e.subagentId) {
       this.applySubagentEvent(entry, e, e.subagentId);
     } else {
       this.applyMainEvent(entry, e);
     }
+    // SessionEnd는 숨은 세션도 숨기지 않고 지움(다시 숨기면 forgetMs까지 낡은 제목으로 남는다)
+    this.settleAutoGone(entry, hiddenAuto && e.type !== 'session-end');
     return this.fingerprint() !== before;
+  }
+
+  /** 사건 뒤 자동 퇴근 표시 정리: 아직 gone이면(도구 끝 같은 낡은 신호) 숨은 채로 두고, 일하는 상태로 나왔으면 자동 퇴근을 푼다 */
+  private settleAutoGone(entry: Entry, hiddenAuto: boolean): void {
+    if (entry.agent.status !== 'gone') {
+      entry.autoGone = false;
+    } else if (hiddenAuto) {
+      entry.engaged = false;
+      entry.autoGone = true;
+    }
   }
 
   /** 세션이 만진 경로들(한 신호분)에서 처음 알아낸 프로젝트를 이름표로. 못 알아내면 그대로(마지막 것이 남음) */
@@ -194,10 +219,29 @@ export class OfficeState {
       if (now - a.lastEventAt >= this.opts.forgetMs && !entry.inRegistry) {
         this.entries.delete(id);
         changed = true;
-      } else if (a.status === 'done' && now - a.since >= this.opts.idleMs) {
+      } else if (a.status === 'done' && now - a.since >= this.opts.restMs) {
+        entry.restFrom = a.since;
         this.setStatus(a, 'idle', now);
         changed = true;
-      } else if ((a.status === 'thinking' || a.status === 'compacting') && entry.hookSeen && now - a.lastEventAt >= this.opts.stalledMs) {
+      } else if (a.status === 'idle' && entry.restFrom !== null && now - entry.restFrom >= this.opts.leaveMs) {
+        // 오래 쉬면 자동 퇴근 — 화면엔 👋로 잠깐 보이고, 아래에서 숨긴다
+        this.clearWork(entry);
+        entry.turnAsk = false; // 퇴근(SessionEnd·R4와 같이) — 돌아와 끝난 차례가 낡은 상자 질문으로 ❓가 되지 않게
+        a.subagents = [];
+        a.hookless = false;
+        entry.autoGone = true;
+        this.setStatus(a, 'gone', now);
+        a.detail = null;
+        // 서버 재시작·잠자기 뒤처럼 퇴근이 한참 늦게 걸렸으면 👋를 또 10분 보이지 않고 바로 숨긴다
+        if (now - entry.restFrom >= this.opts.leaveMs + this.opts.goneMs) entry.engaged = false;
+        changed = true;
+      } else if (
+        entry.hookSeen && now - a.lastEventAt >= this.opts.stalledMs && (
+          a.status === 'thinking' || a.status === 'compacting' ||
+          // Codex 도우미를 띄운 뒤 유지하던 👥인데 열린 도구도 도우미도 없이 조용 = 기다리기 전에 Codex가 멈춤
+          (a.status === 'delegating' && entry.openTools.size === 0 && a.subagents.length === 0)
+        )
+      ) {
         // 훅 없는 세션은 등록부가 기준이라 '응답 없음'으로 바꾸지 않는다
         this.setStatus(a, 'stalled', now);
         changed = true;
@@ -206,8 +250,14 @@ export class OfficeState {
         this.setStatus(a, 'permission', now);
         changed = true;
       } else if (a.status === 'gone' && now - a.since >= this.opts.goneMs) {
-        this.entries.delete(id);
-        changed = true;
+        if (!entry.autoGone) {
+          this.entries.delete(id);
+          changed = true;
+        } else if (entry.engaged) {
+          // 자동 퇴근은 지우지 않고 숨긴다(모자·자리를 놓음) — 다시 일하면 새 모자·자리로 돌아옴
+          entry.engaged = false;
+          changed = true;
+        }
       }
     }
     return changed;
@@ -252,6 +302,7 @@ export class OfficeState {
     a.hat = firstFree(used.map((x) => x.hat), used.length % SLOTS);
     a.seat = firstFree(used.filter((x) => x.kind === a.kind).map((x) => x.seat), -1);
     entry.engaged = true;
+    entry.autoGone = false;
   }
 
   snapshot(now: number): Snapshot {
@@ -276,6 +327,7 @@ export class OfficeState {
       if (entry.missingReads >= 2 && entry.agent.status !== 'gone') {
         this.clearWork(entry);
         entry.turnAsk = false; // SessionEnd와 같이
+        entry.autoGone = false; // SessionEnd와 같이 창을 닫은 퇴근 — 숨기지 않고 10분 뒤 지운다
         entry.agent.subagents = [];
         entry.agent.hookless = false;
         this.setStatus(entry.agent, 'gone', now);
@@ -293,7 +345,9 @@ export class OfficeState {
     entry.inRegistry = true;
     // 훅 없이 등록부로만 보는 세션: 일하는 중·기다림이거나, 프로세스 시작 뒤 한 차례라도 했으면 보드에(열기만 한 세션은 숨김).
     // 훅을 받은 세션은 훅이 일을 알려 준다
-    if (!entry.hookSeen && (x.status !== 'idle' || x.startedAt === undefined || x.statusUpdatedAt - x.startedAt > OPENED_ONLY_MS)) this.engage(entry);
+    // 자동 퇴근해 숨은 세션은 퇴근 뒤에 바뀐 일하는 중·기다림 값이 있을 때만 돌아온다(같은 idle 값이 반복돼도 숨김 유지)
+    if (entry.autoGone && !entry.engaged && x.status !== 'idle' && x.statusUpdatedAt > a.since) this.engage(entry);
+    if (!entry.autoGone && !entry.hookSeen && (x.status !== 'idle' || x.startedAt === undefined || x.statusUpdatedAt - x.startedAt > OPENED_ONLY_MS)) this.engage(entry);
     entry.missingReads = 0;
     const activeSince = x.status === 'idle' ? null : (entry.reg?.activeSince ?? Math.max(x.statusUpdatedAt, this.opts.startedAt));
     entry.reg = { status: x.status, updatedAt: x.statusUpdatedAt, activeSince };
@@ -306,7 +360,9 @@ export class OfficeState {
       a.project = entry.workProject ?? this.opts.resolveProject(x.cwd);
     }
     // 퇴근(SessionEnd) 직후 잠깐 남은 파일로 되살리지 않는다 — 그 뒤에 새로 쓰인 기록(이어서 열기)만
-    if (!entry.hookSeen || (a.status === 'gone' && x.statusUpdatedAt > a.since)) {
+    if (entry.autoGone && !entry.engaged) {
+      // 숨은 세션은 돌아오는 값(위에서 engage)이 아니면 건드리지 않는다
+    } else if (!entry.hookSeen || (a.status === 'gone' && x.statusUpdatedAt > a.since)) {
       this.mirror(entry, x);
     } else {
       const w = this.shownWait(entry);
@@ -351,7 +407,10 @@ export class OfficeState {
   private mirror(entry: Entry, x: RegistryEntry): void {
     const a = entry.agent;
     const s = MIRROR[x.status];
-    if (a.status === s || (s === 'done' && a.status === 'idle')) return; // 30분 뒤 😴를 되돌리지 않음
+    // 쉬어서 생긴 😴·자동 퇴근을 등록부의 같은 idle 값으로 되돌리지 않음
+    if (a.status === s || (s === 'done' && (a.status === 'idle' || (a.status === 'gone' && entry.autoGone)))) return;
+    entry.autoGone = false;
+    if (s !== 'done' || a.status === 'gone') entry.turnEnded = false; // 되돌아와 다시 일하거나 기다림 = 새 차례(낡은 '차례 끝'이 R1에서 ✅를 만들지 않게)
     if (WAITS.has(s)) {
       entry.waitingMain = 'question';
       entry.waitSince = x.statusUpdatedAt;
@@ -418,7 +477,7 @@ export class OfficeState {
     };
     const entry: Entry = {
       agent, openTools: new Map(), transcriptPath: null, waitingMain: null, waitingSubs: new Map(), waitSince: null, approvalSince: new Map(), engaged: false, workProject: null, turnEnded: false, turnAsk: false,
-      hookSeen: false, lastHookAt: null, reg: null, everInRegistry: false, inRegistry: false, missingReads: 0, regName: null, waitGuessed: false, stopError: null,
+      hookSeen: false, lastHookAt: null, reg: null, everInRegistry: false, inRegistry: false, missingReads: 0, regName: null, waitGuessed: false, stopError: null, restFrom: null, autoGone: false,
     };
     this.entries.set(sessionId, entry);
     return entry;
@@ -448,13 +507,14 @@ export class OfficeState {
         // 차례가 끝난 뒤 메시지 없이 다시 일함(백그라운드 작업이 끝나 이어 감 등) → 상자 질문은 지난 것
         if (entry.turnEnded) entry.turnAsk = false;
         entry.turnEnded = false;
-        entry.openTools.set(e.toolUseId, { activity: e.activity, detail: e.detail });
+        entry.openTools.set(e.toolUseId, { activity: e.activity, detail: e.detail, ...(e.spawn ? { spawn: true } : {}) });
         entry.stopError = null; // 메인이 다시 일함
         if (WAITS.has(a.status) && this.shownWait(entry)) return;
         this.setStatus(a, e.activity, e.at);
         a.detail = e.detail;
         return;
-      case 'tool-end':
+      case 'tool-end': {
+        const wasSpawn = entry.openTools.get(e.toolUseId)?.spawn === true;
         entry.openTools.delete(e.toolUseId);
         if (SETTLED.has(a.status)) return;
         if (entry.openTools.size > 0) return;
@@ -462,11 +522,15 @@ export class OfficeState {
         entry.waitingMain = null;
         if (WAITS.has(a.status)) {
           this.resolveWaiting(entry, e.at);
+        } else if (wasSpawn && a.kind === 'codex') {
+          // Codex 도우미를 띄운 직후엔 곧 기다리기(wait_agent)가 이어진다 — 사이에 💭로 깜빡이지 않게 👥 유지(detail도 그대로)
+          this.setStatus(a, 'delegating', e.at);
         } else {
           this.setStatus(a, 'thinking', e.at);
           a.detail = null;
         }
         return;
+      }
       case 'permission':
       case 'question':
         this.noteApproval(entry, 'main', entry.waitingMain, e.type, e.at);
@@ -474,9 +538,10 @@ export class OfficeState {
         this.enterWait(entry, e.type, e.detail, e.at);
         return;
       case 'wrap-up':
+        if (a.status === 'gone') return; // 퇴근·자동 퇴근·숨은 세션에 늦게 온 상자 신호는 낡은 것 → 돌아와도 ❓가 남지 않게
         entry.turnAsk = e.asks; // 한 차례에 상자를 다시 띄우면 마지막 것이 기준
         // Stop 없이 차례 끝 보정(R6·idle)이 이 PostToolUse보다 먼저 왔으면 끝 표시를 다시 정한다(대기가 걸려 있으면 그대로)
-        if (entry.turnEnded && !this.shownWait(entry) && a.status !== 'gone') this.finishTurn(entry, e.at);
+        if (entry.turnEnded && !this.shownWait(entry)) this.finishTurn(entry, e.at);
         return;
       case 'stop': {
         entry.turnEnded = true;
@@ -533,12 +598,14 @@ export class OfficeState {
         if (entry.waitingSubs.delete(e.agentId)) this.resolveWaiting(entry, e.at);
         if (a.status === 'delegating' && a.subagents.length === 0 && entry.openTools.size === 0) {
           // 메인 차례가 끝난 뒤 도우미가 다 끝남 → Claude는 메인이 결과를 받아 이어 감(안 이어 가면 등록부 idle·idle 알림이 ✅로).
-          // Codex는 이어 가지 않고 사용자 차례 — 이어 가면 다음 도구 사건이 다시 일하는 중으로 바꾼다
-          this.setStatus(a, a.kind === 'codex' ? 'done' : 'thinking', e.at);
+          // Codex는 이어 가지 않고 사용자 차례 — 이어 가면 다음 도구 사건이 다시 일하는 중으로 바꾼다.
+          // 단 Codex 메인 차례가 아직 안 끝났으면(띄우기 뒤 👥 유지 중 도우미 끝) 계속 생각 중 💭
+          this.setStatus(a, a.kind === 'codex' && entry.turnEnded ? 'done' : 'thinking', e.at);
           a.detail = null;
         }
         return;
       case 'session-end':
+        entry.autoGone = false; // 창을 닫은 퇴근은 숨기지 않고 지운다
         this.clearWork(entry);
         entry.turnAsk = false;
         a.subagents = [];

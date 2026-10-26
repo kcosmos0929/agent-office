@@ -7,7 +7,7 @@ import { M } from '../helpers.ts';
 
 const flush = () => new Promise((r) => setImmediate(r));
 function stateWith(transcriptPath: string) {
-  const st = new OfficeState({ idleMs: 30 * M, goneMs: 10 * M, stalledMs: 15 * M, forgetMs: 12 * 60 * M, resolveProject: () => 'x', startedAt: 0, registryWaitRule: false });
+  const st = new OfficeState({ restMs: 30 * M, leaveMs: 120 * M, goneMs: 10 * M, stalledMs: 15 * M, forgetMs: 12 * 60 * M, resolveProject: () => 'x', startedAt: 0, registryWaitRule: false });
   st.apply({ type: 'prompt', sessionId: 's1', at: 0, cwd: '/x', transcriptPath });
   return st;
 }
