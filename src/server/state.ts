@@ -130,6 +130,8 @@ export class OfficeState {
     }
 
     const hiddenAuto = entry.autoGone && !entry.engaged; // 자동 퇴근해 숨은 세션
+    // 숨은 세션에 홀로 온 도우미 신호는 일 신호가 아니다 — 낡은 도우미가 다시 일할 때 딸려 오지 않게 무시
+    if (hiddenAuto && (e.type === 'subagent-start' || e.type === 'subagent-stop')) return this.fingerprint() !== before;
     if (!NOT_WORK.has(e.type)) this.engage(entry);
     // Codex 자동 승인: AI가 곧 허용하는데 '승인됐다'는 신호가 없어 긴 명령 내내 대기로 보이므로 무시하고 하던 일을 그대로
     if (e.type === 'permission' && a.kind === 'codex' && this.opts.codexAutoApprove?.()) {
@@ -226,8 +228,16 @@ export class OfficeState {
         entry.autoGone = true;
         this.setStatus(a, 'gone', now);
         a.detail = null;
+        // 서버 재시작·잠자기 뒤처럼 퇴근이 한참 늦게 걸렸으면 👋를 또 10분 보이지 않고 바로 숨긴다
+        if (now - entry.restFrom >= this.opts.leaveMs + this.opts.goneMs) entry.engaged = false;
         changed = true;
-      } else if ((a.status === 'thinking' || a.status === 'compacting') && entry.hookSeen && now - a.lastEventAt >= this.opts.stalledMs) {
+      } else if (
+        entry.hookSeen && now - a.lastEventAt >= this.opts.stalledMs && (
+          a.status === 'thinking' || a.status === 'compacting' ||
+          // Codex 도우미를 띄운 뒤 유지하던 👥인데 열린 도구도 도우미도 없이 조용 = 기다리기 전에 Codex가 멈춤
+          (a.status === 'delegating' && entry.openTools.size === 0 && a.subagents.length === 0)
+        )
+      ) {
         // 훅 없는 세션은 등록부가 기준이라 '응답 없음'으로 바꾸지 않는다
         this.setStatus(a, 'stalled', now);
         changed = true;

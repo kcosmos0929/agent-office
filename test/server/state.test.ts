@@ -1247,3 +1247,49 @@ test('Codex 띄우기 끝 → 도우미 시작·끝(차례 안 끝남) → 💭,
   st2.apply(cx(ev.subStop('x2', 300, 'A')));
   assert.equal(one(st2).status, 'done');
 });
+
+test('퇴근이 한참 늦게 걸리면(서버 재시작·잠자기 뒤) 👋 없이 곧바로 숨김', () => {
+  const st = make({ rest: 10 * M, leave: 120 * M });
+  st.apply(ev.prompt('s1', 0)); st.apply(ev.stop('s1', 1 * M));
+  const seen: string[] = [];
+  for (const t of [181 * M, 182 * M, 183 * M]) {
+    st.tick(t);
+    seen.push(...st.snapshot(0).agents.map((a) => a.status));
+  }
+  assert.deepEqual(seen, ['idle'], '😴 한 번 보인 뒤로는 👋 없이 숨음');
+  assert.deepEqual(st.snapshot(0).agents, []);
+  st.apply(ev.prompt('s1', 184 * M));
+  assert.equal(one(st).status, 'thinking', '숨기만 했으니 일하면 돌아옴');
+});
+
+test('도우미 없이 👥만 남은 Codex 세션(띄운 뒤 Codex가 죽음)은 응답 없음 …', () => {
+  const st = make();
+  const cx = (e: Ev): Ev => ({ ...e, kind: 'codex' });
+  st.apply(cx(ev.prompt('x1', 0)));
+  st.apply(cx({ ...ev.tool('x1', 100, 'S', 'delegating'), spawn: true } as Ev));
+  st.apply(cx(ev.end('x1', 200, 'S')));
+  assert.equal(one(st).status, 'delegating');
+  st.tick(200 + 15 * M); assert.equal(one(st).status, 'stalled');
+});
+
+test('살아 있는 도우미가 있는 👥는 응답 없음으로 바꾸지 않음', () => {
+  const st = make();
+  const cx = (e: Ev): Ev => ({ ...e, kind: 'codex' });
+  st.apply(cx(ev.prompt('x1', 0)));
+  st.apply(cx({ ...ev.tool('x1', 100, 'S', 'delegating'), spawn: true } as Ev));
+  st.apply(cx(ev.subStart('x1', 150, 'A')));
+  st.apply(cx(ev.end('x1', 200, 'S')));
+  st.tick(200 + 30 * M); assert.equal(one(st).status, 'delegating');
+});
+
+test('숨은 자동 퇴근 세션에 온 도우미 시작 신호는 무시(다시 일할 때 낡은 도우미가 안 딸려 옴)', () => {
+  const st = make({ rest: 10 * M, leave: 120 * M });
+  st.apply(ev.prompt('s1', 0)); st.apply(ev.stop('s1', 1 * M));
+  st.tick(11 * M); st.tick(121 * M); st.tick(131 * M);
+  assert.deepEqual(st.snapshot(0).agents, []);
+  st.apply(ev.subStart('s1', 140 * M, 'ghost'));
+  assert.deepEqual(st.snapshot(0).agents, [], '도우미 신호로는 돌아오지 않음');
+  st.apply(ev.prompt('s1', 150 * M));
+  assert.equal(one(st).status, 'thinking');
+  assert.equal(one(st).subagents.length, 0);
+});

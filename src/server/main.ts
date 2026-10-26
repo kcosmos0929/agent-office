@@ -33,7 +33,8 @@ async function main(): Promise<void> {
   let work = makeWorkResolver(index, config.projectNames, config.wikiPath);
   const state = new OfficeState({
     restMs: config.restMinutes * MINUTE,
-    leaveMs: config.leaveMinutes * MINUTE,
+    // 퇴근이 쉬기보다 빠르면 😴가 한 틱만 보이고 바로 👋가 되므로, 퇴근은 적어도 쉬기 뒤로
+    leaveMs: Math.max(config.leaveMinutes, config.restMinutes) * MINUTE,
     goneMs: config.goneMinutes * MINUTE,
     stalledMs: config.stalledMinutes * MINUTE,
     forgetMs: config.forgetHours * 60 * MINUTE,

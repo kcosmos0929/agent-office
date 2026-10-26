@@ -3,10 +3,10 @@ import type { Snapshot } from '../../src/shared/types.ts';
 import { connect } from './connection.ts';
 import { renderList } from './list/listBoard.ts';
 import { buildSettings } from './settings.ts';
-import { SoundPlayer, soundEvents } from './sound.ts';
+import { SoundPlayer, shouldRestoreSound, soundEvents } from './sound.ts';
 import { renderStrip } from './strip.ts';
 import { buildToolbar, type MiniTarget } from './toolbar.ts';
-import { chooseView, type ViewName } from './view.ts';
+import { chooseView, initialOverride, type ViewName } from './view.ts';
 import { reloadOnce } from './reload.ts';
 
 /** 3D 오피스가 구현하는 화면 (Task 11에서 연결) */
@@ -15,9 +15,29 @@ export type OfficeFactory = (container: HTMLElement) => OfficeHost;
 
 type ClientConfig = { softSound: boolean; loopback: boolean; codexAutoApprove?: boolean; build?: string | null };
 
+const SOUND_KEY = 'so-sound-on';
+
+/** sessionStorage는 막혀 있을 수 있어(사생활 보호 모드 등) 읽기·쓰기를 모두 감싼다. value가 null이면 지움 */
+function storedGet(key: string): string | null {
+  try {
+    return sessionStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+function storedSet(key: string, value: string | null): void {
+  try {
+    if (value === null) sessionStorage.removeItem(key);
+    else sessionStorage.setItem(key, value);
+  } catch {
+    // 기억하지 못할 뿐 동작엔 지장 없음
+  }
+}
+
 export async function start(makeOffice: OfficeFactory | null): Promise<void> {
   const params = new URLSearchParams(location.search);
-  let override = params.get('view');
+  // 오피스/목록 토글은 이 탭에서 기억한다(자동 새로 고침 뒤에도 유지). ?view= 가 있으면 그게 우선
+  let override: string | null = initialOverride(params.get('view'), storedGet('so-view'));
   const isMini = params.get('mini') === '1';
   const config: ClientConfig = await fetch('/api/client-config').then((r) => r.json()).catch(() => ({ softSound: true, loopback: false }));
 
@@ -32,6 +52,16 @@ export async function start(makeOffice: OfficeFactory | null): Promise<void> {
 
   const player = new SoundPlayer();
   player.softEnabled = config.softSound;
+  // 자동 새로 고침 직전에 소리가 켜져 있었다면 되살린다. 브라우저가 막으면(AudioContext가 running이 아님)
+  // player.enabled가 false라 🔔가 계속 깜빡이고, 사용자가 한 번 다시 누르면 된다
+  if (shouldRestoreSound(storedGet(SOUND_KEY))) {
+    storedSet(SOUND_KEY, null);
+    try {
+      void player.enable().catch(() => {});
+    } catch {
+      // AudioContext를 못 만들면 소리는 꺼진 채
+    }
+  }
   const minis = new Set<MiniTarget>();
   const settings = buildSettings({ codexAutoApprove: config.codexAutoApprove ?? true });
   let office: OfficeHost | null = null;
@@ -47,6 +77,7 @@ export async function start(makeOffice: OfficeFactory | null): Promise<void> {
     currentView,
     onToggleView: () => {
       override = currentView() === 'office' ? 'list' : 'office';
+      storedSet('so-view', override);
       render();
     },
     onToggleSettings: () => settings.toggle(),
@@ -91,7 +122,8 @@ export async function start(makeOffice: OfficeFactory | null): Promise<void> {
 
   connect(
     (s, build) => {
-      reloadOnce(config.build ?? null, build);
+      // 새 빌드면 새로 고침(소리가 켜져 있었음을 남김) — 곧 사라질 화면이라 소리·그리기는 건너뜀
+      if (reloadOnce(config.build ?? null, build, () => { if (player.enabled) storedSet(SOUND_KEY, '1'); })) return;
       for (const kind of soundEvents(prev, s)) player.play(kind);
       prev = s;
       snap = s;

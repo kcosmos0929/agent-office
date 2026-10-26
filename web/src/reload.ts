@@ -11,19 +11,28 @@ export function shouldReload(loaded: string | null, seen: string | null, done: s
 
 const KEY = 'so-reloaded-for';
 
-/** 새 빌드를 보면 한 번 새로 고침. sessionStorage가 막혀 있으면 무한 반복을 피하려고 하지 않는다 */
-export function reloadOnce(loaded: string | null, seen: string | null): void {
+/**
+ * 새 빌드를 보면 한 번 새로 고침하고 true를 돌려준다(아니면 false). sessionStorage가 막혀 있으면 무한 반복을 피하려고 하지 않는다.
+ * beforeReload: 새로 고침 직전에 부르는 훅(소리 켜짐 기억 같은 것 — 여기서 소리 모듈을 모르게 호출자가 넘긴다)
+ */
+export function reloadOnce(loaded: string | null, seen: string | null, beforeReload?: () => void): boolean {
   let done: string | null;
   try {
     done = sessionStorage.getItem(KEY);
   } catch {
-    return;
+    return false;
   }
-  if (!shouldReload(loaded, seen, done) || seen === null) return;
+  if (!shouldReload(loaded, seen, done) || seen === null) return false;
   try {
     sessionStorage.setItem(KEY, seen);
   } catch {
-    return;
+    return false;
+  }
+  try {
+    beforeReload?.();
+  } catch {
+    // 기억하지 못해도 새로 고침은 한다
   }
   location.reload();
+  return true;
 }
