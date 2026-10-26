@@ -1,5 +1,5 @@
-// 설정 패널(이 맥에서 열었을 때만): 폰 연결 QR · 서버 다시 켜기/끄기
-export function buildSettings(): { el: HTMLElement; toggle(): void } {
+// 설정 패널(이 맥에서 열었을 때만): 폰 연결 QR · 서버 다시 켜기/끄기 · Codex 자동 승인
+export function buildSettings(initial: { codexAutoApprove: boolean }): { el: HTMLElement; toggle(): void } {
   const el = document.createElement('div');
   el.className = 'settings';
   el.hidden = true;
@@ -29,7 +29,31 @@ export function buildSettings(): { el: HTMLElement; toggle(): void } {
     admin('restart', '다시 켜기', '서버를 다시 켤까요? 몇 초 뒤 자동으로 다시 연결돼요.'),
     admin('stop', '끄기', '서버를 끌까요? 다시 켜려면 아이콘 앱을 누르세요.'),
   );
-  el.append(title, help, qr, url, actions);
+  // Codex 자동 승인: 승인된 순간 신호가 없어서, 켜 두면 승인 요청을 무시하고 하던 일을 그대로 보여 준다
+  const codex = document.createElement('div');
+  codex.className = 'settings-section';
+  const codexTitle = document.createElement('h3');
+  codexTitle.textContent = 'Codex';
+  const row = document.createElement('label');
+  row.className = 'toggle-row';
+  const check = document.createElement('input');
+  check.type = 'checkbox';
+  check.checked = initial.codexAutoApprove;
+  row.append(check, document.createTextNode(' 자동 승인 사용'));
+  const codexHelp = document.createElement('div');
+  codexHelp.textContent = '켜 두면 Codex 승인 요청에 ❗를 띄우지 않고 하던 일을 그대로 보여 줘요. Codex 앱에서 직접 승인할 때는 꺼 주세요.';
+  check.addEventListener('change', async () => {
+    const on = check.checked;
+    try {
+      const r = await fetch('/api/admin/codex-auto-approve', { method: 'POST', headers: { 'x-so-admin': '1', 'content-type': 'application/json' }, body: JSON.stringify({ on }) });
+      if (!r.ok) check.checked = !on;
+    } catch {
+      check.checked = !on;
+    }
+  });
+  codex.append(codexTitle, row, codexHelp);
+
+  el.append(title, help, qr, url, actions, codex);
 
   async function load() {
     try {

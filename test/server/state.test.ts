@@ -926,6 +926,34 @@ test('겹친 Codex 승인: 오래된 요청이 풀리고 새 요청만 남으면
   assert.equal(one(st).status, 'permission');
 });
 
+// Codex 앱의 자동 승인(AutoReview)은 승인된 순간 신호가 없어, 긴 명령이 끝날 때까지 대기로 보였다 → 스위치를 켜면 승인 요청을 무시
+test('Codex 자동 승인 스위치가 켜져 있으면 Codex 승인 요청(메인·도우미)은 무시하고 하던 일을 그대로, Claude는 그대로 ❗', () => {
+  let auto = true;
+  const st = new OfficeState({
+    idleMs: 30 * M, goneMs: 10 * M, stalledMs: 15 * M, forgetMs: 12 * 60 * M, startedAt: 0, registryWaitRule: false,
+    resolveProject: () => 'x', codexAutoApprove: () => auto,
+  });
+  const cx = (e: Ev): Ev => ({ ...e, kind: 'codex' });
+  st.apply(cx(ev.prompt('x1', 0)));
+  st.apply(cx(ev.tool('x1', 100, 'u1')));
+  st.apply(cx(ev.perm('x1', 200)));
+  st.apply(cx(ev.subStart('x1', 300, 'A')));
+  st.apply(cx(ev.perm('x1', 400, 'A')));
+  st.tick(60_000);
+  const x = st.snapshot(0).agents.find((a) => a.sessionId === 'x1')!;
+  assert.deepEqual([x.status, x.detail], ['running', 'running u1']);
+  st.apply(cx(ev.end('x1', 61_000, 'u1')));
+  assert.equal(st.snapshot(0).agents.find((a) => a.sessionId === 'x1')!.status, 'thinking');
+  st.apply(ev.prompt('c1', 0));
+  st.apply(ev.tool('c1', 100, 'u1'));
+  st.apply(ev.perm('c1', 200));
+  assert.equal(st.snapshot(0).agents.find((a) => a.sessionId === 'c1')!.status, 'permission');
+  auto = false; // 끄면 바로 지금처럼(🛡️ → 5초 뒤 ❗)
+  st.apply(cx(ev.tool('x1', 62_000, 'u2')));
+  st.apply(cx(ev.perm('x1', 62_100)));
+  assert.equal(st.snapshot(0).agents.find((a) => a.sessionId === 'x1')!.status, 'approving');
+});
+
 // 열기만 하고 메시지는 안 보낸 세션은 보드에 안 보인다(2026-10-26 사용자 결정) — 앱이 지난 세션을 열면 시작 신호만 옴
 test('열기만 한 세션: 시작·제목·idle 알림·퇴근만으론 안 보이고, 도구·승인 같은 일 신호부터 보임', () => {
   const st = make();
@@ -989,4 +1017,29 @@ test('touchPaths: 만진 경로로 알아낸 마지막 프로젝트가 이름표
   st.apply({ ...ev.prompt('c1', 1), cwd: '/Users/seop/Documents/CnC Wiki' });
   assert.equal(one(st).project, 'Beta');
   assert.equal(st.touchPaths('없음', ['/w/alpha/a.ts'], CWD), false);
+});
+
+test('스위치를 켜면 이미 떠 있던 Codex 승인 대기(메인·도우미)만 지우고 하던 일로 되돌림, 질문 대기·Claude는 그대로 (리뷰 P2)', () => {
+  const st = make();
+  const cx = (e: Ev): Ev => ({ ...e, kind: 'codex' });
+  st.apply(cx(ev.prompt('x1', 0)));
+  st.apply(cx(ev.tool('x1', 100, 'u1')));
+  st.apply(cx(ev.perm('x1', 200)));
+  st.tick(6_000);
+  const find = (id: string) => st.snapshot(0).agents.find((a) => a.sessionId === id)!;
+  assert.equal(find('x1').status, 'permission');
+  st.apply(cx(ev.prompt('x2', 0)));
+  st.apply(cx(ev.subStart('x2', 100, 'A')));
+  st.apply(cx(ev.perm('x2', 200, 'A')));
+  st.apply(cx(ev.question('x2', 300)));
+  st.apply(ev.prompt('c1', 0));
+  st.apply(ev.tool('c1', 100, 'u1'));
+  st.apply(ev.perm('c1', 200));
+  assert.equal(st.dropCodexApprovals(7_000), true);
+  assert.deepEqual([find('x1').status, find('x1').detail], ['running', 'running u1']);
+  assert.equal(find('x2').status, 'question');
+  assert.equal(find('c1').status, 'permission');
+  st.apply(cx(ev.end('x1', 8_000, 'u1')));
+  assert.equal(find('x1').status, 'thinking');
+  assert.equal(st.dropCodexApprovals(9_000), false);
 });

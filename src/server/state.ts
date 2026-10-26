@@ -18,6 +18,8 @@ export type StateOptions = {
   registryWaitRule: boolean;
   /** Codex 승인 요청을 이만큼 '승인 확인 중'으로 보여 준 뒤 ❗(기본 5초) — 자동 승인(AutoReview)은 그 사이에 풀림 */
   approvalDelayMs?: number;
+  /** Codex 앱 자동 승인을 쓰나(설정 창 스위치, 바로 반영되게 함수) — 켜져 있으면 Codex 승인 요청을 무시 */
+  codexAutoApprove?: () => boolean;
   /** 세션이 만진 경로 → 프로젝트 이름표(모르면 null). 없으면 시작 폴더로만 정함 */
   resolveWork?: (p: string, cwd: string) => string | null;
 };
@@ -119,6 +121,8 @@ export class OfficeState {
     }
 
     if (!NOT_WORK.has(e.type)) this.engage(entry);
+    // Codex 자동 승인: AI가 곧 허용하는데 '승인됐다'는 신호가 없어 긴 명령 내내 대기로 보이므로 무시하고 하던 일을 그대로
+    if (e.type === 'permission' && a.kind === 'codex' && this.opts.codexAutoApprove?.()) return this.fingerprint() !== before;
     if (e.subagentId) {
       this.applySubagentEvent(entry, e, e.subagentId);
     } else {
@@ -140,6 +144,42 @@ export class OfficeState {
       return true;
     }
     return false;
+  }
+
+  /** 'Codex 자동 승인'을 켤 때: 이미 걸린 Codex 승인 대기(메인·도우미)만 지우고 하던 일로 되돌린다. 질문 대기는 그대로 */
+  dropCodexApprovals(now: number): boolean {
+    const before = this.fingerprint();
+    for (const entry of this.entries.values()) {
+      if (entry.agent.kind !== 'codex') continue;
+      let dropped = false;
+      if (entry.waitingMain === 'permission') {
+        entry.waitingMain = null;
+        dropped = true;
+      }
+      for (const [id, kind] of entry.waitingSubs) {
+        if (kind !== 'permission') continue;
+        entry.waitingSubs.delete(id);
+        dropped = true;
+      }
+      if (!dropped || !WAITS.has(entry.agent.status)) continue;
+      const a = entry.agent;
+      const shown = this.shownWait(entry);
+      if (shown) {
+        this.setStatus(a, this.waitStatus(entry, shown, now), now);
+        a.detail = null;
+        continue;
+      }
+      entry.waitSince = null;
+      if (entry.stopError) {
+        this.finishTurn(entry, now);
+        continue;
+      }
+      // 하던 일로: 열린 메인 도구가 있으면 그 활동·내용, 없으면 도우미가 일하면 👥, 아니면 💭
+      const open = [...entry.openTools.values()].at(-1);
+      this.setStatus(a, open ? open.activity : a.subagents.length > 0 ? 'delegating' : 'thinking', now);
+      a.detail = open ? open.detail : null;
+    }
+    return this.fingerprint() !== before;
   }
 
   tick(now: number): boolean {

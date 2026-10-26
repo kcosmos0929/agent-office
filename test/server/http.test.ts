@@ -6,7 +6,7 @@ import path from 'node:path';
 import http from 'node:http';
 import { WebSocket } from 'ws';
 import { startServer } from '../../src/server/http.ts';
-import { loadConfig } from '../../src/server/config.ts';
+import { loadConfig, saveConfigPatch } from '../../src/server/config.ts';
 import { loadOrCreateToken } from '../../src/server/token.ts';
 import { OfficeState } from '../../src/server/state.ts';
 import type { Snapshot } from '../../src/shared/types.ts';
@@ -125,11 +125,11 @@ test('정적 파일 경로 탈출 막기', async () => {
 
 test('client-config와 healthz, lan-info는 루프백만', async () => {
   const local = await boot();
-  assert.deepEqual(await (await fetch(local.url + '/api/client-config')).json(), { softSound: true, loopback: true });
+  assert.deepEqual(await (await fetch(local.url + '/api/client-config')).json(), { softSound: true, loopback: true, codexAutoApprove: true });
   assert.equal(await (await fetch(local.url + '/healthz')).text(), 'ok');
   const remote = await boot({ isLoopback: () => false });
   const cookie = { cookie: 'so_token=' + TOKEN };
-  assert.deepEqual(await (await fetch(remote.url + '/api/client-config', { headers: cookie })).json(), { softSound: true, loopback: false });
+  assert.deepEqual(await (await fetch(remote.url + '/api/client-config', { headers: cookie })).json(), { softSound: true, loopback: false, codexAutoApprove: true });
   assert.equal((await fetch(remote.url + '/healthz', { headers: cookie })).status, 404);
   assert.equal((await fetch(remote.url + '/api/lan-info', { headers: cookie })).status, 404);
 });
@@ -209,6 +209,7 @@ test('loadConfig: 없으면 기본값 파일 생성', () => {
   assert.equal(c.stalledMinutes, 15);
   assert.equal(c.forgetHours, 12);
   assert.equal(c.softSound, true);
+  assert.equal(c.codexAutoApprove, true);
   assert.equal(c.wikiPath, path.join(os.homedir(), 'Documents', 'CnC Wiki'));
   assert.equal(c.projectNames['lst-seongsu'], '성수 LST');
   assert.ok(fs.existsSync(path.join(h, 'config.json')));
@@ -291,4 +292,53 @@ test('POST /api/codex/hook: Codex 제목 읽기가 주는 제목을 붙임(Claud
   assert.deepEqual([snap.agents[0].id, snap.agents[0].title], ['codex:x9', 'touch 명령 실행']);
   assert.deepEqual(asked, ['x9']);
   ws.close();
+});
+
+test('admin codex-auto-approve: 루프백+헤더만, {on: boolean}이면 설정을 바꾸고 저장, 아니면 400', async () => {
+  const saved: unknown[] = [];
+  const { url, srv } = await boot({ saveConfig: (patch) => { saved.push(patch); return true; } });
+  const post = (body: string, headers: Record<string, string> = { 'x-so-admin': '1' }) => fetch(url + '/api/admin/codex-auto-approve', { method: 'POST', headers, body });
+  assert.equal((await post('{"on":false}', {})).status, 403);
+  assert.equal((await post('{"on":"아니"}')).status, 400);
+  assert.equal((await post('깨진')).status, 400);
+  assert.equal((await post('{"on":false}')).status, 204);
+  assert.deepEqual(saved, [{ codexAutoApprove: false }]);
+  assert.equal((await (await fetch(url + '/api/client-config')).json()).codexAutoApprove, false);
+  void srv;
+});
+
+test('admin codex-auto-approve: 저장에 실패하면(false·예외) 500이고 설정은 그대로, 켜면 이미 떠 있던 Codex 승인 대기를 지움 (리뷰 P2)', { timeout: 5000 }, async () => {
+  let fail: 'no' | 'false' | 'throw' = 'false';
+  const { url } = await boot({ saveConfig: () => { if (fail === 'throw') throw new Error('디스크'); return fail === 'no'; } });
+  const post = (on: boolean) => fetch(url + '/api/admin/codex-auto-approve', { method: 'POST', headers: { 'x-so-admin': '1' }, body: JSON.stringify({ on }) });
+  const cfg = async () => (await (await fetch(url + '/api/client-config')).json()).codexAutoApprove;
+  assert.equal((await post(false)).status, 500);
+  assert.equal(await cfg(), true);
+  fail = 'throw';
+  assert.equal((await post(false)).status, 500);
+  assert.equal(await cfg(), true);
+  fail = 'no';
+  assert.equal((await post(false)).status, 204);
+  assert.equal(await cfg(), false);
+  const hook = (o: Record<string, unknown>) => fetch(url + '/api/codex/hook', { method: 'POST', headers: { authorization: `Bearer ${TOKEN}` }, body: JSON.stringify({ session_id: 'x5', cwd: '/x', ...o }) });
+  await hook({ hook_event_name: 'UserPromptSubmit' });
+  await hook({ hook_event_name: 'PreToolUse', tool_name: 'Bash', tool_use_id: 'u1', tool_input: { command: 'npm test' } });
+  await hook({ hook_event_name: 'PermissionRequest', tool_name: 'Bash', tool_input: { command: 'npm test' } });
+  const ws = new WebSocket(url.replace('http', 'ws') + '/ws');
+  await nextSnapshot(ws, (s) => s.agents.some((a) => a.sessionId === 'x5' && a.status === 'approving'));
+  const cleared = nextSnapshot(ws, (s) => s.agents.some((a) => a.sessionId === 'x5' && a.status === 'running'));
+  assert.equal((await post(true)).status, 204);
+  await cleared;
+  ws.close();
+});
+
+test('saveConfigPatch: config.json의 다른 값·프로젝트 이름은 그대로 두고 그 키만 바꿈', () => {
+  const h = fs.mkdtempSync(path.join(os.tmpdir(), 'so-cfgp-'));
+  fs.writeFileSync(path.join(h, 'config.json'), JSON.stringify({ port: 4999, projectNames: { a: '가' }, extra: 1 }));
+  assert.equal(saveConfigPatch(h, { codexAutoApprove: false }), true);
+  assert.deepEqual(JSON.parse(fs.readFileSync(path.join(h, 'config.json'), 'utf8')), { port: 4999, projectNames: { a: '가' }, extra: 1, codexAutoApprove: false });
+  assert.equal(loadConfig(h).codexAutoApprove, false);
+  fs.writeFileSync(path.join(h, 'config.json'), '{ 깨진');
+  assert.equal(saveConfigPatch(h, { codexAutoApprove: true }), false);
+  assert.equal(fs.readFileSync(path.join(h, 'config.json'), 'utf8'), '{ 깨진');
 });

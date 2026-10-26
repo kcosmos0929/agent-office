@@ -118,6 +118,8 @@ html, body { margin: 0; height: 100%; background: var(--bg); }
 .settings img { width: 100%; image-rendering: pixelated; border-radius: 8px; background: #fff; }
 .settings .lan-url { font: 11px 'SF Mono', Menlo, monospace; color: var(--muted); word-break: break-all; margin: 6px 0 10px; }
 .settings .actions { display: flex; gap: 6px; }
+.settings .settings-section { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line); }
+.settings .toggle-row { display: flex; align-items: center; gap: 6px; font-weight: 600; margin-bottom: 6px; cursor: pointer; }
 .settings .actions button { flex: 1; font-family: inherit; font-weight: 600; padding: 7px; border-radius: 8px; border: 1px solid #e2d8cb; background: #fff; cursor: pointer; }
 
 /* ---------- 오피스 ---------- */
