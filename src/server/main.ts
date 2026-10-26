@@ -6,7 +6,7 @@ import { startServer } from './http.ts';
 import { makeCodexTitleReader } from './collectors/codexTitles.ts';
 import { watchRegistry } from './collectors/sessionRegistry.ts';
 import { claudeSessionsDir, codexSessionIndex, homeFiles, soHome } from './paths.ts';
-import { loadProjects, makeResolver } from './projects.ts';
+import { loadProjectIndex, makeResolver, makeWorkResolver } from './projects.ts';
 import { OfficeState } from './state.ts';
 import { loadOrCreateToken } from './token.ts';
 
@@ -26,13 +26,17 @@ async function main(): Promise<void> {
   const config = loadConfig(home);
   const token = loadOrCreateToken(home);
 
-  let resolver = makeResolver(await loadProjects(config.wikiPath), config.projectNames, config.wikiPath);
+  // 이름표: 시작 폴더(resolver)와 세션이 만진 경로(work) — 허브·workspace 프로젝트 폴더로 만든다
+  let index = await loadProjectIndex(config.wikiPath);
+  let resolver = makeResolver(index.entries, config.projectNames, config.wikiPath, index.titles);
+  let work = makeWorkResolver(index, config.projectNames, config.wikiPath);
   const state = new OfficeState({
     idleMs: config.idleMinutes * MINUTE,
     goneMs: config.goneMinutes * MINUTE,
     stalledMs: config.stalledMinutes * MINUTE,
     forgetMs: config.forgetHours * 60 * MINUTE,
     resolveProject: (cwd) => resolver(cwd),
+    resolveWork: (p, cwd) => work(p, cwd),
     startedAt: Date.now(),
     registryWaitRule: REGISTRY_WAIT_RULE,
   });
@@ -44,7 +48,9 @@ async function main(): Promise<void> {
     fs.watch(hubDir, { recursive: true }, () => {
       if (reload) clearTimeout(reload);
       reload = setTimeout(async () => {
-        resolver = makeResolver(await loadProjects(config.wikiPath), config.projectNames, config.wikiPath);
+        index = await loadProjectIndex(config.wikiPath);
+        resolver = makeResolver(index.entries, config.projectNames, config.wikiPath, index.titles);
+        work = makeWorkResolver(index, config.projectNames, config.wikiPath);
       }, 1_000);
     });
   } catch {

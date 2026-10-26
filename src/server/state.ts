@@ -18,6 +18,8 @@ export type StateOptions = {
   registryWaitRule: boolean;
   /** Codex 승인 요청을 이만큼 '승인 확인 중'으로 보여 준 뒤 ❗(기본 5초) — 자동 승인(AutoReview)은 그 사이에 풀림 */
   approvalDelayMs?: number;
+  /** 세션이 만진 경로 → 프로젝트 이름표(모르면 null). 없으면 시작 폴더로만 정함 */
+  resolveWork?: (p: string, cwd: string) => string | null;
 };
 
 const SLOTS = 8;
@@ -54,6 +56,8 @@ type Entry = {
   approvalSince: Map<string, number>;
   /** 일을 한 번이라도 했나 — 아니면(열기만 함) 보드에 안 보이고 모자·자리도 안 받음 */
   engaged: boolean;
+  /** 만진 경로로 알아낸 마지막 프로젝트 — 있으면 시작 폴더 이름표보다 우선 */
+  workProject: string | null;
   /** 서버가 켜진 뒤 이 세션의 훅을 받은 적 있나 / 마지막 훅 시각 */
   hookSeen: boolean;
   lastHookAt: number | null;
@@ -111,7 +115,7 @@ export class OfficeState {
     if (e.transcriptPath) entry.transcriptPath = e.transcriptPath;
     if (e.cwd && e.cwd !== a.cwd) {
       a.cwd = e.cwd;
-      a.project = this.opts.resolveProject(e.cwd);
+      a.project = entry.workProject ?? this.opts.resolveProject(e.cwd);
     }
 
     if (!NOT_WORK.has(e.type)) this.engage(entry);
@@ -121,6 +125,21 @@ export class OfficeState {
       this.applyMainEvent(entry, e);
     }
     return this.fingerprint() !== before;
+  }
+
+  /** 세션이 만진 경로들(한 신호분)에서 처음 알아낸 프로젝트를 이름표로. 못 알아내면 그대로(마지막 것이 남음) */
+  touchPaths(sessionId: string, paths: string[], cwd: string): boolean {
+    const entry = this.entries.get(sessionId);
+    if (!entry || !this.opts.resolveWork) return false;
+    for (const p of paths) {
+      const project = this.opts.resolveWork(p, cwd || entry.agent.cwd);
+      if (!project) continue;
+      entry.workProject = project;
+      if (entry.agent.project === project) return false;
+      entry.agent.project = project;
+      return true;
+    }
+    return false;
   }
 
   tick(now: number): boolean {
@@ -239,7 +258,7 @@ export class OfficeState {
     }
     if (x.cwd && x.cwd !== a.cwd) {
       a.cwd = x.cwd;
-      a.project = this.opts.resolveProject(x.cwd);
+      a.project = entry.workProject ?? this.opts.resolveProject(x.cwd);
     }
     // 퇴근(SessionEnd) 직후 잠깐 남은 파일로 되살리지 않는다 — 그 뒤에 새로 쓰인 기록(이어서 열기)만
     if (!entry.hookSeen || (a.status === 'gone' && x.statusUpdatedAt > a.since)) {
@@ -351,7 +370,7 @@ export class OfficeState {
       model: null,
     };
     const entry: Entry = {
-      agent, openTools: new Map(), transcriptPath: null, waitingMain: null, waitingSubs: new Map(), waitSince: null, approvalSince: new Map(), engaged: false,
+      agent, openTools: new Map(), transcriptPath: null, waitingMain: null, waitingSubs: new Map(), waitSince: null, approvalSince: new Map(), engaged: false, workProject: null,
       hookSeen: false, lastHookAt: null, reg: null, everInRegistry: false, inRegistry: false, missingReads: 0, regName: null, waitGuessed: false, stopError: null,
     };
     this.entries.set(sessionId, entry);
