@@ -44,7 +44,7 @@ const WAIT_GRACE_MS = 2_000;
 /** 훅 없는 세션: 등록부 값 → 화면 상태 */
 const MIRROR: Record<RegistryStatus, Status> = { busy: 'thinking', waiting: 'question', idle: 'done' };
 
-type OpenTool = { activity: Activity; detail: string };
+type OpenTool = { activity: Activity; detail: string; spawn?: true };
 
 type Entry = {
   agent: Agent;
@@ -485,13 +485,14 @@ export class OfficeState {
         return;
       case 'tool-start':
         entry.turnEnded = false;
-        entry.openTools.set(e.toolUseId, { activity: e.activity, detail: e.detail });
+        entry.openTools.set(e.toolUseId, { activity: e.activity, detail: e.detail, ...(e.spawn ? { spawn: true } : {}) });
         entry.stopError = null; // 메인이 다시 일함
         if (WAITS.has(a.status)) return;
         this.setStatus(a, e.activity, e.at);
         a.detail = e.detail;
         return;
-      case 'tool-end':
+      case 'tool-end': {
+        const wasSpawn = entry.openTools.get(e.toolUseId)?.spawn === true;
         entry.openTools.delete(e.toolUseId);
         if (SETTLED.has(a.status)) return;
         if (entry.openTools.size > 0) return;
@@ -499,11 +500,15 @@ export class OfficeState {
         entry.waitingMain = null;
         if (WAITS.has(a.status)) {
           this.resolveWaiting(entry, e.at);
+        } else if (wasSpawn && a.kind === 'codex') {
+          // Codex 도우미를 띄운 직후엔 곧 기다리기(wait_agent)가 이어진다 — 사이에 💭로 깜빡이지 않게 👥 유지(detail도 그대로)
+          this.setStatus(a, 'delegating', e.at);
         } else {
           this.setStatus(a, 'thinking', e.at);
           a.detail = null;
         }
         return;
+      }
       case 'permission':
       case 'question':
         this.noteApproval(entry, 'main', entry.waitingMain, e.type, e.at);
@@ -564,8 +569,9 @@ export class OfficeState {
         if (entry.waitingSubs.delete(e.agentId)) this.resolveWaiting(entry, e.at);
         if (a.status === 'delegating' && a.subagents.length === 0 && entry.openTools.size === 0) {
           // 메인 차례가 끝난 뒤 도우미가 다 끝남 → Claude는 메인이 결과를 받아 이어 감(안 이어 가면 등록부 idle·idle 알림이 ✅로).
-          // Codex는 이어 가지 않고 사용자 차례 — 이어 가면 다음 도구 사건이 다시 일하는 중으로 바꾼다
-          this.setStatus(a, a.kind === 'codex' ? 'done' : 'thinking', e.at);
+          // Codex는 이어 가지 않고 사용자 차례 — 이어 가면 다음 도구 사건이 다시 일하는 중으로 바꾼다.
+          // 단 Codex 메인 차례가 아직 안 끝났으면(띄우기 뒤 👥 유지 중 도우미 끝) 계속 생각 중 💭
+          this.setStatus(a, a.kind === 'codex' && entry.turnEnded ? 'done' : 'thinking', e.at);
           a.detail = null;
         }
         return;

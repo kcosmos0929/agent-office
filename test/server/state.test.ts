@@ -1201,3 +1201,49 @@ test('숨은 훅 없는 세션은 퇴근보다 오래된 busy를 두 번 받아�
   st.applyRegistry(read(reg('r1', 'busy', 2000)), 5000 + 134 * M);
   assert.deepEqual(st.snapshot(0).agents, []);
 });
+
+// spawn_agent가 끝나도 wait_agent가 시작되기 전까지 👥를 유지한다(Codex만) — 사이의 💭 깜빡임 방지
+test('Codex 도우미 띄우기 → 기다리기 사이에 💭 없음(도우미 시작이 띄우기 끝 앞이든 뒤든)', () => {
+  for (const subBefore of [true, false]) {
+    const st = make();
+    const cx = (e: Ev): Ev => ({ ...e, kind: 'codex' });
+    const spawn = { ...ev.tool('x1', 100, 'S', 'delegating'), spawn: true } as Ev;
+    const seen: string[] = [];
+    st.apply(cx(ev.prompt('x1', 0)));
+    st.apply(cx(spawn)); seen.push(one(st).status);
+    if (subBefore) st.apply(cx(ev.subStart('x1', 150, 'A')));
+    st.apply(cx(ev.end('x1', 200, 'S')));
+    if (!subBefore) st.apply(cx(ev.subStart('x1', 250, 'A')));
+    seen.push(one(st).status);
+    st.apply(cx(ev.tool('x1', 300, 'W', 'delegating'))); seen.push(one(st).status);
+    st.apply(cx(ev.end('x1', 400, 'W'))); seen.push(one(st).status);
+    assert.deepEqual(seen, ['delegating', 'delegating', 'delegating', 'thinking'], `subBefore=${subBefore}`);
+  }
+});
+
+test('Claude Agent 도구 끝은 지금처럼 💭(spawn 표시 없음)', () => {
+  const st = make();
+  st.apply(ev.prompt('c1', 0));
+  st.apply(ev.tool('c1', 100, 'S', 'delegating'));
+  st.apply(ev.end('c1', 200, 'S'));
+  assert.equal(one(st).status, 'thinking');
+});
+
+test('Codex 띄우기 끝 → 도우미 시작·끝(차례 안 끝남) → 💭, 차례 끝 뒤 도우미 끝은 ✅', () => {
+  const st = make();
+  const cx = (e: Ev): Ev => ({ ...e, kind: 'codex' });
+  st.apply(cx(ev.prompt('x1', 0)));
+  st.apply(cx({ ...ev.tool('x1', 100, 'S', 'delegating'), spawn: true } as Ev));
+  st.apply(cx(ev.end('x1', 200, 'S')));
+  st.apply(cx(ev.subStart('x1', 250, 'A')));
+  assert.equal(one(st).status, 'delegating');
+  st.apply(cx(ev.subStop('x1', 300, 'A')));
+  assert.equal(one(st).status, 'thinking');
+  // 차례가 끝난 뒤 도우미가 끝나면 ✅
+  const st2 = make();
+  st2.apply(cx(ev.prompt('x2', 0)));
+  st2.apply(cx(ev.subStart('x2', 100, 'A')));
+  st2.apply(cx(ev.stop('x2', 200)));
+  st2.apply(cx(ev.subStop('x2', 300, 'A')));
+  assert.equal(one(st2).status, 'done');
+});
