@@ -817,14 +817,15 @@ test('Codex 도우미 중 중단 → ✅, 도우미 표시 지움, 늦은 기다
   assert.equal(one(st).status, 'done');
 });
 
-test('Codex: 차례가 끝난 뒤 도우미가 끝나면 ✅ (Claude는 💭)', async () => {
+// Codex 도우미는 차례를 넘어 살아 있을 수 있다(followup_task·send_message로 재사용, 일이 끝나도 SubagentStop 없음) → 차례 끝은 ✅
+test('Codex: 차례가 끝나면 도우미가 남아 있어도 ✅(목록엔 도우미 수), 나중에 도우미가 끝나도 ✅ (Claude는 👥 → 💭)', async () => {
   const { st, send } = await codexSender();
   send({ hook_event_name: 'UserPromptSubmit' }, 0);
   send({ hook_event_name: 'SubagentStart', agent_id: 'A', agent_type: 'default' }, 1_000);
   send({ hook_event_name: 'Stop' }, 2_000);
-  assert.equal(one(st).status, 'delegating');
+  assert.deepEqual([one(st).status, one(st).subagents.length], ['done', 1]);
   send({ hook_event_name: 'SubagentStop', agent_id: 'A', agent_type: 'default' }, 3_000);
-  assert.equal(one(st).status, 'done');
+  assert.deepEqual([one(st).status, one(st).subagents.length], ['done', 0]);
   const claude = make();
   for (const e of [ev.prompt('c1', 0), ev.subStart('c1', 1_000, 'A'), ev.stop('c1', 2_000), ev.subStop('c1', 3_000, 'A')]) claude.apply(e);
   assert.equal(one(claude).status, 'thinking');
@@ -1042,4 +1043,44 @@ test('스위치를 켜면 이미 떠 있던 Codex 승인 대기(메인·도우�
   st.apply(cx(ev.end('x1', 8_000, 'u1')));
   assert.equal(find('x1').status, 'thinking');
   assert.equal(st.dropCodexApprovals(9_000), false);
+});
+
+test('Codex 도우미를 여러 차례 다시 써도(SubagentStop 없음) 각 차례가 끝나면 ✅, 기다리는 동안만 👥 (리뷰 중 실제로 본 경우)', async () => {
+  const { st, send } = await codexSender();
+  send({ hook_event_name: 'UserPromptSubmit' }, 0);
+  send({ hook_event_name: 'PreToolUse', tool_name: 'collaborationspawn_agent', tool_use_id: 's1', tool_input: { task_name: 'reviewer' } }, 100);
+  send({ hook_event_name: 'PostToolUse', tool_name: 'collaborationspawn_agent', tool_use_id: 's1' }, 200);
+  send({ hook_event_name: 'SubagentStart', agent_id: 'A', agent_type: 'default' }, 300);
+  send({ hook_event_name: 'PreToolUse', tool_name: 'collaborationwait_agent', tool_use_id: 'w1', tool_input: {} }, 400);
+  assert.equal(one(st).status, 'delegating');
+  send({ hook_event_name: 'PostToolUse', tool_name: 'collaborationwait_agent', tool_use_id: 'w1' }, 5_000);
+  send({ hook_event_name: 'Stop' }, 6_000);
+  assert.equal(one(st).status, 'done');
+  st.tick(6_000 + 20 * M);
+  assert.equal(one(st).status, 'done');
+});
+
+test('Codex 차례가 끝난 뒤 도우미 승인이 풀려도(도구 끝·스위치로 지움) ✅로 돌아감, 영구 👥 아님 (리뷰 P2)', () => {
+  const cx = (e: Ev): Ev => ({ ...e, kind: 'codex' });
+  const st = make();
+  st.apply(cx(ev.prompt('x1', 0)));
+  st.apply(cx(ev.subStart('x1', 100, 'A')));
+  st.apply(cx(ev.stop('x1', 200)));
+  assert.equal(one(st).status, 'done');
+  st.apply(cx(ev.perm('x1', 300, 'A')));
+  assert.equal(one(st).status, 'approving');
+  st.apply(cx(ev.end('x1', 400, 'tA', 'A')));
+  assert.equal(one(st).status, 'done');
+  const sw = make();
+  sw.apply(cx(ev.prompt('x2', 0)));
+  sw.apply(cx(ev.subStart('x2', 100, 'A')));
+  sw.apply(cx(ev.stop('x2', 200)));
+  sw.apply(cx(ev.perm('x2', 300, 'A')));
+  sw.tick(6_000);
+  assert.equal(one(sw).status, 'permission');
+  assert.equal(sw.dropCodexApprovals(7_000), true);
+  assert.equal(one(sw).status, 'done');
+  // 다음 차례가 시작되면 다시 평소대로(메시지 → 💭)
+  sw.apply(cx(ev.prompt('x2', 8_000)));
+  assert.equal(one(sw).status, 'thinking');
 });
