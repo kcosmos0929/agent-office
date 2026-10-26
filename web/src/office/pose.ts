@@ -6,6 +6,7 @@ export type Pose = 'type-fast' | 'scroll' | 'think' | 'wave' | 'lean-back' | 'sl
 const POSE: Record<Status, Pose> = {
   permission: 'wave',
   question: 'wave',
+  approving: 'think',
   done: 'lean-back',
   thinking: 'think',
   reading: 'scroll',

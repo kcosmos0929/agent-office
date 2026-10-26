@@ -29,3 +29,8 @@ test('soundEvents: ❓도 urgent, ❗↔❓는 다시 안 울림, ⏳·🧹는 �
   assert.deepEqual(soundEvents(snap(agent('a', 'running')), snap(agent('a', 'quota'))), []);
   assert.deepEqual(soundEvents(snap(agent('a', 'running')), snap(agent('a', 'compacting'))), []);
 });
+
+test('soundEvents: 🛡️ 승인 확인 중은 조용, 5초 뒤 ❗가 될 때 울림', () => {
+  assert.deepEqual(soundEvents(snap(agent('a', 'running')), snap(agent('a', 'approving'))), []);
+  assert.deepEqual(soundEvents(snap(agent('a', 'approving')), snap(agent('a', 'permission'))), ['urgent']);
+});

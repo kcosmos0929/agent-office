@@ -16,11 +16,14 @@ export type StateOptions = {
   startedAt: number;
   /** 등록부 waiting을 '사용자 입력 기다림'으로 믿어도 되나(설계 R2·늦은 알림 무시). Task 0 실제 확인으로 정함 */
   registryWaitRule: boolean;
+  /** Codex 승인 요청을 이만큼 '승인 확인 중'으로 보여 준 뒤 ❗(기본 5초) — 자동 승인(AutoReview)은 그 사이에 풀림 */
+  approvalDelayMs?: number;
 };
 
 const SLOTS = 8;
-/** 나를 기다리는 상태(❗·❓) */
-const WAITS = new Set<Status>(['permission', 'question']);
+/** 나를 기다리는 상태(❗·❓, 그리고 ❗가 되기 전의 🛡️) */
+const WAITS = new Set<Status>(['permission', 'approving', 'question']);
+const APPROVAL_DELAY_MS = 5_000;
 /** 도구 끝 신호가 늦게 와도 바꾸지 않는 상태 */
 const SETTLED = new Set<Status>(['done', 'idle', 'gone', 'quota', 'compacting']);
 /** 등록부만 있고 훅이 없는 세션이 이만큼 일하는 중이면 '훅 없음' */
@@ -43,6 +46,8 @@ type Entry = {
   waitingSubs: Map<string, WaitKind>;
   /** 대기가 하나도 없다가 처음 생긴 시각 — 모두 풀리면 null */
   waitSince: number | null;
+  /** 승인 대기마다 시작 시각('main' 또는 도우미 id) — Codex 🛡️→❗를 남은 승인 중 가장 오래된 것 기준으로 */
+  approvalSince: Map<string, number>;
   /** 서버가 켜진 뒤 이 세션의 훅을 받은 적 있나 / 마지막 훅 시각 */
   hookSeen: boolean;
   lastHookAt: number | null;
@@ -125,6 +130,10 @@ export class OfficeState {
       } else if ((a.status === 'thinking' || a.status === 'compacting') && entry.hookSeen && now - a.lastEventAt >= this.opts.stalledMs) {
         // 훅 없는 세션은 등록부가 기준이라 '응답 없음'으로 바꾸지 않는다
         this.setStatus(a, 'stalled', now);
+        changed = true;
+      } else if (a.status === 'approving' && this.waitStatus(entry, 'permission', now) === 'permission') {
+        // 몇 초가 지나도 승인이 안 풀림 = 정말 나를 기다림 → ❗(이때 알림음)
+        this.setStatus(a, 'permission', now);
         changed = true;
       } else if (a.status === 'gone' && now - a.since >= this.opts.goneMs) {
         this.entries.delete(id);
@@ -317,7 +326,7 @@ export class OfficeState {
       model: null,
     };
     const entry: Entry = {
-      agent, openTools: new Map(), transcriptPath: null, waitingMain: null, waitingSubs: new Map(), waitSince: null,
+      agent, openTools: new Map(), transcriptPath: null, waitingMain: null, waitingSubs: new Map(), waitSince: null, approvalSince: new Map(),
       hookSeen: false, lastHookAt: null, reg: null, everInRegistry: false, inRegistry: false, missingReads: 0, regName: null, waitGuessed: false, stopError: null,
     };
     this.entries.set(sessionId, entry);
@@ -362,6 +371,7 @@ export class OfficeState {
         return;
       case 'permission':
       case 'question':
+        this.noteApproval(entry, 'main', entry.waitingMain, e.type, e.at);
         entry.waitingMain = e.type;
         this.enterWait(entry, e.type, e.detail, e.at);
         return;
@@ -377,7 +387,7 @@ export class OfficeState {
         }
         const wait = this.shownWait(entry);
         if (wait) {
-          this.setStatus(a, wait, e.at);
+          this.setStatus(a, this.waitStatus(entry, wait, e.at), e.at);
         } else {
           this.clearWaits(entry);
           this.finishTurn(entry, e.at);
@@ -446,6 +456,7 @@ export class OfficeState {
   /** 하위 에이전트 안의 이벤트: 승인·질문 대기와 그 대기 뒤 도구의 끝만 부모 상태에 영향 */
   private applySubagentEvent(entry: Entry, e: OfficeEvent, subagentId: string): void {
     if (e.type === 'permission' || e.type === 'question') {
+      this.noteApproval(entry, subagentId, entry.waitingSubs.get(subagentId) ?? null, e.type, e.at);
       entry.waitingSubs.set(subagentId, e.type);
       this.enterWait(entry, e.type, e.detail, e.at);
     } else if (e.type === 'tool-end' && entry.waitingSubs.delete(subagentId)) {
@@ -461,12 +472,35 @@ export class OfficeState {
     return null;
   }
 
+  /** 새 승인 대기면(그 자리가 승인 대기가 아니었으면) 시작 시각을 적는다. 같은 대기가 다시 와도 처음 시각을 지킴 */
+  private noteApproval(entry: Entry, key: string, before: WaitKind | null, kind: WaitKind, at: number): void {
+    if (kind === 'permission' && before !== 'permission') entry.approvalSince.set(key, at);
+  }
+
+  /** 아직 걸려 있는 승인 대기 중 가장 오래된 시작 시각(풀린 대기의 기록은 버림) */
+  private oldestApproval(entry: Entry): number | null {
+    let oldest: number | null = null;
+    for (const [key, since] of entry.approvalSince) {
+      const active = key === 'main' ? entry.waitingMain === 'permission' : entry.waitingSubs.get(key) === 'permission';
+      if (!active) entry.approvalSince.delete(key);
+      else if (oldest === null || since < oldest) oldest = since;
+    }
+    return oldest;
+  }
+
+  /** 화면에 보일 대기 상태: Codex 승인은 남은 승인 중 가장 오래된 것이 몇 초 안 됐으면 🛡️(자동 승인이면 그 사이 풀림), 넘으면 ❗ */
+  private waitStatus(entry: Entry, kind: WaitKind, at: number): Status {
+    if (kind !== 'permission' || entry.agent.kind !== 'codex') return kind;
+    const since = this.oldestApproval(entry) ?? entry.waitSince;
+    return since !== null && at - since < (this.opts.approvalDelayMs ?? APPROVAL_DELAY_MS) ? 'approving' : kind;
+  }
+
   private enterWait(entry: Entry, kind: WaitKind, detail: string | null, at: number): void {
     const a = entry.agent;
     entry.waitSince ??= at;
     entry.waitGuessed = false;
     const shown = this.shownWait(entry) ?? kind;
-    this.setStatus(a, shown, at);
+    this.setStatus(a, this.waitStatus(entry, shown, at), at);
     if (shown === kind) a.detail = detail;
   }
 
@@ -476,8 +510,8 @@ export class OfficeState {
     if (!WAITS.has(a.status)) return;
     const shown = this.shownWait(entry);
     if (shown) {
-      if (shown !== a.status) a.detail = null;
-      this.setStatus(a, shown, at);
+      if (shown !== (a.status === 'approving' ? 'permission' : a.status)) a.detail = null;
+      this.setStatus(a, this.waitStatus(entry, shown, at), at);
       return;
     }
     entry.waitSince = null;
@@ -506,6 +540,7 @@ export class OfficeState {
     entry.waitGuessed = false;
     entry.waitingSubs.clear();
     entry.waitSince = null;
+    entry.approvalSince.clear();
   }
 
   private clearWork(entry: Entry): void {

@@ -3,6 +3,7 @@ import type { Agent, Status } from './types.ts';
 const RANK: Record<Status, number> = {
   permission: 0,
   question: 0,
+  approving: 2, // 조용한 일하는 중 묶음(몇 초 뒤 ❗가 되면 맨 위로)
   done: 1,
   thinking: 2,
   reading: 2,

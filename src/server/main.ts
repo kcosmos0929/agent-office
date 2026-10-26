@@ -10,7 +10,8 @@ import { loadProjects, makeResolver } from './projects.ts';
 import { OfficeState } from './state.ts';
 import { loadOrCreateToken } from './token.ts';
 
-const TICK_MS = 5_000;
+/** Codex '승인 확인 중' → ❗(5초)가 1초 안에 바뀌도록 촘촘히 */
+const TICK_MS = 1_000;
 const MINUTE = 60_000;
 const REPO_ROOT = path.resolve(import.meta.dirname, '..', '..');
 /**
