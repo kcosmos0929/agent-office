@@ -1,7 +1,7 @@
 // 사무실 장면: 배경(backdrop.ts) + 가구. 모두 코드로 만든 상자들 — 그림 파일 없음.
 import * as THREE from 'three';
 import { CSS2DObject } from 'three/examples/jsm/renderers/CSS2DRenderer.js';
-import { buildBackdrop, SLAB_H } from './backdrop.ts';
+import { buildBackdrop, SLAB_H, type Backdrop } from './backdrop.ts';
 import { armchair, beanBag, bigPlant, binders, bookshelf, boxStack, coatRack, copier, deskLamp, fileCabinet, fridge, FURN, lowCabinet, kitchenCounter, lowTable, officeChair, podDesk, podDivider, printer, receptionDesk, screenStand, shredder, smallPlant, sofa, stool, storageShelf, supplyCabinet, toilet, trashBin, vendingMachine, washbasin, waterCooler, whiteboard } from './furniture.ts';
 import { buildRacks } from './rack.ts';
 import { SCREEN } from './screens.ts';
@@ -45,11 +45,11 @@ function roomSign(text: string, y: number): CSS2DObject {
   return sign;
 }
 
-export type OfficeScene = { group: THREE.Group; deskScreens: THREE.Mesh[]; devScreens: THREE.Mesh[]; racks: THREE.MeshLambertMaterial[][] };
+export type OfficeScene = { group: THREE.Group; deskScreens: THREE.Mesh[]; devScreens: THREE.Mesh[]; racks: THREE.MeshLambertMaterial[][]; backdrop: Backdrop };
 
 export function buildOffice(): OfficeScene {
   const g = new THREE.Group();
-  buildBackdrop(g);
+  const backdrop = buildBackdrop(g);
 
   // 사무실: 4인 책상 묶음 2개(두 자리씩 마주 보고 가운데 칸막이). 순서는 seatPosition과 같게(DESKS)
   const deskScreens = DESKS.map((d, seat) => podDesk(g, d.x0, d.y0, DESK_DEPTH, DESK_WIDTH, d.facing, seat, chairPosition(seat)));
@@ -149,5 +149,5 @@ export function buildOffice(): OfficeScene {
   // 방 팻말: 오른쪽 방들(개발실·비서실·회의실)만, 판 오른쪽 옆면의 각 방 가운데
   for (const r of [ROOMS.codex, ROOMS.aria, ROOMS.meeting]) g.add(roomSign(r.label, (r.y0 + r.y1) / 2));
 
-  return { group: g, deskScreens, devScreens, racks };
+  return { group: g, deskScreens, devScreens, racks, backdrop };
 }

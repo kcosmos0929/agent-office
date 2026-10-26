@@ -7,6 +7,7 @@ import { targetFps } from './fps.ts';
 import type { Pose } from './pose.ts';
 import { showCard } from './card.ts';
 import { Cast } from './cast.ts';
+import { applyDaylight, clockOverride, lightLevel } from './daylight.ts';
 import { PALETTE, officeLights } from './backdrop.ts';
 import { FIT, FLOOR_X, FLOOR_Z, VIEW_DIR as VIEW } from './layout.ts';
 import { buildOffice, type OfficeScene } from './scene.ts';
@@ -48,6 +49,10 @@ export class OfficeView implements OfficeHost {
   private readonly pass = new PixelPass(PALETTE.bg);
   private readonly px: number;
   private dprQuery: MediaQueryList | null = null;
+  private readonly lights: THREE.Object3D[];
+  /** 지금 낮밤 단계(바뀔 때만 다시 그림) */
+  private daylight = -1;
+  private daylightTimer: ReturnType<typeof setInterval> | null = null;
 
   constructor(container: HTMLElement) {
     this.container = container;
@@ -68,6 +73,7 @@ export class OfficeView implements OfficeHost {
     const lights = officeLights();
     for (const l of lights) l.layers.enable(GLASS_LAYER); // 유리 패스도 조명을 받게
     this.scene.add(...lights);
+    this.lights = lights;
 
     this.office = buildOffice();
     splitTransparent(this.office.group); // 유리·칸막이는 사람 뒤에 한 번 더 합성(pixelPass)
@@ -75,6 +81,10 @@ export class OfficeView implements OfficeHost {
     // 동작 줄이기 설정이면 폴짝을 끈다(한 번만 읽음)
     const reduced = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
     this.cast = new Cast(this.scene, this.office, () => this.invalidate(), () => (this.snap ? this.snap.now + (Date.now() - this.receivedAt) : Date.now()), reduced);
+
+    // 서울 해에 맞춘 낮밤: 지금 한 번, 그 뒤 1분마다 확인(단계가 바뀔 때만 다시 그림)
+    this.checkDaylight();
+    this.daylightTimer = setInterval(() => this.checkDaylight(), 60_000);
 
     this.camera.position.copy(TARGET).addScaledVector(VIEW_DIR, 30);
     this.camera.lookAt(TARGET);
@@ -138,6 +148,17 @@ export class OfficeView implements OfficeHost {
     this.cast.rebase();
   }
 
+  /** 낮밤 단계를 다시 재서 바뀌었으면 조명·창밖 풍경을 바꾸고 한 번 그린다(`?clock=HH:MM`이면 그 시각으로 미리 보기) */
+  private checkDaylight(): void {
+    const now = Date.now();
+    const level = lightLevel(clockOverride(location.search, now) ?? now);
+    if (level === this.daylight) return;
+    this.daylight = level;
+    applyDaylight(this.lights, level);
+    this.office.backdrop.setDaylight(level);
+    this.invalidate();
+  }
+
   private onPointer(e: PointerEvent): void {
     const rect = this.renderer.domElement.getBoundingClientRect();
     const ndc = new THREE.Vector2(((e.clientX - rect.left) / rect.width) * 2 - 1, -((e.clientY - rect.top) / rect.height) * 2 + 1);
@@ -153,6 +174,7 @@ export class OfficeView implements OfficeHost {
     this.disposed = true;
     if (this.timer) clearTimeout(this.timer);
     cancelAnimationFrame(this.raf);
+    if (this.daylightTimer) clearInterval(this.daylightTimer);
     this.resizeObserver.disconnect();
     document.removeEventListener('visibilitychange', this.onVisibility);
     this.dprQuery?.removeEventListener('change', this.onDpr);

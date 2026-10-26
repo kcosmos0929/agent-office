@@ -84,7 +84,10 @@ function glassWallY(g: THREE.Group, x: number, y0: number, y1: number, doors: Ar
 export const SLAB_H = 0.3;
 const P = PALETTE;
 
-export function buildBackdrop(g: THREE.Group): void {
+/** 배경이 밖에 내주는 손잡이: 통창 밖 풍경을 밝기 단계(0~1)에 맞게 바꾼다 */
+export type Backdrop = { setDaylight(level: number): void };
+
+export function buildBackdrop(g: THREE.Group): Backdrop {
   const FX = FLOOR_X;
   const FZ = FLOOR_Z;
   const { codex, aria, pantry } = ROOMS;
@@ -116,7 +119,10 @@ export function buildBackdrop(g: THREE.Group): void {
   const SILL = 0.72;
   const HEAD = WALL_H - 0.2;
   const glassMats: THREE.Material[] = Array(6).fill(plain(P.frame));
-  glassMats[FACE.px] = new THREE.MeshBasicMaterial({ map: cityView(FZ * DENSITY, Math.round((HEAD - SILL) * DENSITY)) });
+  const cityW = FZ * DENSITY;
+  const cityH = Math.round((HEAD - SILL) * DENSITY);
+  const cityMat = new THREE.MeshBasicMaterial({ map: cityView(cityW, cityH) });
+  glassMats[FACE.px] = cityMat;
   const glass = new THREE.Mesh(new THREE.BoxGeometry(0.03, HEAD - SILL, FZ), glassMats);
   glass.position.set(0.015, (SILL + HEAD) / 2, FZ / 2);
   g.add(glass);
@@ -166,6 +172,11 @@ export function buildBackdrop(g: THREE.Group): void {
     bar.position.addVectors(a, b).multiplyScalar(0.5);
     g.add(bar);
   });
+  return {
+    setDaylight(level) {
+      cityMat.map = cityView(cityW, cityH, 7, level);
+    },
+  };
 }
 
 /** 조명: 하늘빛 + 해(그림자) + 방마다 작은 전등 */
