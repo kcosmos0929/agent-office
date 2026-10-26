@@ -7,7 +7,7 @@ export type WaitKind = 'permission' | 'question';
 /** 대화 정리를 누가 시작했나: /compact 직접 / 자동 */
 export type CompactTrigger = 'manual' | 'auto';
 export type Group = 'urgent' | 'waiting' | 'working' | 'rest';
-export type AgentKind = 'claude';
+export type AgentKind = 'claude' | 'codex';
 
 type EventBase = {
   sessionId: string;
@@ -17,13 +17,15 @@ type EventBase = {
   transcriptPath?: string;
   /** 하위 에이전트 안에서 난 이벤트면 그 하위 에이전트 id */
   subagentId?: string;
+  /** 어느 에이전트의 신호인가 (없으면 claude) */
+  kind?: AgentKind;
 };
 
 export type OfficeEvent = EventBase & (
   | { type: 'session-start' }
   | { type: 'prompt' }
-  /** 차례가 끝남. error = 한도 말고 다른 API 오류로 멈춘 경우의 종류(overloaded 등) */
-  | { type: 'stop'; error?: string }
+  /** 차례가 끝남. error = 한도 말고 다른 API 오류로 멈춘 경우의 종류(overloaded 등), interrupted = Codex 중단(Interrupt) */
+  | { type: 'stop'; error?: string; interrupted?: boolean }
   | { type: 'session-end' }
   /** 입력을 기다린다는 알림(Stop 없이 끝난 차례 대비) */
   | { type: 'idle' }
@@ -72,7 +74,7 @@ export type AgentContext = { state: 'ok'; used: number; window: number | null; m
 export type UsageWindow = { pct: number; resetsAt: number };
 export type Usage = { fiveHour: UsageWindow | null; sevenDay: UsageWindow | null; at: number };
 /** 연결 띠·npm run doctor용: 서버가 제대로 듣고 있나 */
-export type Health = { startedAt: number; lastHookAt: number | null; registry: RegistryHealth; sessions: number; hookless: number };
+export type Health = { startedAt: number; lastHookAt: number | null; registry: RegistryHealth; sessions: number; hookless: number; lastCodexHookAt: number | null };
 export type Snapshot = { agents: Agent[]; usage: Usage | null; now: number; health: Health };
 
 /** Claude 앱 세션 목록 폴더 상태: 읽힘 / 폴더 없음 / 못 읽음 */

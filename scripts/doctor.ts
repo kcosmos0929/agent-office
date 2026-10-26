@@ -4,7 +4,7 @@ import { pidAlive } from '../src/server/collectors/sessionRegistry.ts';
 import { peekConfig } from '../src/server/config.ts';
 import { claudeSessionsDir, soHome } from '../src/server/paths.ts';
 import { exitCode, formatReport, runChecks } from './lib/doctorChecks.ts';
-import { CLAUDE_SETTINGS, LABEL, REPO_ROOT, UID } from './lib/system.ts';
+import { CLAUDE_SETTINGS, CODEX_DIR, CODEX_HOOKS, LABEL, REPO_ROOT, UID } from './lib/system.ts';
 
 async function get(url: string): Promise<Response | null> {
   try {
@@ -22,6 +22,8 @@ const checks = await runChecks({
   repoRoot: REPO_ROOT,
   registryDir: claudeSessionsDir(),
   wikiPath: peekConfig(home).wikiPath,
+  codexDir: CODEX_DIR,
+  codexHooksFile: CODEX_HOOKS,
   isAlive: pidAlive,
   launchdRunning: () => {
     const r = spawnSync('launchctl', ['print', `gui/${UID}/${LABEL}`], { encoding: 'utf8' });

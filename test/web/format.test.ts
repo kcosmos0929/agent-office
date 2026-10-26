@@ -20,7 +20,7 @@ test('formatReset: 남은 시간 H:MM', () => {
 });
 
 test('agentName: 제목이 없으면 세션 번호', () => {
-  const a = { title: null, hat: 1 } as Agent;
+  const a = { title: null, hat: 1, kind: 'claude' } as Agent;
   assert.equal(agentName(a), 'Claude · 세션 2');
   assert.equal(agentName({ ...a, title: '정류장 승하차 결합' }), '정류장 승하차 결합');
 });
@@ -34,4 +34,10 @@ test('chooseView', () => {
   assert.equal(chooseView(1920, 1080, 'list'), 'list');
   assert.equal(chooseView(320, 480, 'office'), 'office');
   assert.equal(chooseView(320, 480, '이상한값'), 'list');
+});
+
+test('agentName: 종류별 이름', () => {
+  assert.equal(agentName({ title: null, hat: 2, kind: 'codex' }), 'Codex · 세션 3');
+  assert.equal(agentName({ title: null, hat: 0, kind: 'claude' }), 'Claude · 세션 1');
+  assert.equal(agentName({ title: '제목', hat: 0, kind: 'codex' }), '제목');
 });

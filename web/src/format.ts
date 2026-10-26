@@ -1,3 +1,4 @@
+import { KIND_LABEL } from '../../src/shared/labels.ts';
 import type { Agent } from '../../src/shared/types.ts';
 
 /** <1분 "방금", <60분 "N분째", 그 이상 "H:MM:SS" */
@@ -17,6 +18,6 @@ export function formatReset(resetsAtSec: number, nowMs: number): string {
   return `${Math.floor(mins / 60)}:${String(mins % 60).padStart(2, '0')}`;
 }
 
-export function agentName(a: Pick<Agent, 'title' | 'hat'>): string {
-  return a.title ?? `Claude · 세션 ${a.hat + 1}`;
+export function agentName(a: Pick<Agent, 'title' | 'hat' | 'kind'>): string {
+  return a.title ?? `${KIND_LABEL[a.kind]} · 세션 ${a.hat + 1}`;
 }

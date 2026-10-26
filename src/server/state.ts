@@ -1,6 +1,6 @@
 // 상태 정리기: 이벤트를 받아 에이전트별 상태를 갱신한다. 화면·수집기·시계를 모르는 순수 로직(시간은 이벤트·tick 인자로만).
 import { groupOf } from '../shared/labels.ts';
-import type { Activity, Agent, Health, OfficeEvent, RegistryHealth, Snapshot, Status, Usage, WaitKind } from '../shared/types.ts';
+import type { Activity, Agent, AgentKind, Health, OfficeEvent, RegistryHealth, Snapshot, Status, Usage, WaitKind } from '../shared/types.ts';
 import type { RegistryEntry, RegistryRead, RegistryStatus } from './collectors/sessionRegistry.ts';
 import type { ContextReading } from './collectors/contextUsage.ts';
 import { contextWindow } from '../shared/contextWindow.ts';
@@ -66,6 +66,7 @@ export class OfficeState {
   private usage: Usage | null = null;
   private registry: RegistryHealth = 'missing';
   private lastHook: number | null = null;
+  private lastCodexHook: number | null = null;
 
   constructor(opts: StateOptions) {
     this.opts = opts;
@@ -88,6 +89,7 @@ export class OfficeState {
       entry.hookSeen = true;
       entry.lastHookAt = e.at;
       this.lastHook = e.at;
+      if (a.kind === 'codex') this.lastCodexHook = e.at;
       a.hookless = false;
     }
     if (e.title && !entry.regName) a.title = e.title;
@@ -278,11 +280,12 @@ export class OfficeState {
       registry: this.registry,
       sessions: agents.filter((a) => a.status !== 'gone').length,
       hookless: agents.filter((a) => a.hookless).length,
+      lastCodexHookAt: this.lastCodexHook,
     };
   }
 
   private create(e: OfficeEvent): Entry {
-    const entry = this.newEntry(e.sessionId, e.cwd, e.at, e.at);
+    const entry = this.newEntry(e.sessionId, e.cwd, e.at, e.at, e.kind ?? 'claude');
     if (e.type === 'session-start') {
       entry.agent.status = 'done';
       entry.agent.detail = '새 세션';
@@ -290,11 +293,13 @@ export class OfficeState {
     return entry;
   }
 
-  private newEntry(sessionId: string, cwd: string, since: number, now: number): Entry {
+  private newEntry(sessionId: string, cwd: string, since: number, now: number, kind: AgentKind = 'claude'): Entry {
     const used = [...this.entries.values()].map((x) => x.agent);
+    // 자리는 종류별로 따로 매긴다(Codex는 3단계 개발실 자리) — 모자 색은 세션 구분용이라 같이 쓴다
+    const sameKind = used.filter((a) => a.kind === kind);
     const agent: Agent = {
-      id: `claude:${sessionId}`,
-      kind: 'claude',
+      id: `${kind}:${sessionId}`,
+      kind,
       sessionId,
       title: null,
       cwd,
@@ -304,7 +309,7 @@ export class OfficeState {
       since,
       lastEventAt: now,
       hat: firstFree(used.map((a) => a.hat), used.length % SLOTS),
-      seat: firstFree(used.map((a) => a.seat), -1),
+      seat: firstFree(sameKind.map((a) => a.seat), -1),
       subagents: [],
       hookless: false,
       context: null,
@@ -328,6 +333,8 @@ export class OfficeState {
         return;
       case 'prompt':
         this.clearWork(entry);
+        // Codex 도우미는 그 차례에 묶인다 — Codex엔 등록부·idle 알림이 없어, 놓친 SubagentStop을 여기서 거둔다
+        if (a.kind === 'codex') a.subagents = [];
         this.setStatus(a, 'thinking', e.at);
         a.detail = null;
         return;
@@ -361,6 +368,11 @@ export class OfficeState {
         entry.openTools.clear();
         entry.waitingMain = null;
         entry.stopError = e.error ?? null;
+        if (e.interrupted) {
+          // Codex 중단: 사용자가 멈춘 차례의 도우미와 그 대기도 끝난 것으로
+          a.subagents = [];
+          entry.waitingSubs.clear();
+        }
         const wait = this.shownWait(entry);
         if (wait) {
           this.setStatus(a, wait, e.at);
@@ -402,8 +414,9 @@ export class OfficeState {
         a.subagents = a.subagents.filter((s) => s.id !== e.agentId);
         if (entry.waitingSubs.delete(e.agentId)) this.resolveWaiting(entry, e.at);
         if (a.status === 'delegating' && a.subagents.length === 0 && entry.openTools.size === 0) {
-          // 메인 차례가 끝난 뒤 도우미가 다 끝남 → 메인이 결과를 받아 이어 감(안 이어 가면 등록부 idle·idle 알림이 ✅로)
-          this.setStatus(a, 'thinking', e.at);
+          // 메인 차례가 끝난 뒤 도우미가 다 끝남 → Claude는 메인이 결과를 받아 이어 감(안 이어 가면 등록부 idle·idle 알림이 ✅로).
+          // Codex는 이어 가지 않고 사용자 차례 — 이어 가면 다음 도구 사건이 다시 일하는 중으로 바꾼다
+          this.setStatus(a, a.kind === 'codex' ? 'done' : 'thinking', e.at);
           a.detail = null;
         }
         return;

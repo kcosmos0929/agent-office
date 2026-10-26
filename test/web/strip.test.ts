@@ -4,7 +4,7 @@ import { formatAgo, renderStrip, stripDetails, stripState } from '../../web/src/
 import type { Health } from '../../src/shared/types.ts';
 import { FakeElement, fakeDocument } from './fakeDom.ts';
 
-const H = (o: Partial<Health> = {}): Health => ({ startedAt: 0, lastHookAt: 50_000, registry: 'ok', sessions: 2, hookless: 0, ...o });
+const H = (o: Partial<Health> = {}): Health => ({ startedAt: 0, lastHookAt: 50_000, registry: 'ok', sessions: 2, hookless: 0, lastCodexHookAt: null, ...o });
 
 test('stripState 우선순위: 끊김 > 훅 없음 > 신호 없음 > 정상', () => {
   assert.deepEqual(stripState(false, H({ hookless: 1 }), 62_000), { tone: 'red', text: '🔴 끊김 — 다시 연결 중' });

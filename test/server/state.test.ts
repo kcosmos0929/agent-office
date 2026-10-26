@@ -547,12 +547,12 @@ test('transcriptPathOf: 훅이 준 경로, 모르면 null', () => {
 
 test('health: 시작 시각·마지막 훅·등록부 상태·세션 수(퇴근 제외)·훅 없음 수', () => {
   const st = make({ startedAt: 5 });
-  assert.deepEqual(st.snapshot(0).health, { startedAt: 5, lastHookAt: null, registry: 'missing', sessions: 0, hookless: 0 });
+  assert.deepEqual(st.snapshot(0).health, { startedAt: 5, lastHookAt: null, registry: 'missing', sessions: 0, hookless: 0, lastCodexHookAt: null });
   st.apply(ev.prompt('s1', 1_000));
   st.apply(ev.prompt('s2', 2_000));
   st.apply(ev.end_('s2', 3_000));
   st.applyRegistry(read(reg('r1', 'busy', 0)), 3 * M);
-  assert.deepEqual(st.snapshot(0).health, { startedAt: 5, lastHookAt: 3_000, registry: 'ok', sessions: 2, hookless: 1 });
+  assert.deepEqual(st.snapshot(0).health, { startedAt: 5, lastHookAt: 3_000, registry: 'ok', sessions: 2, hookless: 1, lastCodexHookAt: null });
 });
 
 // ---------- 최종 리뷰에서 나온 순서 문제 ----------
@@ -758,4 +758,93 @@ test('idle 알림(입력 기다림)도 남은 도우미 목록을 비워, 다음
   st.apply(ev.prompt('s1', 70_000));
   st.apply(ev.stop('s1', 71_000));
   assert.equal(one(st).status, 'done');
+});
+
+// ---------- 2단계 Codex ----------
+test('Codex 이벤트: id codex:<세션>, kind codex, Claude와 같은 상태 규칙', () => {
+  const st = make();
+  st.apply({ ...ev.prompt('x1', 0), kind: 'codex' });
+  assert.deepEqual([one(st).id, one(st).kind, one(st).status], ['codex:x1', 'codex', 'thinking']);
+});
+
+test('health: lastCodexHookAt은 Codex 신호만, lastHookAt은 둘 다', () => {
+  const st = make();
+  st.apply(ev.prompt('c1', 1_000));
+  st.apply({ ...ev.prompt('x1', 2_000), kind: 'codex' });
+  st.apply(ev.prompt('c1', 3_000));
+  assert.deepEqual([st.snapshot(0).health.lastHookAt, st.snapshot(0).health.lastCodexHookAt], [3_000, 2_000]);
+});
+
+test('Codex 중단(Interrupt) 뒤 늦은 도구 끝은 ✅를 바꾸지 않음, transcriptPathOf는 null', async () => {
+  const { codexHookToEvents } = await import('../../src/server/collectors/codexHook.ts');
+  const st = make();
+  const send = (o: Record<string, unknown>, at: number) => { for (const e of codexHookToEvents({ session_id: 'x1', cwd: CWD, transcript_path: '/r.jsonl', ...o }, at)) st.apply(e); };
+  send({ hook_event_name: 'UserPromptSubmit' }, 0);
+  send({ hook_event_name: 'PreToolUse', tool_name: 'Bash', tool_use_id: 'u1', tool_input: { command: 'sleep 30' } }, 1_000);
+  send({ hook_event_name: 'Interrupt' }, 2_000);
+  assert.equal(one(st).status, 'done');
+  send({ hook_event_name: 'PostToolUse', tool_name: 'Bash', tool_use_id: 'u1' }, 3_000);
+  assert.equal(one(st).status, 'done');
+  assert.equal(st.transcriptPathOf('x1'), null);
+});
+
+// Codex 도우미는 그 차례에 묶인다(2026-10-24 사용자 결정) — Codex엔 등록부·idle 알림 같은 바로잡는 장치가 없어서
+async function codexSender() {
+  const { codexHookToEvents } = await import('../../src/server/collectors/codexHook.ts');
+  const st = make();
+  const send = (o: Record<string, unknown>, at: number) => { for (const e of codexHookToEvents({ session_id: 'x1', cwd: CWD, ...o }, at)) st.apply(e); };
+  return { st, send };
+}
+
+test('Codex 도우미 중 중단 → ✅, 도우미 표시 지움, 늦은 기다림 끝·도우미 끝에도 ✅, 15분 뒤에도 ⚠ 아님', async () => {
+  const { st, send } = await codexSender();
+  send({ hook_event_name: 'UserPromptSubmit' }, 0);
+  send({ hook_event_name: 'PreToolUse', tool_name: 'collaborationspawn_agent', tool_use_id: 'u1', tool_input: { task_name: 'count_md' } }, 1_000);
+  send({ hook_event_name: 'PostToolUse', tool_name: 'collaborationspawn_agent', tool_use_id: 'u1' }, 1_100);
+  send({ hook_event_name: 'SubagentStart', agent_id: 'A', agent_type: 'default' }, 1_200);
+  send({ hook_event_name: 'PreToolUse', tool_name: 'collaborationwait_agent', tool_use_id: 'u2', tool_input: {} }, 1_300);
+  assert.equal(one(st).status, 'delegating');
+  send({ hook_event_name: 'Interrupt' }, 2_000);
+  assert.deepEqual([one(st).status, one(st).subagents.length], ['done', 0]);
+  send({ hook_event_name: 'PostToolUse', tool_name: 'collaborationwait_agent', tool_use_id: 'u2' }, 3_000);
+  send({ hook_event_name: 'SubagentStop', agent_id: 'A', agent_type: 'default' }, 4_000);
+  assert.equal(one(st).status, 'done');
+  st.tick(4_000 + 16 * M);
+  assert.equal(one(st).status, 'done');
+});
+
+test('Codex: 차례가 끝난 뒤 도우미가 끝나면 ✅ (Claude는 💭)', async () => {
+  const { st, send } = await codexSender();
+  send({ hook_event_name: 'UserPromptSubmit' }, 0);
+  send({ hook_event_name: 'SubagentStart', agent_id: 'A', agent_type: 'default' }, 1_000);
+  send({ hook_event_name: 'Stop' }, 2_000);
+  assert.equal(one(st).status, 'delegating');
+  send({ hook_event_name: 'SubagentStop', agent_id: 'A', agent_type: 'default' }, 3_000);
+  assert.equal(one(st).status, 'done');
+  const claude = make();
+  for (const e of [ev.prompt('c1', 0), ev.subStart('c1', 1_000, 'A'), ev.stop('c1', 2_000), ev.subStop('c1', 3_000, 'A')]) claude.apply(e);
+  assert.equal(one(claude).status, 'thinking');
+});
+
+test('Codex: 새 질문이면 남은 도우미 표시를 지워, 놓친 SubagentStop이 다음 차례 끝을 👥로 만들지 않음 (Claude는 도우미 유지)', async () => {
+  const { st, send } = await codexSender();
+  send({ hook_event_name: 'UserPromptSubmit' }, 0);
+  send({ hook_event_name: 'SubagentStart', agent_id: 'A', agent_type: 'default' }, 1_000);
+  send({ hook_event_name: 'Stop' }, 2_000);
+  send({ hook_event_name: 'UserPromptSubmit' }, 3_000);
+  assert.deepEqual([one(st).status, one(st).subagents.length], ['thinking', 0]);
+  send({ hook_event_name: 'Stop' }, 4_000);
+  assert.equal(one(st).status, 'done');
+  const claude = make();
+  for (const e of [ev.prompt('c1', 0), ev.subStart('c1', 1_000, 'A'), ev.stop('c1', 2_000), ev.prompt('c1', 3_000), ev.stop('c1', 4_000)]) claude.apply(e);
+  assert.equal(one(claude).status, 'delegating');
+});
+
+test('자리 번호는 종류별로 따로: 숨겨진 Codex가 사무실 자리를 차지하지 않음', () => {
+  const st = make();
+  st.apply(ev.prompt('c1', 0));
+  st.apply({ ...ev.prompt('x1', 1), kind: 'codex' });
+  st.apply(ev.prompt('c2', 2));
+  const seat = (id: string) => st.snapshot(0).agents.find((a) => a.sessionId === id)!.seat;
+  assert.deepEqual([seat('c1'), seat('x1'), seat('c2')], [0, 0, 1]);
 });

@@ -12,6 +12,7 @@ import type { Config } from './config.ts';
 import type { OfficeState } from './state.ts';
 import { tokenMatches } from './token.ts';
 import { hookToEvents } from './collectors/claudeHook.ts';
+import { codexHookToEvents } from './collectors/codexHook.ts';
 import { statuslineToUsage } from './collectors/usage.ts';
 import { readTranscriptTitle } from './collectors/transcriptTitle.ts';
 import { readContext, type ContextReading } from './collectors/contextUsage.ts';
@@ -193,6 +194,13 @@ export function startServer(opts: ServerOptions): Promise<RunningServer> {
         refreshContext(events[0].sessionId, events.some((e) => e.type === 'compact-end'));
       }
       return;
+    }
+    if (url.pathname === '/api/codex/hook') {
+      // Codex: 제목·대화 게이지는 읽지 않는다(기록 파일 형식이 안정적이지 않음)
+      let changed = false;
+      for (const e of codexHookToEvents(payload, now())) changed = state.apply(e) || changed;
+      if (changed) notify();
+      return text(res, 204);
     }
     if (url.pathname === '/api/claude/usage') {
       const usage = statuslineToUsage(payload, now());

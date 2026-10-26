@@ -11,7 +11,7 @@ const ASKS_ME = new Set(['elicitation_dialog', 'elicitation_url_dialog', 'agent_
 const QUOTA_GAVE_UP = new Set(['quota_auto_resume_stale', 'quota_auto_resume_disabled']);
 const ASK_TOOL = 'AskUserQuestion';
 
-type Json = Record<string, unknown>;
+export type Json = Record<string, unknown>;
 
 function str(v: unknown): string | null {
   return typeof v === 'string' && v.length > 0 ? v : null;
@@ -77,7 +77,12 @@ export function summarizeToolInput(tool: string, input: unknown): string {
   return clip(summarizeRaw(tool, obj));
 }
 
-export function hookToEvents(payload: unknown, now: number): OfficeEvent[] {
+/** 도구 이름·입력 → 활동·한 줄 요약. 에이전트마다 도구 이름이 달라 갈아 끼운다(Codex: codexHook.ts) */
+export type ToolDialect = { classify(tool: string, input: Json): Activity; summarize(tool: string, input: unknown): string };
+
+export const CLAUDE_TOOLS: ToolDialect = { classify: (tool) => classifyTool(tool), summarize: summarizeToolInput };
+
+export function hookToEvents(payload: unknown, now: number, tools: ToolDialect = CLAUDE_TOOLS): OfficeEvent[] {
   if (payload === null || typeof payload !== 'object' || Array.isArray(payload)) return [];
   const p = payload as Json;
   const sessionId = str(p.session_id);
@@ -105,7 +110,8 @@ export function hookToEvents(payload: unknown, now: number): OfficeEvent[] {
     case 'UserPromptSubmit':
       return [{ ...base, type: 'prompt' }];
     case 'PreToolUse': {
-      const start: OfficeEvent = { ...base, type: 'tool-start', toolUseId: str(p.tool_use_id) ?? '', activity: classifyTool(tool), detail: summarizeToolInput(tool, p.tool_input) };
+      const input = p.tool_input !== null && typeof p.tool_input === 'object' ? (p.tool_input as Json) : {};
+      const start: OfficeEvent = { ...base, type: 'tool-start', toolUseId: str(p.tool_use_id) ?? '', activity: tools.classify(tool, input), detail: tools.summarize(tool, p.tool_input) };
       // 질문 도구는 시작하자마자 사용자 답을 기다린다
       return tool === ASK_TOOL ? [start, { ...base, type: 'question', detail: null }] : [start];
     }
@@ -118,7 +124,7 @@ export function hookToEvents(payload: unknown, now: number): OfficeEvent[] {
     }
     case 'PermissionRequest':
       if (tool === ASK_TOOL) return [{ ...base, type: 'question', detail: null }];
-      return [{ ...base, type: 'permission', detail: summarizeToolInput(tool, p.tool_input) }];
+      return [{ ...base, type: 'permission', detail: tools.summarize(tool, p.tool_input) }];
     case 'Notification': {
       const kind = str(p.notification_type);
       const message = str(p.message);

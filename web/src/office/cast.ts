@@ -2,6 +2,7 @@
 import * as THREE from 'three';
 import { CSS2DObject } from 'three/examples/jsm/renderers/CSS2DRenderer.js';
 import { HAT_COLORS, KIND_COLOR, WAIT_COLOR, groupOf } from '../../../src/shared/labels.ts';
+import { officeAgents } from './visible.ts';
 import type { Agent, Snapshot } from '../../../src/shared/types.ts';
 import { makeBubble, nameplateText } from './bubbles.ts';
 import { createCharacter, setPose } from './character.ts';
@@ -43,7 +44,8 @@ export class Cast {
   sync(s: Snapshot): void {
     const seen = new Set<string>();
     let subIndex = 0;
-    for (const a of s.agents) {
+    const agents = officeAgents(s.agents);
+    for (const a of agents) {
       seen.add(a.id);
       const dest = seatPosition(a.seat);
       let actor = this.actors.get(a.id);
@@ -77,7 +79,7 @@ export class Cast {
     for (const [id, actor] of this.actors) {
       if (!seen.has(id) && !actor.leaving) this.leave(actor);
     }
-    this.paintScreens(s.agents);
+    this.paintScreens(agents);
     this.first = false;
   }
 
