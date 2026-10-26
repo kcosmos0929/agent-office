@@ -5,7 +5,7 @@ import { codexHookToEvents, shellHead } from '../../src/server/collectors/codexH
 const BASE = { session_id: 'x1', cwd: '/Users/seop/developer/street-centrality-bus', transcript_path: '/Users/seop/.codex/sessions/2026/10/24/rollout-x1.jsonl', model: 'gpt-5.5', turn_id: 't1' };
 const ev = (o: Record<string, unknown>) => ({ ...BASE, ...o });
 // 공통 필드를 뺀 나머지만 비교
-const kinds = (p: unknown) => codexHookToEvents(p, 5).map(({ sessionId, at, cwd, transcriptPath, title, subagentId, kind, ...rest }) => rest);
+const kinds = (p: unknown) => codexHookToEvents(p, 5).map(({ sessionId, at, cwd, transcriptPath, title, subagentId, kind, model, ...rest }) => rest);
 const pre = (tool_name: string, tool_input: Record<string, unknown>) => kinds(ev({ hook_event_name: 'PreToolUse', tool_name, tool_use_id: 'u1', tool_input }));
 
 test('shellHead: 래퍼·따옴표 벗기고 첫 단어', () => {
@@ -54,4 +54,10 @@ test('모든 Codex 이벤트는 kind codex, transcriptPath·title 없음', () =>
     assert.equal('transcriptPath' in e, false);
     assert.equal('title' in e, false);
   }
+});
+
+test('모델 이름이 모든 Codex 사건에 실림(없으면 안 실림)', () => {
+  assert.equal(codexHookToEvents(ev({ hook_event_name: 'UserPromptSubmit' }), 5)[0].model, 'gpt-5.5');
+  const { model, ...noModel } = BASE;
+  assert.equal(codexHookToEvents({ ...noModel, hook_event_name: 'Stop' }, 5)[0].model, undefined);
 });

@@ -165,6 +165,16 @@ test('셸 명령은 첫 줄만: 셸로 부른 apply_patch(heredoc)의 패치 원
   assert.ok(!fake.got[0].body.includes('비밀'));
 });
 
+test('model 이름은 보냄(프롬프트는 안 보냄)', async () => {
+  const home = tempHome();
+  const fake = await fakeServer();
+  writeEndpoint(home, fake.port);
+  await run(HOOK, home, JSON.stringify({ session_id: 'x1', hook_event_name: 'UserPromptSubmit', model: 'gpt-5.5', prompt: '비밀' }), ['codex']);
+  const body = JSON.parse(fake.got[0].body);
+  assert.equal(body.model, 'gpt-5.5');
+  assert.ok(!fake.got[0].body.includes('비밀'));
+});
+
 test('인자 없으면 지금처럼 /api/claude/hook', async () => {
   const home = tempHome();
   const fake = await fakeServer();

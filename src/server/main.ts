@@ -3,8 +3,9 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { loadConfig } from './config.ts';
 import { startServer } from './http.ts';
+import { makeCodexTitleReader } from './collectors/codexTitles.ts';
 import { watchRegistry } from './collectors/sessionRegistry.ts';
-import { claudeSessionsDir, homeFiles, soHome } from './paths.ts';
+import { claudeSessionsDir, codexSessionIndex, homeFiles, soHome } from './paths.ts';
 import { loadProjects, makeResolver } from './projects.ts';
 import { OfficeState } from './state.ts';
 import { loadOrCreateToken } from './token.ts';
@@ -49,7 +50,7 @@ async function main(): Promise<void> {
     console.warn('[synthetic-office] 허브 폴더를 지켜볼 수 없어요 — 이름표는 시작할 때 값으로 고정');
   }
 
-  const server = await startServer({ config, token, state, staticDir: path.join(REPO_ROOT, 'dist', 'web') });
+  const server = await startServer({ config, token, state, staticDir: path.join(REPO_ROOT, 'dist', 'web'), codexTitle: makeCodexTitleReader(codexSessionIndex()) });
   const endpoint = homeFiles(home).endpoint;
   fs.writeFileSync(endpoint, JSON.stringify({ port: server.port, token, pid: process.pid }) + '\n', { mode: 0o600 });
   fs.chmodSync(endpoint, 0o600);

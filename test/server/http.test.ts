@@ -256,3 +256,17 @@ test('POST /api/codex/hook: 토큰 없으면 401, 있으면 204 후 스냅샷에
   assert.deepEqual([snap.agents[0].id, snap.agents[0].status], ['codex:x1', 'thinking']);
   ws.close();
 });
+
+test('POST /api/codex/hook: Codex 제목 읽기가 주는 제목을 붙임(Claude 훅엔 안 씀)', { timeout: 5000 }, async () => {
+  const asked: string[] = [];
+  const { url } = await boot({ codexTitle: (id) => { asked.push(id); return id === 'x9' ? 'touch 명령 실행' : null; } });
+  const ws = new WebSocket(url.replace('http', 'ws') + '/ws');
+  await nextSnapshot(ws, () => true);
+  const got = nextSnapshot(ws, (s) => s.agents.some((a) => a.title === 'touch 명령 실행'));
+  const body = JSON.stringify({ session_id: 'x9', cwd: '/x', hook_event_name: 'UserPromptSubmit' });
+  assert.equal((await fetch(url + '/api/codex/hook', { method: 'POST', headers: { authorization: `Bearer ${TOKEN}` }, body })).status, 204);
+  const snap = await got;
+  assert.deepEqual([snap.agents[0].id, snap.agents[0].title], ['codex:x9', 'touch 명령 실행']);
+  assert.deepEqual(asked, ['x9']);
+  ws.close();
+});

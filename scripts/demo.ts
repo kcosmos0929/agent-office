@@ -18,7 +18,7 @@ const hook = (session: string, cwd: string, event: string, extra: Record<string,
   post('hook', { session_id: session, cwd, transcript_path: path.join('/tmp', `${session}.jsonl`), hook_event_name: event, ...extra });
 
 const codexHook = (session: string, cwd: string, event: string, extra: Record<string, unknown> = {}) =>
-  post('codex', { session_id: session, cwd, hook_event_name: event, ...extra });
+  post('codex', { session_id: session, cwd, hook_event_name: event, model: 'gpt-5.5', ...extra });
 
 const scene = process.argv[2] ?? 'all';
 if (scene === 'all') {

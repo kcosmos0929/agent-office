@@ -19,6 +19,8 @@ type EventBase = {
   subagentId?: string;
   /** 어느 에이전트의 신호인가 (없으면 claude) */
   kind?: AgentKind;
+  /** 훅이 알려 준 모델 id(Codex는 모든 사건, Claude는 SessionStart에만 가끔) */
+  model?: string;
 };
 
 export type OfficeEvent = EventBase & (
@@ -65,6 +67,8 @@ export type Agent = {
   hookless: boolean;
   /** 대화 게이지: 이 세션 대화가 모델의 기억 창을 얼마나 채웠나 (모르면 null) */
   context: AgentContext | null;
+  /** 훅이 마지막으로 알려 준 모델 id (모르면 null — 화면은 대화 게이지의 모델로 대신함) */
+  model: string | null;
 };
 
 /** ok = 마지막 답 기준 사용 토큰과 창 크기(모르는 모델이면 null) / compacted = 정리 직후라 다음 답부터 다시 계산 */
