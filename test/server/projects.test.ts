@@ -140,4 +140,7 @@ test('makeWorkResolver: ~ 경로의 ..를 풀고, 심볼릭 링크는 실제 대
   assert.equal(work(path.join(so, 'lst-link', 'src', 'a.py'), root), 'LST');
   assert.equal(work(path.join(root, 'elsewhere', 'so-link', 'src', 'b.ts'), root), 'SO');
   assert.equal(work(path.join(so, 'src', '새파일.ts'), root), 'SO'); // 아직 없는 파일(부모 폴더는 있음)
+  // 링크 뒤의 ..는 링크를 따라간 뒤 적용(파일시스템과 같은 순서): so/lst-link/.. = lst의 부모 → dev/lst/src = LST (리뷰 P2 재검토)
+  assert.equal(work(`${so}/lst-link/../lst/src/a.py`, root), 'LST');
+  assert.equal(work('lst-link/../lst/src/a.py', so), 'LST');
 });

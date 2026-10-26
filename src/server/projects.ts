@@ -154,20 +154,31 @@ function makeMainRepoFinder(): (p: string) => string | null {
   };
 }
 
-/** 실제 경로(심볼릭 링크를 따라감) — 아직 없는 경로는 있는 가장 가까운 윗폴더의 실제 경로에 나머지를 붙임. 그 뒤 normalize */
-function realNormalize(p: string): string {
-  let dir = path.resolve(p);
-  const rest: string[] = [];
-  for (let i = 0; i < 40; i++) {
+/**
+ * 경로를 앞에서부터 한 칸씩 실제 경로로: 링크를 먼저 따라간 뒤 ..를 적용한다(파일시스템과 같은 순서 —
+ * 'so/링크/..'는 링크 대상의 부모). 없는 칸은 글자대로 붙인다(새 파일 등).
+ */
+function realWalk(p: string, from: string): string {
+  let cur = p.startsWith('/') ? '/' : from;
+  for (const part of p.split('/')) {
+    if (!part || part === '.') continue;
+    if (part === '..') {
+      cur = path.dirname(cur);
+      continue;
+    }
+    const next = path.join(cur, part);
     try {
-      return normalize(path.join(fsSync.realpathSync.native(dir), ...rest));
+      cur = fsSync.realpathSync.native(next);
     } catch {
-      if (dir === path.dirname(dir)) break;
-      rest.unshift(path.basename(dir));
-      dir = path.dirname(dir);
+      cur = next;
     }
   }
-  return normalize(p);
+  return cur;
+}
+
+/** 실제 경로로 푼 뒤 normalize. 상대 경로는 base(이것도 실제 경로로 풂) 기준 */
+function realNormalize(p: string, base = '/'): string {
+  return normalize(realWalk(p, realWalk(base, '/')));
 }
 
 /**
@@ -183,8 +194,8 @@ export function makeWorkResolver(index: ProjectIndex, names: Record<string, stri
   const byPath = (p: string) => sorted.find((e) => within(p, e.path));
   return (raw, cwd) => {
     if (!raw.trim()) return null;
-    const home = raw === '~' || raw.startsWith('~/') ? path.join(os.homedir(), raw.slice(1)) : raw;
-    const p = realNormalize(path.resolve(cwd || '/', home)); // ~ 풀고 . · .. 정리 → 링크 따라감
+    const tilde = raw === '~' || raw.startsWith('~/');
+    const p = tilde ? realNormalize(raw.slice(2), os.homedir()) : realNormalize(raw, cwd || '/'); // 링크를 따라가며 . · .. 정리
     if (within(p, vault)) {
       const m = VAULT_PROJECT_DIR.exec(p.slice(vault.length + 1) + '/');
       return m && index.known.has(m[1]) ? label(m[1]) : null;
