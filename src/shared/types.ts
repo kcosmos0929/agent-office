@@ -1,7 +1,8 @@
 // 서버와 화면이 함께 쓰는 데이터 형식.
 
 export type Activity = 'reading' | 'editing' | 'running' | 'delegating';
-export type Status = 'permission' | 'question' | 'done' | 'thinking' | Activity | 'compacting' | 'stalled' | 'quota' | 'idle' | 'gone';
+/** approving = Codex 승인 요청의 처음 몇 초(자동 승인이 대신 허용할 수 있어 조용히 보여 줌), 그 뒤엔 permission */
+export type Status = 'permission' | 'approving' | 'question' | 'done' | 'thinking' | Activity | 'compacting' | 'stalled' | 'quota' | 'idle' | 'gone';
 /** 나를 기다리는 종류: 승인 / 질문 */
 export type WaitKind = 'permission' | 'question';
 /** 대화 정리를 누가 시작했나: /compact 직접 / 자동 */

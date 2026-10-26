@@ -2,6 +2,7 @@ import type { AgentKind, Group, Status } from './types.ts';
 
 export const STATUS_LABEL: Record<Status, string> = {
   permission: '❗\uFE0F 승인 필요', // \uFE0F: 그림 문자로 고정(픽셀 글꼴의 흑백 ❗ 대신)
+  approving: '🛡️ 승인 확인 중',
   question: '❓\uFE0F 질문 대기',
   done: '✅ 끝남 · 내 차례',
   thinking: '💭 생각 중',
@@ -18,6 +19,7 @@ export const STATUS_LABEL: Record<Status, string> = {
 
 const GROUP: Record<Status, Group> = {
   permission: 'urgent',
+  approving: 'working',
   question: 'urgent',
   done: 'waiting',
   thinking: 'working',

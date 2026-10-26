@@ -16,11 +16,14 @@ export type StateOptions = {
   startedAt: number;
   /** 등록부 waiting을 '사용자 입력 기다림'으로 믿어도 되나(설계 R2·늦은 알림 무시). Task 0 실제 확인으로 정함 */
   registryWaitRule: boolean;
+  /** Codex 승인 요청을 이만큼 '승인 확인 중'으로 보여 준 뒤 ❗(기본 5초) — 자동 승인(AutoReview)은 그 사이에 풀림 */
+  approvalDelayMs?: number;
 };
 
 const SLOTS = 8;
-/** 나를 기다리는 상태(❗·❓) */
-const WAITS = new Set<Status>(['permission', 'question']);
+/** 나를 기다리는 상태(❗·❓, 그리고 ❗가 되기 전의 🛡️) */
+const WAITS = new Set<Status>(['permission', 'approving', 'question']);
+const APPROVAL_DELAY_MS = 5_000;
 /** 도구 끝 신호가 늦게 와도 바꾸지 않는 상태 */
 const SETTLED = new Set<Status>(['done', 'idle', 'gone', 'quota', 'compacting']);
 /** 등록부만 있고 훅이 없는 세션이 이만큼 일하는 중이면 '훅 없음' */
@@ -125,6 +128,10 @@ export class OfficeState {
       } else if ((a.status === 'thinking' || a.status === 'compacting') && entry.hookSeen && now - a.lastEventAt >= this.opts.stalledMs) {
         // 훅 없는 세션은 등록부가 기준이라 '응답 없음'으로 바꾸지 않는다
         this.setStatus(a, 'stalled', now);
+        changed = true;
+      } else if (a.status === 'approving' && this.waitStatus(entry, 'permission', now) === 'permission') {
+        // 몇 초가 지나도 승인이 안 풀림 = 정말 나를 기다림 → ❗(이때 알림음)
+        this.setStatus(a, 'permission', now);
         changed = true;
       } else if (a.status === 'gone' && now - a.since >= this.opts.goneMs) {
         this.entries.delete(id);
@@ -377,7 +384,7 @@ export class OfficeState {
         }
         const wait = this.shownWait(entry);
         if (wait) {
-          this.setStatus(a, wait, e.at);
+          this.setStatus(a, this.waitStatus(entry, wait, e.at), e.at);
         } else {
           this.clearWaits(entry);
           this.finishTurn(entry, e.at);
@@ -461,12 +468,18 @@ export class OfficeState {
     return null;
   }
 
+  /** 화면에 보일 대기 상태: Codex 승인은 대기가 시작되고 몇 초 동안 🛡️(자동 승인이면 그 사이 풀림), 그 뒤 ❗ */
+  private waitStatus(entry: Entry, kind: WaitKind, at: number): Status {
+    const early = entry.waitSince !== null && at - entry.waitSince < (this.opts.approvalDelayMs ?? APPROVAL_DELAY_MS);
+    return kind === 'permission' && entry.agent.kind === 'codex' && early ? 'approving' : kind;
+  }
+
   private enterWait(entry: Entry, kind: WaitKind, detail: string | null, at: number): void {
     const a = entry.agent;
     entry.waitSince ??= at;
     entry.waitGuessed = false;
     const shown = this.shownWait(entry) ?? kind;
-    this.setStatus(a, shown, at);
+    this.setStatus(a, this.waitStatus(entry, shown, at), at);
     if (shown === kind) a.detail = detail;
   }
 
@@ -476,8 +489,8 @@ export class OfficeState {
     if (!WAITS.has(a.status)) return;
     const shown = this.shownWait(entry);
     if (shown) {
-      if (shown !== a.status) a.detail = null;
-      this.setStatus(a, shown, at);
+      if (shown !== (a.status === 'approving' ? 'permission' : a.status)) a.detail = null;
+      this.setStatus(a, this.waitStatus(entry, shown, at), at);
       return;
     }
     entry.waitSince = null;

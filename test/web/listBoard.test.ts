@@ -117,3 +117,11 @@ test('모델은 아는 때만 작은 표시(chip model), 이름 줄은 플랫폼
   assert.equal(c.byClass('name')[0].textContent, 'Claude · 2단계 Codex 연결');
   assert.equal(c.byClass('model').length, 0);
 });
+
+test('🛡️ 승인 확인 중은 급한 줄이 아님(기다리는 중 배지에 안 셈)', () => {
+  const root = render({ now: NOW, usage: null, agents: [agent('x', 'approving', 0, { kind: 'codex' })] });
+  const row = root.byClass('row')[0];
+  assert.equal(row.byClass('state')[0].textContent, '🛡️ 승인 확인 중');
+  assert.ok(!row.className.includes('urgent'));
+  assert.equal(root.byClass('badge').length === 0 || !root.byClass('badge')[0].className.includes('urgent'), true);
+});

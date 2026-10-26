@@ -857,3 +857,47 @@ test('모델: 사건에 실려 오면 기억, 모델 없는 사건은 그대로 
   st.apply(ev.stop('c1', 2));
   assert.equal(one(st).model, 'gpt-5.5');
 });
+
+// Codex 앱의 자동 승인(AutoReview)은 승인 요청 신호를 먼저 보낸 뒤 AI가 허용한다 → 처음 5초는 조용히 '승인 확인 중'
+test('Codex 승인 요청: 5초 동안은 🛡️ approving, 5초가 지나면 tick에서 ❗, 그 전에 도구가 끝나면 ❗ 없이 💭', () => {
+  const st = make();
+  const cx = (e: Ev): Ev => ({ ...e, kind: 'codex' });
+  st.apply(cx(ev.prompt('x1', 0)));
+  st.apply(cx(ev.tool('x1', 500, 'u1')));
+  st.apply(cx(ev.perm('x1', 1_000)));
+  assert.deepEqual([one(st).status, one(st).detail], ['approving', 'Bash: ls']);
+  assert.equal(st.tick(5_900), false);
+  assert.equal(one(st).status, 'approving');
+  assert.equal(st.tick(6_000), true);
+  assert.deepEqual([one(st).status, one(st).detail], ['permission', 'Bash: ls']);
+  st.apply(cx(ev.end('x1', 7_000, 'u1')));
+  assert.equal(one(st).status, 'thinking');
+  const fast = make();
+  fast.apply(cx(ev.prompt('x2', 0)));
+  fast.apply(cx(ev.tool('x2', 500, 'u1')));
+  fast.apply(cx(ev.perm('x2', 1_000)));
+  fast.apply(cx(ev.end('x2', 3_000, 'u1')));
+  fast.tick(10_000);
+  assert.equal(one(fast).status, 'thinking');
+});
+
+test('Codex 도우미의 승인 요청·차례 끝(Stop) 뒤 남은 승인도 처음 5초는 approving', () => {
+  const st = make();
+  const cx = (e: Ev): Ev => ({ ...e, kind: 'codex' });
+  st.apply(cx(ev.prompt('x1', 0)));
+  st.apply(cx(ev.subStart('x1', 100, 'A')));
+  st.apply(cx(ev.perm('x1', 1_000, 'A')));
+  assert.equal(one(st).status, 'approving');
+  st.apply(cx(ev.stop('x1', 2_000)));
+  assert.equal(one(st).status, 'approving');
+  st.tick(6_000);
+  assert.equal(one(st).status, 'permission');
+});
+
+test('Claude 승인 요청은 지금처럼 바로 ❗', () => {
+  const st = make();
+  st.apply(ev.prompt('c1', 0));
+  st.apply(ev.tool('c1', 500, 'u1'));
+  st.apply(ev.perm('c1', 1_000));
+  assert.equal(one(st).status, 'permission');
+});
