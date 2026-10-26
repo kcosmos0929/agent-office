@@ -609,14 +609,16 @@ export class OfficeState {
     a.detail = null;
   }
 
-  /** 메인 차례가 끝났을 때의 표시: 오류로 멈췄으면 ✅ + 오류, 도우미가 일하면 👥, 아니면 ✅ */
+  /** 메인 차례가 끝났을 때의 표시: 오류로 멈췄으면 ✅ + 오류, (Claude) 도우미가 일하면 👥, 아니면 ✅ */
   private finishTurn(entry: Entry, at: number): void {
     const a = entry.agent;
     if (entry.stopError) {
       this.setStatus(a, 'done', at);
       a.detail = `오류: ${entry.stopError}`;
     } else {
-      this.setStatus(a, a.subagents.length > 0 ? 'delegating' : 'done', at);
+      // Claude 도우미는 백그라운드에서 이어 일하면 👥. Codex 도우미는 일이 끝나도 살아 있다가 다음 차례에 다시 쓰여서
+      // (followup_task·send_message, SubagentStop 없음) 차례 끝은 ✅ — 살아 있는 도우미 수는 목록의 '도우미 N'으로
+      this.setStatus(a, a.subagents.length > 0 && a.kind !== 'codex' ? 'delegating' : 'done', at);
       a.detail = null;
     }
   }
