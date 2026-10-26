@@ -373,6 +373,32 @@ test('다음 할 일 상자 질문: Stop보다 등록부 쉼(R6)·입력 대기 
   assert.equal(st.snapshot(13).agents.find((x) => x.id === 'claude:s2')?.status, 'question');
 });
 
+test('다음 할 일 상자 질문: Stop 없이 차례 끝 보정(R6)이 성공 PostToolUse보다 먼저 와도 ❓ (재검토 P2)', () => {
+  const st = make();
+  st.apply(ev.prompt('s1', 0));
+  st.apply(ev.tool('s1', 1, 'w1'));
+  st.applyRegistry(read(reg('s1', 'idle', 5)), 6);
+  assert.equal(one(st).status, 'done');
+  st.apply(ev.end('s1', 7, 'w1'));
+  st.apply(ev.wrapUp('s1', 7));
+  assert.equal(one(st).status, 'question');
+});
+
+test('다음 할 일 상자 질문: 등록부로 퇴근(R4)하면 질문 표시도 지움 → 다시 나타나 질문 없이 끝나면 ✅ (재검토 P2)', () => {
+  const st = make();
+  st.apply(ev.prompt('s1', 0));
+  st.applyRegistry(read(reg('s1', 'busy', 0)), 1);
+  st.apply(ev.wrapUp('s1', 2));
+  st.apply(ev.stop('s1', 3));
+  assert.equal(one(st).status, 'question');
+  st.applyRegistry(read(), 10);
+  st.applyRegistry(read(), 11);
+  assert.equal(one(st).status, 'gone');
+  st.applyRegistry(read(reg('s1', 'busy', 20)), 21); // 이어서 열기
+  st.apply(ev.stop('s1', 30));
+  assert.equal(one(st).status, 'done');
+});
+
 test('다음 할 일 상자: 한 차례에 상자를 다시 띄우면 마지막 것이 기준(질문 없음이면 ✅)', () => {
   const st = make();
   st.apply(ev.prompt('s1', 0));

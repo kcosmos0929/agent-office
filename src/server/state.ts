@@ -275,6 +275,7 @@ export class OfficeState {
       // 파일을 쓰는 도중 잠깐 안 읽힐 수 있어 두 번 연속일 때만 퇴근
       if (entry.missingReads >= 2 && entry.agent.status !== 'gone') {
         this.clearWork(entry);
+        entry.turnAsk = false; // SessionEnd와 같이
         entry.agent.subagents = [];
         entry.agent.hookless = false;
         this.setStatus(entry.agent, 'gone', now);
@@ -474,6 +475,8 @@ export class OfficeState {
         return;
       case 'wrap-up':
         entry.turnAsk = e.asks; // 한 차례에 상자를 다시 띄우면 마지막 것이 기준
+        // Stop 없이 차례 끝 보정(R6·idle)이 이 PostToolUse보다 먼저 왔으면 끝 표시를 다시 정한다(대기가 걸려 있으면 그대로)
+        if (entry.turnEnded && !this.shownWait(entry) && a.status !== 'gone') this.finishTurn(entry, e.at);
         return;
       case 'stop': {
         entry.turnEnded = true;
