@@ -7,12 +7,13 @@ import { SoundPlayer, soundEvents } from './sound.ts';
 import { renderStrip } from './strip.ts';
 import { buildToolbar, type MiniTarget } from './toolbar.ts';
 import { chooseView, type ViewName } from './view.ts';
+import { reloadOnce } from './reload.ts';
 
 /** 3D 오피스가 구현하는 화면 (Task 11에서 연결) */
 export type OfficeHost = { update(s: Snapshot): void; dispose(): void };
 export type OfficeFactory = (container: HTMLElement) => OfficeHost;
 
-type ClientConfig = { softSound: boolean; loopback: boolean; codexAutoApprove?: boolean };
+type ClientConfig = { softSound: boolean; loopback: boolean; codexAutoApprove?: boolean; build?: string | null };
 
 export async function start(makeOffice: OfficeFactory | null): Promise<void> {
   const params = new URLSearchParams(location.search);
@@ -89,7 +90,8 @@ export async function start(makeOffice: OfficeFactory | null): Promise<void> {
   }
 
   connect(
-    (s) => {
+    (s, build) => {
+      reloadOnce(config.build ?? null, build);
       for (const kind of soundEvents(prev, s)) player.play(kind);
       prev = s;
       snap = s;

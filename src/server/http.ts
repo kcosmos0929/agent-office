@@ -36,6 +36,8 @@ export type ServerOptions = {
   saveConfig?: (patch: Partial<Config>) => boolean;
   /** Codex 세션 id → 제목(Codex 색인 파일, 테스트에서 바꿈). 없으면 Codex 제목을 안 읽음 */
   codexTitle?: (sessionId: string) => string | null;
+  /** 화면 빌드 지문(켜질 때 한 번). 바뀌면 열린 화면이 새로 고침. 없으면 null */
+  build?: string | null;
 };
 
 export type RunningServer = { port: number; close(): Promise<void>; notify(): void };
@@ -144,7 +146,7 @@ export function startServer(opts: ServerOptions): Promise<RunningServer> {
   let port = 0;
 
   const send = (ws: WebSocket) => {
-    if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'snapshot', ...state.snapshot(now()) }));
+    if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'snapshot', build: opts.build ?? null, ...state.snapshot(now()) }));
   };
   const notify = () => {
     if (timer) return;
@@ -281,7 +283,7 @@ export function startServer(opts: ServerOptions): Promise<RunningServer> {
       case '/api/health':
         return json(res, state.snapshot(now()).health);
       case '/api/client-config':
-        return json(res, { softSound: config.softSound, loopback: local, codexAutoApprove: config.codexAutoApprove });
+        return json(res, { softSound: config.softSound, loopback: local, codexAutoApprove: config.codexAutoApprove, build: opts.build ?? null });
       case '/api/lan-info': {
         if (!local) return text(res, 404);
         const ip = lanAddress();

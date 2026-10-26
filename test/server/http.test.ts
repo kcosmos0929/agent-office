@@ -125,13 +125,27 @@ test('정적 파일 경로 탈출 막기', async () => {
 
 test('client-config와 healthz, lan-info는 루프백만', async () => {
   const local = await boot();
-  assert.deepEqual(await (await fetch(local.url + '/api/client-config')).json(), { softSound: true, loopback: true, codexAutoApprove: true });
+  assert.deepEqual(await (await fetch(local.url + '/api/client-config')).json(), { softSound: true, loopback: true, codexAutoApprove: true, build: null });
   assert.equal(await (await fetch(local.url + '/healthz')).text(), 'ok');
   const remote = await boot({ isLoopback: () => false });
   const cookie = { cookie: 'so_token=' + TOKEN };
-  assert.deepEqual(await (await fetch(remote.url + '/api/client-config', { headers: cookie })).json(), { softSound: true, loopback: false, codexAutoApprove: true });
+  assert.deepEqual(await (await fetch(remote.url + '/api/client-config', { headers: cookie })).json(), { softSound: true, loopback: false, codexAutoApprove: true, build: null });
   assert.equal((await fetch(remote.url + '/healthz', { headers: cookie })).status, 404);
   assert.equal((await fetch(remote.url + '/api/lan-info', { headers: cookie })).status, 404);
+});
+
+test('빌드 지문: client-config와 첫 스냅샷 메시지에 같은 값(옵션 없으면 null)', async () => {
+  const withBuild = await boot({ build: 'abc123def456' });
+  assert.equal((await (await fetch(withBuild.url + '/api/client-config')).json()).build, 'abc123def456');
+  const ws = new WebSocket(withBuild.url.replace('http', 'ws') + '/ws');
+  const first = (await nextSnapshot(ws, () => true)) as Snapshot & { build?: string | null };
+  assert.equal(first.build, 'abc123def456');
+  ws.close();
+  const without = await boot();
+  const ws2 = new WebSocket(without.url.replace('http', 'ws') + '/ws');
+  const first2 = (await nextSnapshot(ws2, () => true)) as Snapshot & { build?: string | null };
+  assert.equal(first2.build, null);
+  ws2.close();
 });
 
 test('admin: 루프백 + X-SO-Admin 헤더 + 같은 출처만', async () => {
