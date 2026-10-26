@@ -11,7 +11,7 @@ import { WebSocketServer, WebSocket } from 'ws';
 import type { Config } from './config.ts';
 import type { OfficeState } from './state.ts';
 import { tokenMatches } from './token.ts';
-import { hookToEvents } from './collectors/claudeHook.ts';
+import { hookPaths, hookToEvents } from './collectors/claudeHook.ts';
 import { codexHookToEvents } from './collectors/codexHook.ts';
 import { statuslineToUsage } from './collectors/usage.ts';
 import { readTranscriptTitle } from './collectors/transcriptTitle.ts';
@@ -188,6 +188,7 @@ export function startServer(opts: ServerOptions): Promise<RunningServer> {
       const events = hookToEvents(payload, now());
       let changed = false;
       for (const e of events) changed = state.apply(e) || changed;
+      if (events[0]) changed = state.touchPaths(events[0].sessionId, hookPaths(payload), events[0].cwd) || changed;
       if (changed) notify();
       text(res, 204);
       if (events[0]) {
@@ -203,6 +204,7 @@ export function startServer(opts: ServerOptions): Promise<RunningServer> {
       let changed = false;
       for (const e of events) changed = state.apply(e) || changed;
       const sessionId = events[0]?.sessionId;
+      if (sessionId) changed = state.touchPaths(sessionId, hookPaths(payload), events[0].cwd) || changed;
       const title = sessionId && opts.codexTitle ? opts.codexTitle(sessionId) : null;
       if (sessionId && title) changed = state.apply({ type: 'title', sessionId, at: now(), cwd: '', title, kind: 'codex' }) || changed;
       if (changed) notify();

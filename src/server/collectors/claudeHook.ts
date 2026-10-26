@@ -77,6 +77,37 @@ export function summarizeToolInput(tool: string, input: unknown): string {
   return clip(summarizeRaw(tool, obj));
 }
 
+/** 셸 명령 한 줄을 낱말로(따옴표 안 공백은 한 낱말) */
+const WORD = /"([^"]*)"|'([^']*)'|([^\s;|&<>()]+)/g;
+
+/** 경로처럼 보이는 낱말: '/'가 있고, 옵션(-…)·주소(…://)가 아님 */
+const looksLikePath = (w: string) => w.includes('/') && !w.startsWith('-') && !w.includes('://');
+
+/**
+ * 훅 입력에서 세션이 만지는 경로 후보: 파일·폴더(file_path·notebook_path·path), Codex가 고친 파일 목록, 셸 명령 첫 줄의 경로.
+ * 프로젝트 이름표를 알아내는 데만 쓰고 이 맥 서버 밖으로 내보내지 않는다.
+ */
+export function hookPaths(payload: unknown): string[] {
+  if (payload === null || typeof payload !== 'object') return [];
+  const input = (payload as Json).tool_input;
+  if (input === null || typeof input !== 'object' || Array.isArray(input)) return [];
+  const t = input as Json;
+  const out: string[] = [];
+  for (const k of ['file_path', 'notebook_path', 'path']) {
+    const v = str(t[k]);
+    if (v) out.push(v);
+  }
+  if (Array.isArray(t.files)) for (const f of t.files) if (typeof f === 'string' && f) out.push(f);
+  const command = str(t.command);
+  if (command) {
+    for (const m of command.split('\n')[0].matchAll(WORD)) {
+      const w = m[1] ?? m[2] ?? m[3] ?? '';
+      if (looksLikePath(w)) out.push(w);
+    }
+  }
+  return out.slice(0, 8);
+}
+
 /** 도구 이름·입력 → 활동·한 줄 요약. 에이전트마다 도구 이름이 달라 갈아 끼운다(Codex: codexHook.ts) */
 export type ToolDialect = { classify(tool: string, input: Json): Activity; summarize(tool: string, input: unknown): string };
 
