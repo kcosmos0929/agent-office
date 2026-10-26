@@ -31,7 +31,8 @@ async function main(): Promise<void> {
   let resolver = makeResolver(index.entries, config.projectNames, config.wikiPath, index.titles);
   let work = makeWorkResolver(index, config.projectNames, config.wikiPath);
   const state = new OfficeState({
-    idleMs: config.idleMinutes * MINUTE,
+    restMs: config.restMinutes * MINUTE,
+    leaveMs: config.leaveMinutes * MINUTE,
     goneMs: config.goneMinutes * MINUTE,
     stalledMs: config.stalledMinutes * MINUTE,
     forgetMs: config.forgetHours * 60 * MINUTE,

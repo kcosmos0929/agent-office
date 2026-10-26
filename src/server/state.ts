@@ -6,7 +6,10 @@ import type { ContextReading } from './collectors/contextUsage.ts';
 import { contextWindow } from '../shared/contextWindow.ts';
 
 export type StateOptions = {
-  idleMs: number;
+  /** ✅ 차례가 끝나고 이만큼 지나면 😴(쉬는 중) */
+  restMs: number;
+  /** 차례가 끝난 때부터 이만큼 지나면 👋(자동 퇴근) — 😴 시간도 포함한 총 시간 */
+  leaveMs: number;
   goneMs: number;
   stalledMs: number;
   /** 이 시간 동안 아무 신호가 없으면 상태와 상관없이 정리(종료 신호 없이 닫힌 세션) */
@@ -77,6 +80,10 @@ type Entry = {
   waitGuessed: boolean;
   /** 메인 차례가 오류(StopFailure)로 끝났으면 그 종류 — 도우미 대기가 풀린 뒤에도 '오류'로 보이게 */
   stopError: string | null;
+  /** 차례가 끝난(✅) 시각 — 😴가 될 때 기억해 두고 퇴근까지 잰다 */
+  restFrom: number | null;
+  /** 오래 쉬어서 자동으로 퇴근했나(창을 닫은 퇴근과 구분) — 그렇다면 지우지 않고 숨겨 두었다가 다시 일하면 돌아온다 */
+  autoGone: boolean;
 };
 
 export class OfficeState {
@@ -122,7 +129,10 @@ export class OfficeState {
       a.project = entry.workProject ?? this.opts.resolveProject(e.cwd);
     }
 
-    if (!NOT_WORK.has(e.type)) this.engage(entry);
+    if (!NOT_WORK.has(e.type)) {
+      this.engage(entry);
+      entry.autoGone = false; // 아직 👋로 보이던 중에 일을 다시 시작한 경우
+    }
     // Codex 자동 승인: AI가 곧 허용하는데 '승인됐다'는 신호가 없어 긴 명령 내내 대기로 보이므로 무시하고 하던 일을 그대로
     if (e.type === 'permission' && a.kind === 'codex' && this.opts.codexAutoApprove?.()) return this.fingerprint() !== before;
     if (e.subagentId) {
@@ -192,8 +202,18 @@ export class OfficeState {
       if (now - a.lastEventAt >= this.opts.forgetMs && !entry.inRegistry) {
         this.entries.delete(id);
         changed = true;
-      } else if (a.status === 'done' && now - a.since >= this.opts.idleMs) {
+      } else if (a.status === 'done' && now - a.since >= this.opts.restMs) {
+        entry.restFrom = a.since;
         this.setStatus(a, 'idle', now);
+        changed = true;
+      } else if (a.status === 'idle' && entry.restFrom !== null && now - entry.restFrom >= this.opts.leaveMs) {
+        // 오래 쉬면 자동 퇴근 — 화면엔 👋로 잠깐 보이고, 아래에서 숨긴다
+        this.clearWork(entry);
+        a.subagents = [];
+        a.hookless = false;
+        entry.autoGone = true;
+        this.setStatus(a, 'gone', now);
+        a.detail = null;
         changed = true;
       } else if ((a.status === 'thinking' || a.status === 'compacting') && entry.hookSeen && now - a.lastEventAt >= this.opts.stalledMs) {
         // 훅 없는 세션은 등록부가 기준이라 '응답 없음'으로 바꾸지 않는다
@@ -204,8 +224,14 @@ export class OfficeState {
         this.setStatus(a, 'permission', now);
         changed = true;
       } else if (a.status === 'gone' && now - a.since >= this.opts.goneMs) {
-        this.entries.delete(id);
-        changed = true;
+        if (!entry.autoGone) {
+          this.entries.delete(id);
+          changed = true;
+        } else if (entry.engaged) {
+          // 자동 퇴근은 지우지 않고 숨긴다(모자·자리를 놓음) — 다시 일하면 새 모자·자리로 돌아옴
+          entry.engaged = false;
+          changed = true;
+        }
       }
     }
     return changed;
@@ -250,6 +276,7 @@ export class OfficeState {
     a.hat = firstFree(used.map((x) => x.hat), used.length % SLOTS);
     a.seat = firstFree(used.filter((x) => x.kind === a.kind).map((x) => x.seat), -1);
     entry.engaged = true;
+    entry.autoGone = false;
   }
 
   snapshot(now: number): Snapshot {
@@ -290,7 +317,9 @@ export class OfficeState {
     entry.inRegistry = true;
     // 훅 없이 등록부로만 보는 세션: 일하는 중·기다림이거나, 프로세스 시작 뒤 한 차례라도 했으면 보드에(열기만 한 세션은 숨김).
     // 훅을 받은 세션은 훅이 일을 알려 준다
-    if (!entry.hookSeen && (x.status !== 'idle' || x.startedAt === undefined || x.statusUpdatedAt - x.startedAt > OPENED_ONLY_MS)) this.engage(entry);
+    // 자동 퇴근해 숨은 세션은 퇴근 뒤에 바뀐 일하는 중·기다림 값이 있을 때만 돌아온다(같은 idle 값이 반복돼도 숨김 유지)
+    if (entry.autoGone && !entry.engaged && x.status !== 'idle' && x.statusUpdatedAt > a.since) this.engage(entry);
+    if (!entry.autoGone && !entry.hookSeen && (x.status !== 'idle' || x.startedAt === undefined || x.statusUpdatedAt - x.startedAt > OPENED_ONLY_MS)) this.engage(entry);
     entry.missingReads = 0;
     const activeSince = x.status === 'idle' ? null : (entry.reg?.activeSince ?? Math.max(x.statusUpdatedAt, this.opts.startedAt));
     entry.reg = { status: x.status, updatedAt: x.statusUpdatedAt, activeSince };
@@ -346,7 +375,9 @@ export class OfficeState {
   private mirror(entry: Entry, x: RegistryEntry): void {
     const a = entry.agent;
     const s = MIRROR[x.status];
-    if (a.status === s || (s === 'done' && a.status === 'idle')) return; // 30분 뒤 😴를 되돌리지 않음
+    // 쉬어서 생긴 😴·자동 퇴근을 등록부의 같은 idle 값으로 되돌리지 않음
+    if (a.status === s || (s === 'done' && (a.status === 'idle' || (a.status === 'gone' && entry.autoGone)))) return;
+    entry.autoGone = false;
     if (WAITS.has(s)) {
       entry.waitingMain = 'question';
       entry.waitSince = x.statusUpdatedAt;
@@ -413,7 +444,7 @@ export class OfficeState {
     };
     const entry: Entry = {
       agent, openTools: new Map(), transcriptPath: null, waitingMain: null, waitingSubs: new Map(), waitSince: null, approvalSince: new Map(), engaged: false, workProject: null, turnEnded: false,
-      hookSeen: false, lastHookAt: null, reg: null, everInRegistry: false, inRegistry: false, missingReads: 0, regName: null, waitGuessed: false, stopError: null,
+      hookSeen: false, lastHookAt: null, reg: null, everInRegistry: false, inRegistry: false, missingReads: 0, regName: null, waitGuessed: false, stopError: null, restFrom: null, autoGone: false,
     };
     this.entries.set(sessionId, entry);
     return entry;

@@ -21,7 +21,7 @@ after(async () => { for (const c of closers) await c(); });
 
 async function boot(extra: Partial<Parameters<typeof startServer>[0]> = {}) {
   const config = loadConfig(home);
-  const state = new OfficeState({ idleMs: 30 * M, goneMs: 10 * M, stalledMs: 15 * M, forgetMs: 12 * 60 * M, resolveProject: () => '가로망 중심성', startedAt: 0, registryWaitRule: false });
+  const state = new OfficeState({ restMs: 30 * M, leaveMs: 120 * M, goneMs: 10 * M, stalledMs: 15 * M, forgetMs: 12 * 60 * M, resolveProject: () => '가로망 중심성', startedAt: 0, registryWaitRule: false });
   const admin: string[] = [];
   const srv = await startServer({ config, token: TOKEN, state, staticDir, listenPort: 0, host: '127.0.0.1', onAdmin: (a) => admin.push(a), ...extra });
   closers.push(srv.close);
@@ -30,7 +30,7 @@ async function boot(extra: Partial<Parameters<typeof startServer>[0]> = {}) {
 
 async function bootWithWork(resolveWork: (p: string, cwd: string) => string | null) {
   const config = loadConfig(home);
-  const state = new OfficeState({ idleMs: 30 * M, goneMs: 10 * M, stalledMs: 15 * M, forgetMs: 12 * 60 * M, resolveProject: () => 'CnC Wiki', startedAt: 0, registryWaitRule: false, resolveWork });
+  const state = new OfficeState({ restMs: 30 * M, leaveMs: 120 * M, goneMs: 10 * M, stalledMs: 15 * M, forgetMs: 12 * 60 * M, resolveProject: () => 'CnC Wiki', startedAt: 0, registryWaitRule: false, resolveWork });
   const srv = await startServer({ config, token: TOKEN, state, staticDir, listenPort: 0, host: '127.0.0.1' });
   closers.push(srv.close);
   return { url: `http://127.0.0.1:${srv.port}`, state };
@@ -204,7 +204,8 @@ test('loadConfig: 없으면 기본값 파일 생성', () => {
   const h = fs.mkdtempSync(path.join(os.tmpdir(), 'so-cfg-'));
   const c = loadConfig(h);
   assert.equal(c.port, 4310);
-  assert.equal(c.idleMinutes, 30);
+  assert.equal(c.restMinutes, 10);
+  assert.equal(c.leaveMinutes, 120);
   assert.equal(c.goneMinutes, 10);
   assert.equal(c.stalledMinutes, 15);
   assert.equal(c.forgetHours, 12);
@@ -213,10 +214,14 @@ test('loadConfig: 없으면 기본값 파일 생성', () => {
   assert.equal(c.wikiPath, path.join(os.homedir(), 'Documents', 'CnC Wiki'));
   assert.equal(c.projectNames['lst-seongsu'], '성수 LST');
   assert.ok(fs.existsSync(path.join(h, 'config.json')));
-  fs.writeFileSync(path.join(h, 'config.json'), JSON.stringify({ port: 5000, idleMinutes: 5 }));
+  fs.writeFileSync(path.join(h, 'config.json'), JSON.stringify({ port: 5000, restMinutes: 5 }));
   const c2 = loadConfig(h);
   assert.equal(c2.port, 5000);
-  assert.equal(c2.idleMinutes, 5);
+  assert.equal(c2.restMinutes, 5);
+  assert.equal(c2.leaveMinutes, 120);
+  fs.writeFileSync(path.join(h, 'config.json'), JSON.stringify({ idleMinutes: 30 }));
+  assert.equal(loadConfig(h).restMinutes, 10, '옛 idleMinutes는 더 읽지 않음');
+  fs.writeFileSync(path.join(h, 'config.json'), JSON.stringify({ port: 5000, restMinutes: 5 }));
   assert.equal(c2.goneMinutes, 10);
   fs.writeFileSync(path.join(h, 'config.json'), '{깨짐');
   assert.equal(loadConfig(h).port, 4310);

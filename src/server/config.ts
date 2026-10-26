@@ -8,7 +8,10 @@ export type Config = {
   port: number;
   /** CnC Wiki vault 루트 */
   wikiPath: string;
-  idleMinutes: number;
+  /** ✅ 끝남 뒤 이만큼 지나면 😴 */
+  restMinutes: number;
+  /** 차례가 끝난 뒤 이만큼 지나면 👋 자동 퇴근(그 10분 뒤 화면에서 숨김) */
+  leaveMinutes: number;
   goneMinutes: number;
   stalledMinutes: number;
   /** 이 시간 동안 신호가 없는 세션은 목록에서 정리 */
@@ -23,7 +26,8 @@ function defaults(): Config {
   return {
     port: 4310,
     wikiPath: path.join(os.homedir(), 'Documents', 'CnC Wiki'),
-    idleMinutes: 30,
+    restMinutes: 10,
+    leaveMinutes: 120,
     goneMinutes: 10,
     stalledMinutes: 15,
     forgetHours: 12,

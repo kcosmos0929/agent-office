@@ -7,9 +7,9 @@ import { M } from '../helpers.ts';
 
 const CWD = '/Users/seop/developer/street-centrality-bus';
 
-function make(o: { startedAt?: number; rule?: boolean } = {}) {
+function make(o: { startedAt?: number; rule?: boolean; rest?: number; leave?: number } = {}) {
   return new OfficeState({
-    idleMs: 30 * M, goneMs: 10 * M, stalledMs: 15 * M, forgetMs: 12 * 60 * M, resolveProject: (cwd) => (cwd === CWD ? '가로망 중심성' : 'x'),
+    restMs: o.rest ?? 30 * M, leaveMs: o.leave ?? 120 * M, goneMs: 10 * M, stalledMs: 15 * M, forgetMs: 12 * 60 * M, resolveProject: (cwd) => (cwd === CWD ? '가로망 중심성' : 'x'),
     startedAt: o.startedAt ?? 0, registryWaitRule: o.rule ?? false,
   });
 }
@@ -931,7 +931,7 @@ test('겹친 Codex 승인: 오래된 요청이 풀리고 새 요청만 남으면
 test('Codex 자동 승인 스위치가 켜져 있으면 Codex 승인 요청(메인·도우미)은 무시하고 하던 일을 그대로, Claude는 그대로 ❗', () => {
   let auto = true;
   const st = new OfficeState({
-    idleMs: 30 * M, goneMs: 10 * M, stalledMs: 15 * M, forgetMs: 12 * 60 * M, startedAt: 0, registryWaitRule: false,
+    restMs: 30 * M, leaveMs: 120 * M, goneMs: 10 * M, stalledMs: 15 * M, forgetMs: 12 * 60 * M, startedAt: 0, registryWaitRule: false,
     resolveProject: () => 'x', codexAutoApprove: () => auto,
   });
   const cx = (e: Ev): Ev => ({ ...e, kind: 'codex' });
@@ -1004,7 +1004,7 @@ test('시작 신호를 받은 세션은 등록부 idle로는 보이지 않음(�
 
 test('touchPaths: 만진 경로로 알아낸 마지막 프로젝트가 이름표, 못 알아내면 그대로, 시작 폴더가 바뀌어도 유지', () => {
   const st = new OfficeState({
-    idleMs: 30 * M, goneMs: 10 * M, stalledMs: 15 * M, forgetMs: 12 * 60 * M, startedAt: 0, registryWaitRule: false,
+    restMs: 30 * M, leaveMs: 120 * M, goneMs: 10 * M, stalledMs: 15 * M, forgetMs: 12 * 60 * M, startedAt: 0, registryWaitRule: false,
     resolveProject: (cwd) => (cwd === CWD ? '가로망 중심성' : 'CnC Wiki'),
     resolveWork: (p) => (p.includes('/alpha/') ? 'Alpha' : p.includes('/beta/') ? 'Beta' : null),
   });
@@ -1083,4 +1083,86 @@ test('Codex 차례가 끝난 뒤 도우미 승인이 풀려도(도구 끝·스�
   // 다음 차례가 시작되면 다시 평소대로(메시지 → 💭)
   sw.apply(cx(ev.prompt('x2', 8_000)));
   assert.equal(one(sw).status, 'thinking');
+});
+
+test('✅ 10분 → 😴, 차례가 끝나고 2시간 → 👋, 10분 뒤 숨김(지우지 않음)', () => {
+  const st = make({ rest: 10 * M, leave: 120 * M });
+  st.apply(ev.prompt('s1', 0)); st.apply(ev.stop('s1', 1 * M));
+  st.tick(11 * M); assert.equal(one(st).status, 'idle');
+  assert.equal(st.tick(121 * M - 1), false);
+  assert.equal(st.tick(121 * M), true); assert.equal(one(st).status, 'gone');
+  st.tick(131 * M); assert.deepEqual(st.snapshot(0).agents, []);
+});
+
+for (const kind of ['claude', 'codex'] as const) {
+  test(`자동 퇴근해 숨은 세션은 다시 일하면 새 모자·자리로 돌아옴(${kind})`, () => {
+    const st = make({ rest: 10 * M, leave: 120 * M });
+    const k = { kind };
+    st.apply({ ...ev.prompt('s1', 0), ...k }); st.apply({ ...ev.stop('s1', 1 * M), ...k });
+    st.tick(11 * M); st.tick(121 * M); st.tick(131 * M);
+    assert.deepEqual(st.snapshot(0).agents, []);
+    st.apply({ ...ev.prompt('s2', 132 * M), ...k });
+    assert.deepEqual([one(st).id, one(st).hat, one(st).seat], [`${kind}:s2`, 0, 0]);
+    st.apply({ ...ev.prompt('s1', 133 * M), ...k });
+    const s1 = st.snapshot(0).agents.find((a) => a.sessionId === 's1')!;
+    assert.deepEqual([s1.status, s1.hat, s1.seat], ['thinking', 1, 1]);
+    // 다시 일한 뒤에는 보통 세션처럼: 이번엔 지금처럼 SessionEnd 퇴근이면 지움
+    st.apply({ ...ev.end_('s1', 134 * M), ...k });
+    st.tick(145 * M);
+    assert.equal(st.snapshot(0).agents.some((a) => a.sessionId === 's1'), false);
+  });
+}
+
+test('숨긴 뒤의 tick은 아무것도 안 바꿈(1초마다 화면을 다시 보내지 않게)', () => {
+  const st = make({ rest: 10 * M, leave: 120 * M });
+  st.apply(ev.prompt('s1', 0)); st.apply(ev.stop('s1', 1 * M));
+  st.tick(11 * M); st.tick(121 * M); assert.equal(st.tick(131 * M), true);
+  assert.equal(st.tick(132 * M), false);
+});
+
+test('창 닫은 퇴근(SessionEnd)은 지금처럼 10분 뒤 지움', () => {
+  const st = make({ rest: 10 * M, leave: 120 * M });
+  st.apply(ev.prompt('s1', 0)); st.apply(ev.end_('s1', 1 * M));
+  assert.equal(one(st).status, 'gone');
+  st.tick(11 * M); assert.deepEqual(st.snapshot(0).agents, []);
+  // 지워졌으니 같은 id가 새로 시작해도 이전 상태가 없다
+  st.apply(ev.prompt('s1', 12 * M)); assert.equal(one(st).status, 'thinking');
+});
+
+test('⏳ 토큰 기다림·… 응답 없음은 쉬기·퇴근 규칙을 타지 않음', () => {
+  const st = make({ rest: 10 * M, leave: 120 * M });
+  st.apply(ev.prompt('q', 0)); st.apply(ev.quota('q', 1 * M));
+  st.apply(ev.prompt('t', 0));
+  st.tick(16 * M); st.tick(200 * M);
+  const by = (id: string) => st.snapshot(0).agents.find((a) => a.sessionId === id)!;
+  assert.equal(by('q').status, 'quota');
+  assert.equal(by('t').status, 'stalled');
+});
+
+test('등록부 idle은 자동 퇴근을 되돌리지 않음(훅 없는 세션 포함)', () => {
+  const st = make({ rest: 10 * M, leave: 120 * M });
+  st.applyRegistry(read(reg('r1', 'busy', 1000)), 2000);
+  st.applyRegistry(read(reg('r1', 'idle', 5000)), 6000);
+  st.tick(5000 + 10 * M); assert.equal(one(st).status, 'idle');
+  st.tick(5000 + 120 * M); assert.equal(one(st).status, 'gone');
+  st.applyRegistry(read(reg('r1', 'idle', 5000)), 5000 + 121 * M);
+  assert.equal(one(st).status, 'gone');
+  st.tick(5000 + 131 * M); assert.deepEqual(st.snapshot(0).agents, []);
+  st.applyRegistry(read(reg('r1', 'idle', 5000)), 5000 + 132 * M);
+  st.applyRegistry(read(reg('r1', 'idle', 5000)), 5000 + 134 * M);
+  assert.deepEqual(st.snapshot(0).agents, []);
+  st.applyRegistry(read(reg('r1', 'busy', 5000 + 140 * M)), 5000 + 140 * M + 1000);
+  assert.equal(one(st).status, 'thinking');
+});
+
+test('등록부 busy는 훅이 있던 자동 퇴근 세션도 다시 보이게 함', () => {
+  const st = make({ rest: 10 * M, leave: 120 * M });
+  st.apply(ev.prompt('s1', 0)); st.apply(ev.stop('s1', 1 * M));
+  st.applyRegistry(read(reg('s1', 'idle', 1 * M)), 2 * M);
+  st.tick(11 * M); st.tick(121 * M); st.tick(131 * M);
+  assert.deepEqual(st.snapshot(0).agents, []);
+  st.applyRegistry(read(reg('s1', 'idle', 1 * M)), 132 * M);
+  assert.deepEqual(st.snapshot(0).agents, []);
+  st.applyRegistry(read(reg('s1', 'busy', 140 * M)), 140 * M + 1000);
+  assert.equal(one(st).status, 'thinking');
 });

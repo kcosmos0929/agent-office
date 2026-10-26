@@ -7,3 +7,13 @@
 
 ## 글꼴
 오피스 화면의 픽셀 글꼴은 [갈무리(Galmuri)](https://github.com/quiple/galmuri) — SIL Open Font License 1.1 (`web/src/fonts/OFL.txt`).
+
+## 설정
+`~/.synthetic-office/config.json`에서 바꾼다(없는 키는 기본값).
+
+| 키 | 기본 | 뜻 |
+|---|---|---|
+| `restMinutes` | 10 | 차례가 끝난(✅) 뒤 이만큼 지나면 😴 쉬는 중 |
+| `leaveMinutes` | 120 | 차례가 끝난 뒤 이만큼 지나면 👋 자동 퇴근, 그 10분 뒤(`goneMinutes`) 화면에서 숨김(지우지 않아 다시 일하면 돌아옴) |
+
+예전 `idleMinutes`는 더 읽지 않는다.
