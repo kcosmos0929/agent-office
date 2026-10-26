@@ -20,3 +20,9 @@ test('말풍선: 나를 기다리는 상태만 글자, 일하는 중·쉬는 중
   }
   assert.equal(bubbleShown({ status: 'reading' }), '📖');
 });
+
+test('bubbleTone: Codex가 일하면 청록, kind가 없으면 Claude색, 승인 대기는 종류 무관 주황', () => {
+  assert.equal(bubbleTone({ status: 'running', kind: 'codex' }).bg, KIND_COLOR.codex);
+  assert.equal(bubbleTone({ status: 'running' }).bg, KIND_COLOR.claude);
+  assert.equal(bubbleTone({ status: 'permission', kind: 'codex' }).bg, WAIT_COLOR);
+});

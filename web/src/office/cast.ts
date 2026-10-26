@@ -2,7 +2,6 @@
 import * as THREE from 'three';
 import { CSS2DObject } from 'three/examples/jsm/renderers/CSS2DRenderer.js';
 import { WAIT_COLOR, groupOf } from '../../../src/shared/labels.ts';
-import { officeAgents } from './visible.ts';
 import type { Agent, Snapshot } from '../../../src/shared/types.ts';
 import { makeBubble, nameplateText } from './bubbles.ts';
 import { DOOR, backwardFrom, pathTo, routeBetween, segmentAt, simplifyPath, type Point } from './layout.ts';
@@ -68,7 +67,7 @@ export class Cast {
   }
 
   sync(s: Snapshot): void {
-    const agents = officeAgents(s.agents);
+    const agents = s.agents;
     this.agents = agents;
     const plans = direct(agents, this.clock());
     this.follow(plans);
@@ -260,12 +259,16 @@ export class Cast {
   }
 
   private paintScreens(agents: Agent[]): void {
-    const colors = this.office.deskScreens.map(() => SCREEN.off);
-    for (const a of agents) {
-      if (a.seat < 0 || a.seat >= colors.length) continue;
-      const g = groupOf(a.status);
-      colors[a.seat] = g === 'urgent' ? SCREEN.wait : g === 'waiting' ? SCREEN.done : g === 'working' && a.status !== 'stalled' ? SCREEN.work : SCREEN.off;
-    }
-    this.office.deskScreens.forEach((m, i) => (m.material as THREE.MeshBasicMaterial).color.set(colors[i]));
+    const paint = (screens: THREE.Mesh[], kind: 'claude' | 'codex') => {
+      const colors = screens.map(() => SCREEN.off);
+      for (const a of agents) {
+        if ((a.kind === 'codex' ? 'codex' : 'claude') !== kind || a.seat < 0 || a.seat >= colors.length) continue;
+        const g = groupOf(a.status);
+        colors[a.seat] = g === 'urgent' ? SCREEN.wait : g === 'waiting' ? SCREEN.done : g === 'working' && a.status !== 'stalled' ? SCREEN.work : SCREEN.off;
+      }
+      screens.forEach((m, i) => (m.material as THREE.MeshBasicMaterial).color.set(colors[i]));
+    };
+    paint(this.office.deskScreens, 'claude'); // 사무실 책상
+    paint(this.office.devScreens, 'codex'); // 개발실 큰 모니터(자리 0~2)
   }
 }
