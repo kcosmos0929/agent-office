@@ -3,20 +3,21 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
 // 갈무리 도트 글꼴은 설계된 크기에서만 또렷하다. 1px만 작아도 획이 빠져 "Claude"가 "Clεude"처럼 깨진다.
-// 카드가 만드는 요소마다 CSS 규칙(구체성·순서·상속)을 따라 실제로 받는 글꼴과 크기를 계산해 확인한다.
+// 카드가 만드는 요소마다 CSS 규칙(구체성·순서·상속)을 따라 실제로 받는 글꼴과 크기를 계산해,
+// 요소별로 정한 글꼴(제목 Galmuri14, 도구 줄 GalmuriMono11, 나머지 Galmuri11)과 그 설계 크기인지 확인한다.
 const DESIGN: Record<string, number> = { Galmuri11: 12, GalmuriMono11: 12, Galmuri14: 15 };
 const css = readFileSync(new URL('../../web/src/style.css', import.meta.url), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
 const cardSrc = readFileSync(new URL('../../web/src/office/card.ts', import.meta.url), 'utf8');
 
-type Node = { tag: string; cls: string[]; children?: Node[] };
-const el = (tag: string, cls: string, children?: Node[]): Node => ({ tag, cls: cls ? [cls] : [], children });
-/** card.ts가 만드는 구조 */
+type Node = { tag: string; cls: string[]; font: string; children?: Node[] };
+const el = (tag: string, cls: string, children?: Node[], font = 'Galmuri11'): Node => ({ tag, cls: cls ? [cls] : [], font, children });
+/** card.ts가 만드는 구조와 요소마다 써야 할 글꼴 */
 const CARD = el('div', 'card', [
   el('div', 'card-head', [el('div', 'card-swatch'), el('div', 'card-kind'), el('span', 'tag-hookless'), el('button', 'card-close')]),
-  el('div', 'card-title'),
+  el('div', 'card-title', undefined, 'Galmuri14'),
   el('div', 'card-state', [el('span', 'card-pill')]),
   el('div', 'card-context'),
-  el('div', 'card-detail'),
+  el('div', 'card-detail', undefined, 'GalmuriMono11'),
   el('div', 'card-project', [el('b', '')]),
   el('div', 'card-cwd'),
 ]);
@@ -71,8 +72,8 @@ function matches(r: Rule, path: Node[]): boolean {
 }
 
 /** 요소마다 [글꼴, 크기]. 버튼은 브라우저 기본이 상속하지 않으므로 규칙이 정해 줘야 한다 */
-function resolve(rules: Rule[]): { name: string; family: string; size: string }[] {
-  const out: { name: string; family: string; size: string }[] = [];
+function resolve(rules: Rule[]): { name: string; want: string; family: string; size: string }[] {
+  const out: { name: string; want: string; family: string; size: string }[] = [];
   const walk = (n: Node, path: Node[], parent: { family: string; size: string }) => {
     const here = [...path, n];
     const hit = rules.filter((r) => matches(r, here)).sort((a, b) => a.spec - b.spec || a.order - b.order);
@@ -83,17 +84,17 @@ function resolve(rules: Rule[]): { name: string; family: string; size: string }[
       family: own.family === undefined || own.family === 'inherit' ? parent.family : own.family,
       size: own.size === undefined || own.size === 'inherit' ? parent.size : own.size,
     };
-    out.push({ name: [n.tag, ...n.cls].join('.'), ...cur });
+    out.push({ name: [n.tag, ...n.cls].join('.'), want: n.font, ...cur });
     for (const c of n.children ?? []) walk(c, here, cur);
   };
   walk(CARD, [], { family: 'page', size: 'page' });
   return out;
 }
 
-test('세션 카드: 카드 안 모든 요소가 갈무리 설계 크기로 그려진다', () => {
-  for (const { name, family, size } of resolve(parseRules())) {
-    assert.ok(family in DESIGN, `${name}: 글꼴 ${family}`);
-    assert.equal(Number(size), DESIGN[family], `${name}: ${family} ${size}px`);
+test('세션 카드: 카드 안 요소마다 정한 갈무리 글꼴을 그 설계 크기로 쓴다', () => {
+  for (const { name, want, family, size } of resolve(parseRules())) {
+    assert.equal(family, want, `${name}: 글꼴 ${family}(정한 글꼴 ${want})`);
+    assert.equal(Number(size), DESIGN[want], `${name}: ${family} ${size}px`);
   }
 });
 
