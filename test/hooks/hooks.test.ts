@@ -175,6 +175,14 @@ test('model 이름은 보냄(프롬프트는 안 보냄)', async () => {
   assert.ok(!fake.got[0].body.includes('비밀'));
 });
 
+test('검색 도구의 폴더(path)도 보냄 — 세션이 만지는 프로젝트를 알아내려고', async () => {
+  const home = tempHome();
+  const fake = await fakeServer();
+  writeEndpoint(home, fake.port);
+  await run(HOOK, home, JSON.stringify({ session_id: 's1', hook_event_name: 'PreToolUse', tool_name: 'Grep', tool_use_id: 'g1', tool_input: { pattern: 'x', path: '/Users/seop/developer/lst_ss/src', output_mode: 'content' } }));
+  assert.deepEqual(JSON.parse(fake.got[0].body).tool_input, { pattern: 'x', path: '/Users/seop/developer/lst_ss/src' });
+});
+
 test('인자 없으면 지금처럼 /api/claude/hook', async () => {
   const home = tempHome();
   const fake = await fakeServer();
