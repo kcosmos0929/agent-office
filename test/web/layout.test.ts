@@ -194,6 +194,13 @@ test('pathTo: 휴게실·탕비실은 방 안 길로, 개발실은 유리벽 통
   assert.ok(dev.some((q) => q.y === DEV_LANE_Y && q.x < SPLIT_X));
 });
 
+test('마지막 넘침 자리는 빈백(노란 쿠션)을 피해 가로 길(17.55) 바로 옆 17.35~17.45에 있음', () => {
+  const last = OVERFLOW_SPOTS[OVERFLOW_SPOTS.length - 1];
+  assert.equal(last.x, 9.55);
+  assert.ok(last.y >= 17.35 && last.y <= 17.45);
+  assert.ok(inside(last, ROOMS.lounge) || inside(last, ROOMS.pantry));
+});
+
 test('targetFps', () => {
   assert.equal(targetFps(['walk', 'sleep'], true), 0);
   assert.equal(targetFps(['walk', 'sleep'], false), 16);

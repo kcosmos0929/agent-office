@@ -101,7 +101,7 @@ export const REST_SPOTS: readonly RestSpot[] = [
   { at: IDLE_SPOTS.pantryTable, face: { x: 0, y: -1 } },
 ];
 /** 쉬는 자리가 찼을 때 서 있는 넘침 자리(휴게실·탕비실 가로 길 옆) */
-export const OVERFLOW_SPOTS: readonly Point[] = [{ x: 6.1, y: 17.05 }, { x: 8.0, y: 17.05 }, { x: 9.55, y: 17.1 }];
+export const OVERFLOW_SPOTS: readonly Point[] = [{ x: 6.1, y: 17.05 }, { x: 8.0, y: 17.05 }, { x: 9.55, y: 17.4 }];
 
 /** 개발실 책상 앞(의자 뒤 길) 서 있는 자리: 0~2, 그 밖 → 로비 첫 자리 */
 export function devSpot(seat: number): Point {

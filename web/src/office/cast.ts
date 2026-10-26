@@ -52,6 +52,8 @@ export class Cast {
   private readonly actors = new Map<string, Actor>();
   private first = true;
   private agents: Agent[] | null = null;
+  /** 이미 경고한 계획(좌표가 숫자가 아닐 때 매 프레임 경고·길찾기하지 않게) */
+  private readonly warned = new Set<string>();
   private readonly scene: THREE.Scene;
   private readonly office: OfficeScene;
   private readonly onChange: () => void;
@@ -85,6 +87,11 @@ export class Cast {
   /** 계획을 따른다: 없는 배우는 만들고, 가려는 곳이 바뀌었으면 길을 다시 잡고, 계획에서 빠진 배우는 퇴근시킨다 */
   private follow(plans: Map<string, Plan>): void {
     for (const [id, plan] of plans) {
+      if (!Number.isFinite(plan.spot.x) || !Number.isFinite(plan.spot.y)) {
+        if (!this.warned.has(id)) console.warn('[synthetic-office] 길을 못 구함', id, plan.spot);
+        this.warned.add(id);
+        continue; // 자리가 숫자가 아니면 있는 곳에 그대로 둔다
+      }
       let actor = this.actors.get(id);
       if (!actor) {
         if (plan.leave) continue;
@@ -235,6 +242,10 @@ export class Cast {
   private remove(id: string, actor: Actor): void {
     if (actor.label) actor.label.element.remove();
     if (actor.plate) actor.plate.element.remove();
+    if (actor.ring) {
+      actor.ring.geometry.dispose();
+      (actor.ring.material as THREE.Material).dispose();
+    }
     actor.figure.dispose();
     this.scene.remove(actor.group);
     this.actors.delete(id);
