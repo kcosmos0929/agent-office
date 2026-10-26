@@ -145,7 +145,8 @@ export class OfficeState {
     } else {
       this.applyMainEvent(entry, e);
     }
-    this.settleAutoGone(entry, hiddenAuto);
+    // SessionEnd는 숨은 세션도 숨기지 않고 지움(다시 숨기면 forgetMs까지 낡은 제목으로 남는다)
+    this.settleAutoGone(entry, hiddenAuto && e.type !== 'session-end');
     return this.fingerprint() !== before;
   }
 
@@ -409,6 +410,7 @@ export class OfficeState {
     // 쉬어서 생긴 😴·자동 퇴근을 등록부의 같은 idle 값으로 되돌리지 않음
     if (a.status === s || (s === 'done' && (a.status === 'idle' || (a.status === 'gone' && entry.autoGone)))) return;
     entry.autoGone = false;
+    if (s !== 'done' || a.status === 'gone') entry.turnEnded = false; // 되돌아와 다시 일하거나 기다림 = 새 차례(낡은 '차례 끝'이 R1에서 ✅를 만들지 않게)
     if (WAITS.has(s)) {
       entry.waitingMain = 'question';
       entry.waitSince = x.statusUpdatedAt;
@@ -536,9 +538,10 @@ export class OfficeState {
         this.enterWait(entry, e.type, e.detail, e.at);
         return;
       case 'wrap-up':
+        if (a.status === 'gone') return; // 퇴근·자동 퇴근·숨은 세션에 늦게 온 상자 신호는 낡은 것 → 돌아와도 ❓가 남지 않게
         entry.turnAsk = e.asks; // 한 차례에 상자를 다시 띄우면 마지막 것이 기준
         // Stop 없이 차례 끝 보정(R6·idle)이 이 PostToolUse보다 먼저 왔으면 끝 표시를 다시 정한다(대기가 걸려 있으면 그대로)
-        if (entry.turnEnded && !this.shownWait(entry) && a.status !== 'gone') this.finishTurn(entry, e.at);
+        if (entry.turnEnded && !this.shownWait(entry)) this.finishTurn(entry, e.at);
         return;
       case 'stop': {
         entry.turnEnded = true;

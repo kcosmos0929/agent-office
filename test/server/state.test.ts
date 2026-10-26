@@ -1453,3 +1453,40 @@ test('자동 퇴근은 남은 상자 질문 표시도 지움(오류 ✅로 끝�
   st.applyRegistry(read(reg('s1', 'idle', 202 * M)), 202 * M + 1000); // R6: Stop 없이 차례 끝
   assert.equal(one(st).status, 'done');
 });
+
+test('자동 퇴근 뒤 등록부 대기(❓ 추측) → busy로 돌아오면 ✅ 아닌 💭(끝난 차례 표시가 남지 않음)', () => {
+  for (const hidden of [false, true]) {
+    const st = make({ rest: 10 * M, leave: 120 * M });
+    st.apply(ev.prompt('s1', 0)); st.apply(ev.stop('s1', 1 * M));
+    st.tick(11 * M); st.tick(121 * M);
+    if (hidden) st.tick(131 * M);
+    st.applyRegistry(read(reg('s1', 'waiting', 140 * M)), 140 * M + 1000);
+    assert.equal(one(st).status, 'question', `대기 추측(숨김=${hidden})`);
+    st.applyRegistry(read(reg('s1', 'busy', 141 * M)), 141 * M + 1000);
+    assert.equal(one(st).status, 'thinking', `일하는 중(숨김=${hidden})`);
+  }
+});
+
+test('숨은 자동 퇴근 세션에 늦게 온 상자 신호는 무시 → 돌아와도 낡은 ❓ 없음', () => {
+  const st = make({ rest: 10 * M, leave: 120 * M });
+  st.apply(ev.prompt('s1', 0)); st.apply(ev.stop('s1', 1 * M));
+  st.tick(11 * M); st.tick(121 * M); st.tick(131 * M);
+  assert.deepEqual(st.snapshot(0).agents, []);
+  st.apply(ev.wrapUp('s1', 140 * M, true));
+  assert.deepEqual(st.snapshot(0).agents, [], '상자 신호만으로는 안 돌아옴');
+  st.applyRegistry(read(reg('s1', 'busy', 150 * M)), 150 * M + 1000);
+  assert.equal(one(st).status, 'thinking');
+  st.applyRegistry(read(reg('s1', 'idle', 151 * M)), 151 * M + 1000);
+  assert.equal(one(st).status, 'done');
+});
+
+test('숨은 자동 퇴근 세션에 SessionEnd가 오면 10분 뒤 지움(옛 제목이 남지 않음)', () => {
+  const st = make({ rest: 10 * M, leave: 120 * M });
+  st.apply({ ...ev.prompt('s1', 0), title: '옛 제목' } as Ev); st.apply(ev.stop('s1', 1 * M));
+  st.tick(11 * M); st.tick(121 * M); st.tick(131 * M);
+  assert.deepEqual(st.snapshot(0).agents, []);
+  st.apply(ev.end_('s1', 140 * M));
+  st.tick(151 * M);
+  st.apply(ev.prompt('s1', 152 * M));
+  assert.equal(one(st).title, null, '지워졌다가 새로 시작');
+});
