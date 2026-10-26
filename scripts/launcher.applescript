@@ -1,4 +1,4 @@
--- Synthetic Office 아이콘 앱: 서버가 켜져 있으면 바로 오피스를 열고, 꺼져 있으면 켠 뒤 연다.
+-- Synthetic Office 아이콘 앱: 서버가 켜져 있으면 바로 오피스를 열고, 꺼져 있으면 켠 뒤 연다(크롬이 있으면 크롬으로).
 -- {{PORT}}는 설치기가 설정 포트로 바꿔 넣는다.
 property baseURL : "http://127.0.0.1:{{PORT}}"
 
@@ -25,5 +25,10 @@ on run
 			return
 		end if
 	end if
-	open location baseURL
+	-- 크롬으로 연다: '작게 띄우기'가 크롬의 항상 위 작은 창(PiP)으로 뜬다(Safari엔 없음). 크롬이 없으면 기본 브라우저
+	try
+		do shell script "open -a " & quoted form of "Google Chrome" & " " & quoted form of baseURL
+	on error
+		open location baseURL
+	end try
 end run
