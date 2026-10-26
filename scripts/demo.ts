@@ -1,5 +1,5 @@
 // 화면 확인용: 켜져 있는 서버(SO_HOME의 endpoint.json)에 가짜 세션 신호를 보낸다. 실제 대화 내용 없음.
-// 사용: SO_HOME=/tmp/x node scripts/demo.ts [scene]   scene = all(기본) | subagent | end | wake | stop | accuracy
+// 사용: SO_HOME=/tmp/x node scripts/demo.ts [scene]   scene = all(기본) | subagent | end | wake | stop | accuracy | codex-lab
 // accuracy: ❓·🧹·⏳·대화 게이지 + (SO_CLAUDE_SESSIONS가 있으면) 그 폴더에 훅 없는 세션 등록부 파일
 // codex: Codex 세션 셋(📖 읽기 · ✏️ 고치기 · ❗ 승인)을 /api/codex/hook으로
 import fs from 'node:fs';
@@ -54,6 +54,14 @@ if (scene === 'all') {
   await codexHook('x-perm', `${DEV}/lst_ss`, 'UserPromptSubmit');
   await codexHook('x-perm', `${DEV}/lst_ss`, 'PreToolUse', { tool_name: 'Bash', tool_use_id: 'u3', tool_input: { command: 'npm test' } });
   await codexHook('x-perm', `${DEV}/lst_ss`, 'PermissionRequest', { tool_name: 'Bash', tool_input: { command: 'npm test' } });
+} else if (scene === 'codex-lab') {
+  // 개발실 랙 확인: 자리 0 ▶ 실행(Bash) · 자리 1 📖 읽기 · 자리 2 ✅ 끝남
+  await codexHook('lab-run', `${DEV}/street-centrality-bus`, 'UserPromptSubmit');
+  await codexHook('lab-run', `${DEV}/street-centrality-bus`, 'PreToolUse', { tool_name: 'Bash', tool_use_id: 'l1', tool_input: { command: 'python run_lab.py' } });
+  await codexHook('lab-read', `${DEV}/synthetic-office`, 'UserPromptSubmit');
+  await codexHook('lab-read', `${DEV}/synthetic-office`, 'PreToolUse', { tool_name: 'Bash', tool_use_id: 'l2', tool_input: { command: 'rg TODO src' } });
+  await codexHook('lab-done', `${DEV}/lst_ss`, 'UserPromptSubmit');
+  await codexHook('lab-done', `${DEV}/lst_ss`, 'Stop');
 } else if (scene === 'accuracy') {
   await hook('demo-ask', `${DEV}/lst_ss`, 'UserPromptSubmit', { session_title: '질문 대기 예시' });
   await hook('demo-ask', `${DEV}/lst_ss`, 'PreToolUse', { tool_name: 'AskUserQuestion', tool_input: {}, tool_use_id: 'q1' });

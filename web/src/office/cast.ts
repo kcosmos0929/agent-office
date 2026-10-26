@@ -6,6 +6,7 @@ import type { Agent, Snapshot } from '../../../src/shared/types.ts';
 import { makeBubble, nameplateText } from './bubbles.ts';
 import { DOOR, backwardFrom, pathTo, routeBetween, segmentAt, simplifyPath, type Point } from './layout.ts';
 import { direct, type Plan } from './director.ts';
+import { paintRacks, rackStates } from './rack.ts';
 import type { Pose } from './pose.ts';
 import type { OfficeScene } from './scene.ts';
 import { Figure } from './sprites/figure.ts';
@@ -134,6 +135,7 @@ export class Cast {
 
   /** dt 초만큼 걷고, 방향·그림을 맞춘다 */
   animate(t: number, dt: number): void {
+    paintRacks(this.office.racks, rackStates(this.agents ?? []), t); // 랙 불빛(Codex 실행 중이면 빠르게)
     // 쉼 자리가 바뀌는 때를 곧바로 따라잡으려고 걷기 전에 계획을 다시 본다
     if (this.agents) this.follow(direct(this.agents, this.clock()));
     for (const [id, actor] of this.actors) {
