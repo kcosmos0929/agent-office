@@ -204,7 +204,8 @@ test('마지막 넘침 자리는 빈백(노란 쿠션)을 피해 가로 길(17.5
 test('targetFps', () => {
   assert.equal(targetFps(['walk', 'sleep'], true), 0);
   assert.equal(targetFps(['walk', 'sleep'], false), 16);
-  assert.equal(targetFps(['wave'], false), 16);
+  assert.equal(targetFps(['wave'], false), 8);
+  assert.equal(targetFps(['sleep'], false, true), 16);
   assert.equal(targetFps(['stroll'], false), 8);
   assert.equal(targetFps(['stroll', 'walk'], false), 16);
   assert.equal(targetFps(['type-fast', 'lean-back'], false), 8);

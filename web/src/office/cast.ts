@@ -5,6 +5,7 @@ import { WAIT_COLOR, groupOf } from '../../../src/shared/labels.ts';
 import type { Agent, Snapshot } from '../../../src/shared/types.ts';
 import { makeBubble, nameplateText } from './bubbles.ts';
 import { DOOR, backwardFrom, pathTo, routeBetween, segmentAt, simplifyPath, type Point } from './layout.ts';
+import { hopDots, makeZzz } from './effects.ts';
 import { direct, type Plan } from './director.ts';
 import { paintRacks, rackStates } from './rack.ts';
 import type { Pose } from './pose.ts';
@@ -22,6 +23,10 @@ type Actor = {
   plate: CSS2DObject | null;
   bubble: ReturnType<typeof makeBubble> | null;
   ring: THREE.Mesh | null;
+  /** 쉬는 중 머리 위 Z 셋 */
+  zzz: CSS2DObject | null;
+  /** 머무를 때의 몸짓 효과(계획) */
+  effects: Plan['effects'];
   /** 지금 걷는 길 전체(출발 자리 → 목적지, 되짚은 구간 포함) — 걷는 중 목적지가 바뀌면 여기서 되짚는다 */
   route: Point[];
   /** 가려는 곳(계획의 자리와 좌표로 견줌) */
@@ -59,8 +64,11 @@ export class Cast {
   private readonly onChange: () => void;
   /** 서버 시각(ms) — 쉼 자리가 몇 분마다 바뀌는 때를 화면끼리 맞추려고 */
   private readonly clock: () => number;
+  /** 동작 줄이기 설정이면 폴짝을 끈다 */
+  private readonly reduced: boolean;
 
-  constructor(scene: THREE.Scene, office: OfficeScene, onChange: () => void, clock: () => number = Date.now) {
+  constructor(scene: THREE.Scene, office: OfficeScene, onChange: () => void, clock: () => number = Date.now, reduced = false) {
+    this.reduced = reduced;
     this.scene = scene;
     this.office = office;
     this.onChange = onChange;
@@ -100,6 +108,7 @@ export class Cast {
       actor.leaving = plan.leave;
       actor.rest = plan.facing;
       actor.restPose = plan.pose;
+      actor.effects = plan.effects;
       if (actor.ring) actor.ring.visible = !plan.leave && plan.effects.includes('ring');
       if (actor.target.x !== plan.spot.x || actor.target.y !== plan.spot.y) this.redirect(actor, plan.spot, plan.pace);
     }
@@ -107,6 +116,7 @@ export class Cast {
       if (plans.has(id)) continue;
       actor.leaving = true;
       if (actor.ring) actor.ring.visible = false;
+      actor.effects = [];
       if (actor.target.x !== DOOR.x || actor.target.y !== DOOR.y) this.redirect(actor, DOOR, 'free');
     }
   }
@@ -173,6 +183,9 @@ export class Cast {
       // 업무 자세 그림이 오기 전까지 머무를 땐 서기 그림
       if (walking) actor.figure.show(actor.dir, (actor.phase + actor.steps) % WALK_FRAMES);
       else actor.figure.show(actor.rest, 'idle');
+      // 승인·질문 대기는 폴짝(손 흔드는 그림이 오기 전까지), 쉬는 중엔 Z
+      actor.figure.lift(!walking && actor.effects.includes('wave') ? hopDots(t, this.reduced) : 0);
+      if (actor.zzz) actor.zzz.visible = !walking && actor.effects.includes('zzz');
       if (actor.ring?.visible) (actor.ring.material as THREE.MeshBasicMaterial).opacity = 0.35 + 0.65 * Math.abs(Math.sin((t / 1400) * Math.PI));
     }
   }
@@ -200,6 +213,7 @@ export class Cast {
     let plate: CSS2DObject | null = null;
     let bubble: ReturnType<typeof makeBubble> | null = null;
     let ring: THREE.Mesh | null = null;
+    let zzz: CSS2DObject | null = null;
     if (!isSub) {
       bubble = makeBubble(document);
       label = new CSS2DObject(bubble.el);
@@ -207,6 +221,10 @@ export class Cast {
       group.add(label);
       const plateEl = document.createElement('div');
       plateEl.className = 'nameplate';
+      zzz = new CSS2DObject(makeZzz(document));
+      zzz.position.set(0, headTop() + 0.12, 0); // 말풍선 옆(가로 비킴은 CSS margin)
+      zzz.visible = false;
+      group.add(zzz);
       plate = new CSS2DObject(plateEl);
       plate.position.set(0, 0, 0);
       group.add(plate);
@@ -218,7 +236,7 @@ export class Cast {
     }
     const route = this.first ? [dest] : pathTo(dest);
     const actor: Actor = {
-      group, figure, label, plate, bubble, ring, route, target: dest, path: [route[0]], pace: plan.pace,
+      group, figure, label, plate, bubble, ring, zzz, effects: plan.effects, route, target: dest, path: [route[0]], pace: plan.pace,
       clock: 0, steps: 0, phase: 0, dir: 'SE', rest: plan.facing, leaving: false, agent: null, isSub, pose: 'stand', restPose: plan.pose,
     };
     this.actors.set(id, actor);
@@ -243,6 +261,7 @@ export class Cast {
   private remove(id: string, actor: Actor): void {
     if (actor.label) actor.label.element.remove();
     if (actor.plate) actor.plate.element.remove();
+    if (actor.zzz) actor.zzz.element.remove();
     if (actor.ring) {
       actor.ring.geometry.dispose();
       (actor.ring.material as THREE.Material).dispose();

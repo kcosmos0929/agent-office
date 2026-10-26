@@ -72,7 +72,9 @@ export class OfficeView implements OfficeHost {
     this.office = buildOffice();
     splitTransparent(this.office.group); // 유리·칸막이는 사람 뒤에 한 번 더 합성(pixelPass)
     this.scene.add(this.office.group, this.tv.group);
-    this.cast = new Cast(this.scene, this.office, () => this.invalidate(), () => (this.snap ? this.snap.now + (Date.now() - this.receivedAt) : Date.now()));
+    // 동작 줄이기 설정이면 폴짝을 끈다(한 번만 읽음)
+    const reduced = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
+    this.cast = new Cast(this.scene, this.office, () => this.invalidate(), () => (this.snap ? this.snap.now + (Date.now() - this.receivedAt) : Date.now()), reduced);
 
     this.camera.position.copy(TARGET).addScaledVector(VIEW_DIR, 30);
     this.camera.lookAt(TARGET);

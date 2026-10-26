@@ -60,6 +60,7 @@ export function makeBubble(doc: Document): { el: HTMLElement; set(a: Pick<Agent,
       el.classList.toggle('compact', bubbleCompact(a));
       el.style.background = tone.bg;
       el.style.color = tone.fg;
+      el.classList.toggle('thinking', a.status === 'thinking');
       el.classList.toggle('urgent', groupOf(a.status) === 'urgent');
     },
   };

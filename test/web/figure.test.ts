@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
 import { Figure } from '../../web/src/office/sprites/figure.ts';
-import { lookFor } from '../../web/src/office/sprites/look.ts';
+import { DOT, UPRIGHT, lookFor } from '../../web/src/office/sprites/look.ts';
 import { GLASS_LAYER, LINE_LAYER, splitTransparent } from '../../web/src/office/pixelPass.ts';
 import { FIGURE_STENCIL } from '../../web/src/office/sprites/figure.ts';
 
@@ -54,4 +54,16 @@ test('splitTransparent: 투명한 면은 유리 레이어, 투명한 선은 선 
   assert.equal(gm.stencilRef, FIGURE_STENCIL);
   assert.equal(gm.stencilFunc, THREE.EqualStencilFunc);
   assert.equal((edge.material as THREE.Material).stencilWrite, false);
+});
+
+test('Figure.lift: 판을 도트 단위로 위로 올리고 0이면 제자리', (t) => {
+  t.mock.method(console, 'warn', () => {});
+  const f = new Figure(lookFor(0), 'neutral', 1, () => {});
+  const y0 = f.mesh.position.y;
+  f.lift(2);
+  assert.ok(Math.abs(f.mesh.position.y - (y0 + (2 * DOT) / UPRIGHT)) < 1e-9);
+  f.show('SW', 'idle'); // 그림을 바꿔도 올린 높이는 유지
+  assert.ok(Math.abs(f.mesh.position.y - (y0 + (2 * DOT) / UPRIGHT)) < 1e-9);
+  f.lift(0);
+  assert.ok(Math.abs(f.mesh.position.y - y0) < 1e-9);
 });
