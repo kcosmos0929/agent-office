@@ -122,8 +122,8 @@ export class Cast {
     for (const actor of this.actors.values()) actor.prev = undefined;
   }
 
-  /** 오래 안 보이다 돌아왔을 때: 계획을 다시 보고 모두를 지금 가야 할 자리에 바로 세운다(밀린 걸음을 되풀이하지 않게). 퇴근자는 다음 프레임에 사라진다 */
-  settle(): void {
+  /** 오래 안 보이다 돌아왔을 때: 계획을 다시 보고 모두를 지금 가야 할 자리에 바로 세운다(밀린 걸음을 되풀이하지 않게). 퇴근자는 다음 프레임에 사라진다. 그리는 프레임 안에서 부르면 notify=false(다시 그리기를 또 예약하면 프레임 반복이 두 줄이 된다) */
+  settle(notify = true): void {
     if (!this.agents) return;
     this.follow(direct(this.agents, this.clock()));
     for (const actor of this.actors.values()) {
@@ -132,7 +132,7 @@ export class Cast {
       this.place(actor, actor.target);
       this.resetClock(actor);
     }
-    this.onChange();
+    if (notify) this.onChange();
   }
 
   /** 링 퍼짐이 진행 중인가(렌더 속도를 올리려고) */

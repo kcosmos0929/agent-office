@@ -190,7 +190,7 @@ export class OfficeView implements OfficeHost {
 
   /** 매 프레임 움직임(하위 클래스·캐릭터가 씀) */
   protected animate(t: number): void {
-    if (this.lastT && t - this.lastT > HIDDEN_SETTLE_MS) this.cast.settle(); // 프레임이 오래 끊겼다 이어짐
+    if (this.lastT && t - this.lastT > HIDDEN_SETTLE_MS) this.cast.settle(false); // 프레임이 오래 끊겼다 이어짐 — 이 프레임이 곧 그리니 다시 그리기를 예약하지 않는다(예약하면 반복이 두 줄로 늘어남)
     const dt = this.lastT ? Math.min(0.25, (t - this.lastT) / 1000) : 0;
     this.lastT = t;
     this.cast.animate(t, dt);
