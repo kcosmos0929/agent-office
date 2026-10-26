@@ -4,6 +4,7 @@ import { CSS2DObject } from 'three/examples/jsm/renderers/CSS2DRenderer.js';
 import { buildBackdrop, SLAB_H } from './backdrop.ts';
 import { armchair, beanBag, bigPlant, binders, bookshelf, boxStack, coatRack, copier, deskLamp, fileCabinet, fridge, FURN, lowCabinet, kitchenCounter, lowTable, officeChair, podDesk, podDivider, printer, receptionDesk, screenStand, shredder, smallPlant, sofa, stool, storageShelf, supplyCabinet, toilet, trashBin, vendingMachine, washbasin, waterCooler, whiteboard } from './furniture.ts';
 import { buildRacks } from './rack.ts';
+import { SCREEN } from './screens.ts';
 import { ARIA_DESK, ARIA_DESK_XS, ARIA_DESK_Y, DEV_DESK, DEV_DESKS, DESK_DEPTH, FLOOR_X, DESK_WIDTH, DESKS, MEETING_TABLE, POD_X0, POD_YS, ROOMS, chairPosition, meetingSpot } from './layout.ts';
 
 export const WALL_H = 3.0;
@@ -115,7 +116,7 @@ export function buildOffice(): OfficeScene {
     const cx = x0 + DEV_DESK.w / 2;
     lowTable(g, x0, y0, DEV_DESK.w, DEV_DESK.d, 0.58);
     g.add(block(cx - 0.6, y0 + 0.08, 1.2, 0.12, 0.63, 0.7, FURN.monitor));
-    const screen = new THREE.Mesh(new THREE.PlaneGeometry(1.04, 0.53), new THREE.MeshBasicMaterial({ color: '#3A404C' }));
+    const screen = new THREE.Mesh(new THREE.PlaneGeometry(1.04, 0.53), new THREE.MeshBasicMaterial({ color: SCREEN.off }));
     screen.position.set(cx, 0.63 + 0.35, y0 + 0.205);
     g.add(screen);
     devScreens.push(screen); // 빈 개발실은 꺼진 화면, Codex가 앉으면 cast가 칠한다

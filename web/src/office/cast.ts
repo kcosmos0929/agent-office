@@ -1,20 +1,20 @@
 // 등장인물 관리: 스냅샷의 에이전트·하위 에이전트를 도트 캐릭터로 만들고, 걷기·방향·표정·말풍선·링·책상 화면을 맞춘다.
 import * as THREE from 'three';
 import { CSS2DObject } from 'three/examples/jsm/renderers/CSS2DRenderer.js';
-import { WAIT_COLOR, groupOf } from '../../../src/shared/labels.ts';
-import type { Agent, Snapshot } from '../../../src/shared/types.ts';
+import { WAIT_COLOR } from '../../../src/shared/labels.ts';
+import type { Agent, Snapshot, Status } from '../../../src/shared/types.ts';
 import { makeBubble, nameplateText } from './bubbles.ts';
 import { DOOR, backwardFrom, pathTo, routeBetween, segmentAt, simplifyPath, type Point } from './layout.ts';
 import { hopDots, makeZzz } from './effects.ts';
 import { direct, type Plan } from './director.ts';
 import { paintRacks, rackStates } from './rack.ts';
+import { ScreenPainter, screenFrame } from './screens.ts';
 import type { Pose } from './pose.ts';
 import type { OfficeScene } from './scene.ts';
 import { Figure } from './sprites/figure.ts';
 import { dirFor, faceFor, headTop, lookFor, PACE_FPS, STEP, WALK_FRAMES, type Dir, type Pace } from './sprites/look.ts';
 
 const SUB_SCALE = 0.8; // 도우미는 매니저와 같은 옷, 조금 작게
-const SCREEN = { off: '#3A404C', work: '#FFD9C7', wait: '#FFE7B3', done: '#D7F0DF' };
 
 type Actor = {
   group: THREE.Group;
@@ -66,6 +66,13 @@ export class Cast {
   private readonly clock: () => number;
   /** 동작 줄이기 설정이면 폴짝을 끈다 */
   private readonly reduced: boolean;
+  /** 모니터 판마다 작은 캔버스(사무실 책상 16×9, 개발실 32×16)와 자리별 상태 */
+  private readonly deskPainters: ScreenPainter[];
+  private readonly devPainters: ScreenPainter[];
+  private deskStatus: (Status | null)[] = [];
+  private devStatus: (Status | null)[] = [];
+  /** 마지막으로 그린 시각 — sync가 animate 사이에 칠할 때 쓴다 */
+  private screenT = 0;
 
   constructor(scene: THREE.Scene, office: OfficeScene, onChange: () => void, clock: () => number = Date.now, reduced = false) {
     this.reduced = reduced;
@@ -73,6 +80,8 @@ export class Cast {
     this.office = office;
     this.onChange = onChange;
     this.clock = clock;
+    this.deskPainters = office.deskScreens.map((m) => new ScreenPainter(m, 16, 9));
+    this.devPainters = office.devScreens.map((m) => new ScreenPainter(m, 32, 16));
   }
 
   sync(s: Snapshot): void {
@@ -146,6 +155,7 @@ export class Cast {
   /** dt 초만큼 걷고, 방향·그림을 맞춘다 */
   animate(t: number, dt: number): void {
     paintRacks(this.office.racks, rackStates(this.agents ?? []), t); // 랙 불빛(Codex 실행 중이면 빠르게)
+    this.drawScreens(t); // 모니터도 같은 t로 — 실행 중 책상의 막대와 짝 랙이 같은 박자에 움직인다
     // 쉼 자리가 바뀌는 때를 곧바로 따라잡으려고 걷기 전에 계획을 다시 본다
     if (this.agents) this.follow(direct(this.agents, this.clock()));
     for (const [id, actor] of this.actors) {
@@ -279,17 +289,22 @@ export class Cast {
     actor.group.position.set(p.x, 0.04, p.y);
   }
 
+  /** 자리별 상태를 적어 두고(자리가 비면 null) 곧바로 한 번 칠한다 — 움직임은 animate가 프레임마다 이어 그린다 */
   private paintScreens(agents: Agent[]): void {
-    const paint = (screens: THREE.Mesh[], kind: 'claude' | 'codex') => {
-      const colors = screens.map(() => SCREEN.off);
-      for (const a of agents) {
-        if ((a.kind === 'codex' ? 'codex' : 'claude') !== kind || a.seat < 0 || a.seat >= colors.length) continue;
-        const g = groupOf(a.status);
-        colors[a.seat] = g === 'urgent' ? SCREEN.wait : g === 'waiting' ? SCREEN.done : g === 'working' && a.status !== 'stalled' ? SCREEN.work : SCREEN.off;
-      }
-      screens.forEach((m, i) => (m.material as THREE.MeshBasicMaterial).color.set(colors[i]));
+    const seats = (n: number, kind: 'claude' | 'codex') => {
+      const st: (Status | null)[] = new Array<Status | null>(n).fill(null);
+      for (const a of agents) if ((a.kind === 'codex' ? 'codex' : 'claude') === kind && a.seat >= 0 && a.seat < n) st[a.seat] = a.status;
+      return st;
     };
-    paint(this.office.deskScreens, 'claude'); // 사무실 책상
-    paint(this.office.devScreens, 'codex'); // 개발실 큰 모니터(자리 0~2)
+    this.deskStatus = seats(this.deskPainters.length, 'claude'); // 사무실 책상
+    this.devStatus = seats(this.devPainters.length, 'codex'); // 개발실 큰 모니터(자리 0~2)
+    this.drawScreens(this.screenT);
+  }
+
+  /** 모니터 장면을 시각 t로 그린다 — 장면이 안 바뀐 화면은 ScreenPainter가 다시 그리지 않는다 */
+  private drawScreens(t: number): void {
+    this.screenT = t;
+    this.deskPainters.forEach((p, i) => p.draw(screenFrame(this.deskStatus[i] ?? null, t)));
+    this.devPainters.forEach((p, i) => p.draw(screenFrame(this.devStatus[i] ?? null, t)));
   }
 }
