@@ -14,6 +14,8 @@ export type Config = {
   /** 이 시간 동안 신호가 없는 세션은 목록에서 정리 */
   forgetHours: number;
   softSound: boolean;
+  /** Codex 앱에서 자동 승인(AutoReview)을 쓰나 — 켜져 있으면 Codex 승인 요청을 무시하고 하던 일을 보여 줌(설정 창 스위치) */
+  codexAutoApprove: boolean;
   projectNames: Record<string, string>;
 };
 
@@ -26,6 +28,7 @@ function defaults(): Config {
     stalledMinutes: 15,
     forgetHours: 12,
     softSound: true,
+    codexAutoApprove: true,
     projectNames: { ...DEFAULT_PROJECT_NAMES },
   };
 }
@@ -54,4 +57,21 @@ export function peekConfig(home: string): Config {
     console.warn('[synthetic-office] config.json을 읽지 못해 기본값을 씁니다');
     return base;
   }
+}
+
+/** config.json에서 patch의 키만 바꿔 저장한다(다른 값은 그대로). 파일이 깨져 있으면 건드리지 않는다 */
+export function saveConfigPatch(home: string, patch: Partial<Config>): void {
+  const file = homeFiles(home).config;
+  let current: Record<string, unknown> = {};
+  try {
+    current = JSON.parse(fs.readFileSync(file, 'utf8')) as Record<string, unknown>;
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== 'ENOENT') {
+      console.warn('[synthetic-office] config.json을 읽지 못해 설정을 저장하지 않았어요');
+      return;
+    }
+  }
+  const tmp = file + '.tmp';
+  fs.writeFileSync(tmp, JSON.stringify({ ...current, ...patch }, null, 2) + '\n');
+  fs.renameSync(tmp, file);
 }

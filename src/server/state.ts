@@ -18,6 +18,8 @@ export type StateOptions = {
   registryWaitRule: boolean;
   /** Codex 승인 요청을 이만큼 '승인 확인 중'으로 보여 준 뒤 ❗(기본 5초) — 자동 승인(AutoReview)은 그 사이에 풀림 */
   approvalDelayMs?: number;
+  /** Codex 앱 자동 승인을 쓰나(설정 창 스위치, 바로 반영되게 함수) — 켜져 있으면 Codex 승인 요청을 무시 */
+  codexAutoApprove?: () => boolean;
 };
 
 const SLOTS = 8;
@@ -108,6 +110,8 @@ export class OfficeState {
       a.project = this.opts.resolveProject(e.cwd);
     }
 
+    // Codex 자동 승인: AI가 곧 허용하는데 '승인됐다'는 신호가 없어 긴 명령 내내 대기로 보이므로 무시하고 하던 일을 그대로
+    if (e.type === 'permission' && a.kind === 'codex' && this.opts.codexAutoApprove?.()) return this.fingerprint() !== before;
     if (e.subagentId) {
       this.applySubagentEvent(entry, e, e.subagentId);
     } else {

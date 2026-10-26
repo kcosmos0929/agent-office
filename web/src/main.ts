@@ -12,7 +12,7 @@ import { chooseView, type ViewName } from './view.ts';
 export type OfficeHost = { update(s: Snapshot): void; dispose(): void };
 export type OfficeFactory = (container: HTMLElement) => OfficeHost;
 
-type ClientConfig = { softSound: boolean; loopback: boolean };
+type ClientConfig = { softSound: boolean; loopback: boolean; codexAutoApprove?: boolean };
 
 export async function start(makeOffice: OfficeFactory | null): Promise<void> {
   const params = new URLSearchParams(location.search);
@@ -32,7 +32,7 @@ export async function start(makeOffice: OfficeFactory | null): Promise<void> {
   const player = new SoundPlayer();
   player.softEnabled = config.softSound;
   const minis = new Set<MiniTarget>();
-  const settings = buildSettings();
+  const settings = buildSettings({ codexAutoApprove: config.codexAutoApprove ?? true });
   let office: OfficeHost | null = null;
   let snap: Snapshot | null = null;
   let prev: Snapshot | null = null;
