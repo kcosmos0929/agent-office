@@ -7,7 +7,7 @@ import { M } from '../helpers.ts';
 
 const NOW = 100 * M;
 function agent(id: string, status: Status, since: number, extra: Partial<Agent> = {}): Agent {
-  return { id, kind: 'claude', sessionId: id, title: null, cwd: '/x', project: '성수 LST', status, detail: 'analysis.py', since, lastEventAt: since, hat: 0, seat: 0, subagents: [], hookless: false, context: null, ...extra };
+  return { id, kind: 'claude', sessionId: id, title: null, cwd: '/x', project: '성수 LST', status, detail: 'analysis.py', since, lastEventAt: since, hat: 0, seat: 0, subagents: [], hookless: false, context: null, model: null, ...extra };
 }
 const HEALTH: Health = { startedAt: 0, lastHookAt: null, registry: 'ok', sessions: 0, hookless: 0, lastCodexHookAt: null };
 function render(input: Omit<Snapshot, 'health'> & { health?: Health }): FakeElement {
@@ -26,7 +26,7 @@ test('renderList: <script> 제목이 글자로 들어가고 순서는 sortForBoa
   const rows = root.byClass('row');
   assert.deepEqual(rows.map((r) => r.getAttribute('data-agent')), ['p', 'd', 'w']);
   assert.ok(root.all().every((e) => e.tagName !== 'script'));
-  assert.equal(rows[0].byClass('name')[0].textContent, '<script>alert(1)</script>');
+  assert.equal(rows[0].byClass('name')[0].textContent, 'Claude · <script>alert(1)</script>');
   assert.equal(rows[0].byClass('state')[0].textContent, '❗\uFE0F 승인 필요');
   assert.equal(rows[0].byClass('time')[0].textContent, '10분째');
   assert.ok(rows[0].className.includes('urgent'));
@@ -104,4 +104,16 @@ test('Codex 줄: 이름 Codex · 세션 N, 상태 문구는 Claude와 같음', (
   assert.equal(row.byClass('name')[0].textContent, 'Codex · 세션 2');
   assert.equal(row.byClass('state')[0].textContent, '❗\uFE0F 승인 필요');
   assert.ok(row.className.includes('urgent'));
+});
+
+test('모델은 아는 때만 작은 표시(chip model), 이름 줄은 플랫폼 · 제목', () => {
+  const root = render({ now: NOW, usage: null, agents: [
+    agent('x', 'running', 0, { kind: 'codex', title: 'touch 명령 실행', model: 'gpt-5.5' }),
+    agent('c', 'running', 0, { title: '2단계 Codex 연결' }),
+  ] });
+  const [x, c] = root.byClass('row');
+  assert.equal(x.byClass('name')[0].textContent, 'Codex · touch 명령 실행');
+  assert.deepEqual(x.byClass('model').map((m) => m.textContent), ['gpt-5.5']);
+  assert.equal(c.byClass('name')[0].textContent, 'Claude · 2단계 Codex 연결');
+  assert.equal(c.byClass('model').length, 0);
 });

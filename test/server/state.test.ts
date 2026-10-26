@@ -848,3 +848,12 @@ test('자리 번호는 종류별로 따로: 숨겨진 Codex가 사무실 자리�
   const seat = (id: string) => st.snapshot(0).agents.find((a) => a.sessionId === id)!.seat;
   assert.deepEqual([seat('c1'), seat('x1'), seat('c2')], [0, 0, 1]);
 });
+
+test('모델: 사건에 실려 오면 기억, 모델 없는 사건은 그대로 둠, 새 세션은 null', () => {
+  const st = make();
+  st.apply(ev.prompt('c1', 0));
+  assert.equal(one(st).model, null);
+  st.apply({ ...ev.prompt('c1', 1), model: 'gpt-5.5' });
+  st.apply(ev.stop('c1', 2));
+  assert.equal(one(st).model, 'gpt-5.5');
+});

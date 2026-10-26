@@ -2,7 +2,7 @@
 import { groupOf, HAT_COLORS, KIND_COLOR, STATUS_LABEL } from '../../../src/shared/labels.ts';
 import { sortForBoard } from '../../../src/shared/sort.ts';
 import type { Agent, AgentContext, Snapshot } from '../../../src/shared/types.ts';
-import { agentName, formatElapsed, formatReset } from '../format.ts';
+import { agentModel, agentName, formatElapsed, formatReset } from '../format.ts';
 import { contextPct, gaugeLevel, rowGaugeText } from '../gauge.ts';
 import { renderStrip } from '../strip.ts';
 import { avatar } from './avatar.ts';
@@ -38,6 +38,8 @@ function row(doc: Document, a: Agent, now: number): HTMLElement {
   meta.append(el(doc, 'div', 'name', agentName(a)), el(doc, 'div', 'state', STATUS_LABEL[a.status]));
   const chips = el(doc, 'div', 'chips');
   chips.appendChild(el(doc, 'span', 'chip', a.project));
+  const model = agentModel(a);
+  if (model) chips.appendChild(el(doc, 'span', 'model', model));
   if (a.detail) chips.appendChild(el(doc, 'span', 'detail', a.detail));
   if (a.subagents.length) chips.appendChild(el(doc, 'span', 'detail', `도우미 ${a.subagents.length}`));
   if (a.hookless) chips.appendChild(el(doc, 'span', 'tag-hookless', '훅 없음'));

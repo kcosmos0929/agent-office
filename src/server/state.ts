@@ -93,6 +93,7 @@ export class OfficeState {
       a.hookless = false;
     }
     if (e.title && !entry.regName) a.title = e.title;
+    if (e.model) a.model = e.model;
     if ((e.type === 'permission' || e.type === 'question') && e.viaNotification && this.ignoreNotice(entry)) {
       return this.fingerprint() !== before;
     }
@@ -313,6 +314,7 @@ export class OfficeState {
       subagents: [],
       hookless: false,
       context: null,
+      model: null,
     };
     const entry: Entry = {
       agent, openTools: new Map(), transcriptPath: null, waitingMain: null, waitingSubs: new Map(), waitSince: null,

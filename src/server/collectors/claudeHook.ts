@@ -88,13 +88,15 @@ export function hookToEvents(payload: unknown, now: number, tools: ToolDialect =
   const sessionId = str(p.session_id);
   if (!sessionId) return [];
 
-  const base: { sessionId: string; at: number; cwd: string; title?: string; transcriptPath?: string; subagentId?: string } = {
+  const base: { sessionId: string; at: number; cwd: string; title?: string; transcriptPath?: string; subagentId?: string; model?: string } = {
     sessionId,
     at: now,
     cwd: str(p.cwd) ?? '',
   };
   const title = str(p.session_title);
   if (title) base.title = clip(title, 80);
+  const model = str(p.model);
+  if (model) base.model = clip(model, 60);
   const transcript = str(p.transcript_path);
   if (transcript) base.transcriptPath = transcript;
   const agentId = str(p.agent_id);

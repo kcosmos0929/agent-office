@@ -1,3 +1,4 @@
+import { modelLabel } from '../../src/shared/contextWindow.ts';
 import { KIND_LABEL } from '../../src/shared/labels.ts';
 import type { Agent } from '../../src/shared/types.ts';
 
@@ -18,6 +19,13 @@ export function formatReset(resetsAtSec: number, nowMs: number): string {
   return `${Math.floor(mins / 60)}:${String(mins % 60).padStart(2, '0')}`;
 }
 
+/** 이름 줄 = '플랫폼 · 제목'(제목이 없으면 '플랫폼 · 세션 N') */
 export function agentName(a: Pick<Agent, 'title' | 'hat' | 'kind'>): string {
-  return a.title ?? `${KIND_LABEL[a.kind]} · 세션 ${a.hat + 1}`;
+  return `${KIND_LABEL[a.kind]} · ${a.title ?? `세션 ${a.hat + 1}`}`;
+}
+
+/** 작은 모델 표시: 훅이 준 모델, 없으면 대화 게이지의 모델, 둘 다 모르면 null */
+export function agentModel(a: Pick<Agent, 'model' | 'context'>): string | null {
+  const id = a.model ?? (a.context?.state === 'ok' && a.context.model !== 'unknown' ? a.context.model : null);
+  return id ? modelLabel(id) : null;
 }

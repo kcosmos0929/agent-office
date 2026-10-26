@@ -25,9 +25,9 @@ test('rowGaugeText: % / 창 모르면 토큰 수 / 정리 직후', () => {
 });
 
 test('cardContextLine', () => {
-  assert.equal(cardContextLine({ state: 'ok', used: 620_000, window: 1_000_000, model: 'claude-opus-5-5' }), '대화 62% · 약 62만 / 100만 토큰 · Opus 5.5');
-  assert.equal(cardContextLine({ state: 'ok', used: 150_000, window: 200_000, model: 'claude-haiku-4-5-20251001' }), '대화 75% · 약 15만 / 20만 토큰 · Haiku 4.5');
-  assert.equal(cardContextLine({ state: 'ok', used: 620_000, window: null, model: 'mystery' }), '대화 약 62만 토큰 · mystery');
+  assert.equal(cardContextLine({ state: 'ok', used: 620_000, window: 1_000_000, model: 'claude-opus-5-5' }), '대화 62% · 약 62만 / 100만 토큰');
+  assert.equal(cardContextLine({ state: 'ok', used: 150_000, window: 200_000, model: 'claude-haiku-4-5-20251001' }), '대화 75% · 약 15만 / 20만 토큰');
+  assert.equal(cardContextLine({ state: 'ok', used: 620_000, window: null, model: 'mystery' }), '대화 약 62만 토큰');
   assert.equal(cardContextLine({ state: 'compacted' }), '대화 정리 직후 — 다음 답부터 다시 계산');
   assert.equal(cardContextLine(null), '대화 —');
 });
