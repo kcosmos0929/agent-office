@@ -1,14 +1,23 @@
 // 뒷벽 TV 전광판: 5시간 한도 %·리셋까지 남은 시간, 아래에 주간 %. 글자는 화면 그림 안에 픽셀 글꼴로 그린다.
+// 비스듬한 벽에서는 그림 한 칸이 화면 점 1개·2개로 들쭉날쭉 찍혀 획이 뭉개졌다 → 그림을 4배 칸으로 그리고 부드럽게 줄여 붙이고,
+// 화면 판은 사람처럼 기기 해상도 레이어(FIGURE_LAYER)에 둬 레티나에서 더 또렷하게 한다.
 import * as THREE from 'three';
 import type { Usage } from '../../../src/shared/types.ts';
 import { formatReset } from '../format.ts';
+import { FIGURE_LAYER } from './sprites/figure.ts';
 
-// 화면 그림 크기(칸) — 1440폭 창·px 1.5에서 한 칸이 그려지는 점 하나쯤(더 작으면 칸이 빠져 글씨가 뭉개짐)
-const W = 160;
-const H = 56;
+/** 화면 그림 배율: 160×56칸 설계를 4배로 그린다 */
+const K = 4;
+const W = 160 * K;
+const H = 56 * K;
 const TV_W = 6.0;
 const TV_H = 1.9;
 const INK = { main: '#7CE0A3', sub: '#9AA5B4', bg: '#1E2430', track: '#2E3644' };
+/** 글줄 글꼴: 갈무리는 설계 크기(Galmuri14 = 15px, Galmuri11 = 12px)의 정수배에서만 또렷하다 */
+export const TV_TEXT = {
+  main: { font: `${15 * K}px Galmuri14`, y: 3 * K },
+  sub: { font: `${12 * K}px Galmuri11`, y: 21 * K },
+};
 
 export function tvLines(u: Usage | null, now: number): { main: string; pct: number | null; reset: string; week: string } {
   const w = u?.fiveHour ?? null;
@@ -56,36 +65,46 @@ export function createTv(): { group: THREE.Group; update(u: Usage | null, now: n
   const ctx = canvas.getContext('2d', { willReadFrequently: true })!;
   const texture = new THREE.CanvasTexture(canvas);
   texture.colorSpace = THREE.SRGBColorSpace;
-  texture.magFilter = THREE.NearestFilter;
-  texture.minFilter = THREE.NearestFilter;
-  texture.generateMipmaps = false;
+  texture.magFilter = THREE.LinearFilter;
+  texture.minFilter = THREE.LinearMipmapLinearFilter;
+  texture.generateMipmaps = true;
+  texture.anisotropy = 8;
 
   const group = new THREE.Group();
   const frame = new THREE.Mesh(new THREE.BoxGeometry(TV_W + 0.12, TV_H + 0.12, 0.08), new THREE.MeshLambertMaterial({ color: '#11151C' }));
-  const screen = new THREE.Mesh(new THREE.PlaneGeometry(TV_W, TV_H), new THREE.MeshBasicMaterial({ map: texture }));
+  // 테 앞면과 0.001 차이라 굵은 점 깊이와 견주면 군데군데 묻힌다 → 깊이를 조금 앞으로 당김
+  const screen = new THREE.Mesh(new THREE.PlaneGeometry(TV_W, TV_H), new THREE.MeshBasicMaterial({ map: texture, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -4 }));
   screen.position.z = 0.041;
+  screen.layers.set(FIGURE_LAYER);
   group.add(frame, screen);
   // 뒷벽(z=0) 사무실 위
   group.position.set(3.75, 2.0, 0.05);
 
   let last = '';
+  let lastArgs: [Usage | null, number] = [null, Date.now()];
   function update(u: Usage | null, now: number) {
+    lastArgs = [u, now];
     const l = tvLines(u, now);
     const key = JSON.stringify(l);
     if (key === last) return;
     last = key;
     ctx.fillStyle = INK.bg;
     ctx.fillRect(0, 0, W, H);
-    pixelText(ctx, l.main, 4, '14px Galmuri14', INK.main);
-    pixelText(ctx, [l.reset, l.week].filter(Boolean).join(' · '), 21, '11px Galmuri11', INK.sub);
+    pixelText(ctx, l.main, TV_TEXT.main.y, TV_TEXT.main.font, INK.main);
+    pixelText(ctx, [l.reset, l.week].filter(Boolean).join(' · '), TV_TEXT.sub.y, TV_TEXT.sub.font, INK.sub);
     ctx.fillStyle = INK.track;
-    ctx.fillRect(12, 42, W - 24, 7);
+    ctx.fillRect(12 * K, 42 * K, W - 24 * K, 7 * K);
     if (l.pct !== null) {
       ctx.fillStyle = INK.main;
-      ctx.fillRect(12, 42, Math.round(((W - 24) * l.pct) / 100), 7);
+      ctx.fillRect(12 * K, 42 * K, Math.round(((W - 24 * K) * l.pct) / 100), 7 * K);
     }
     texture.needsUpdate = true;
   }
   update(null, Date.now());
+  // 픽셀 글꼴이 아직 안 왔으면 캔버스는 대신 글꼴로 그리고, 숫자가 바뀔 때까지 그대로 남는다 → 글꼴이 오면 다시 그림
+  void Promise.all([TV_TEXT.main.font, TV_TEXT.sub.font].map((f) => document.fonts.load(f))).then(() => {
+    last = '';
+    update(...lastArgs);
+  });
   return { group, update };
 }
