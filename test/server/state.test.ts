@@ -1098,7 +1098,7 @@ for (const kind of ['claude', 'codex'] as const) {
   test(`자동 퇴근해 숨은 세션은 다시 일하면 새 모자·자리로 돌아옴(${kind})`, () => {
     const st = make({ rest: 10 * M, leave: 120 * M });
     const k = { kind };
-    st.apply({ ...ev.prompt('s1', 0), ...k }); st.apply({ ...ev.stop('s1', 1 * M), ...k });
+    st.apply({ ...ev.prompt('s1', 0), ...k, title: '내 제목' } as Ev); st.apply({ ...ev.stop('s1', 1 * M), ...k });
     st.tick(11 * M); st.tick(121 * M); st.tick(131 * M);
     assert.deepEqual(st.snapshot(0).agents, []);
     st.apply({ ...ev.prompt('s2', 132 * M), ...k });
@@ -1106,6 +1106,7 @@ for (const kind of ['claude', 'codex'] as const) {
     st.apply({ ...ev.prompt('s1', 133 * M), ...k });
     const s1 = st.snapshot(0).agents.find((a) => a.sessionId === 's1')!;
     assert.deepEqual([s1.status, s1.hat, s1.seat], ['thinking', 1, 1]);
+    assert.equal(s1.title, '내 제목', '숨기만 했지 지우지 않았다');
     // 다시 일한 뒤에는 보통 세션처럼: 이번엔 지금처럼 SessionEnd 퇴근이면 지움
     st.apply({ ...ev.end_('s1', 134 * M), ...k });
     st.tick(145 * M);
@@ -1122,11 +1123,11 @@ test('숨긴 뒤의 tick은 아무것도 안 바꿈(1초마다 화면을 다시 
 
 test('창 닫은 퇴근(SessionEnd)은 지금처럼 10분 뒤 지움', () => {
   const st = make({ rest: 10 * M, leave: 120 * M });
-  st.apply(ev.prompt('s1', 0)); st.apply(ev.end_('s1', 1 * M));
+  st.apply({ ...ev.prompt('s1', 0), title: '옛 제목' } as Ev); st.apply(ev.end_('s1', 1 * M));
   assert.equal(one(st).status, 'gone');
   st.tick(11 * M); assert.deepEqual(st.snapshot(0).agents, []);
-  // 지워졌으니 같은 id가 새로 시작해도 이전 상태가 없다
-  st.apply(ev.prompt('s1', 12 * M)); assert.equal(one(st).status, 'thinking');
+  // 지워졌다는 증거: 같은 id가 다시 시작해도 앞서 붙은 제목이 없다
+  st.apply(ev.prompt('s1', 12 * M)); assert.equal(one(st).title, null);
 });
 
 test('⏳ 토큰 기다림·… 응답 없음은 쉬기·퇴근 규칙을 타지 않음', () => {
@@ -1165,4 +1166,38 @@ test('등록부 busy는 훅이 있던 자동 퇴근 세션도 다시 보이게 �
   assert.deepEqual(st.snapshot(0).agents, []);
   st.applyRegistry(read(reg('s1', 'busy', 140 * M)), 140 * M + 1000);
   assert.equal(one(st).status, 'thinking');
+});
+
+test('자동 퇴근 뒤 SessionEnd는 숨기지 않고 10분 뒤 지움', () => {
+  const st = make({ rest: 10 * M, leave: 120 * M });
+  st.apply({ ...ev.prompt('s1', 0), title: '옛 제목' } as Ev); st.apply(ev.stop('s1', 1 * M));
+  st.tick(11 * M); st.tick(121 * M);
+  assert.equal(one(st).status, 'gone');
+  st.apply(ev.end_('s1', 122 * M));
+  st.tick(132 * M);
+  st.apply(ev.prompt('s1', 133 * M));
+  assert.equal(one(st).title, null, '지워졌다가 새로 시작');
+});
+
+test('숨은 자동 퇴근 세션은 낡은 도구 끝 신호로 되살아나거나 지워지지 않고, 일 신호에야 돌아옴', () => {
+  const st = make({ rest: 10 * M, leave: 120 * M });
+  st.apply({ ...ev.prompt('s1', 0), title: '내 제목' } as Ev); st.apply(ev.stop('s1', 1 * M));
+  st.tick(11 * M); st.tick(121 * M); st.tick(131 * M);
+  st.apply(ev.end('s1', 140 * M, 't9'));
+  st.apply(ev.subStop('s1', 141 * M, 'x'));
+  st.tick(150 * M); st.tick(300 * M);
+  assert.deepEqual(st.snapshot(0).agents, []);
+  st.apply(ev.prompt('s1', 301 * M));
+  assert.deepEqual([one(st).status, one(st).title], ['thinking', '내 제목']);
+});
+
+test('숨은 훅 없는 세션은 퇴근보다 오래된 busy를 두 번 받아도 숨은 채', () => {
+  const st = make({ rest: 10 * M, leave: 120 * M });
+  st.applyRegistry(read(reg('r1', 'busy', 1000)), 2000);
+  st.applyRegistry(read(reg('r1', 'idle', 5000)), 6000);
+  st.tick(5000 + 10 * M); st.tick(5000 + 120 * M); st.tick(5000 + 131 * M);
+  assert.deepEqual(st.snapshot(0).agents, []);
+  st.applyRegistry(read(reg('r1', 'busy', 2000)), 5000 + 132 * M);
+  st.applyRegistry(read(reg('r1', 'busy', 2000)), 5000 + 134 * M);
+  assert.deepEqual(st.snapshot(0).agents, []);
 });

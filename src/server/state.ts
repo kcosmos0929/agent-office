@@ -129,18 +129,30 @@ export class OfficeState {
       a.project = entry.workProject ?? this.opts.resolveProject(e.cwd);
     }
 
-    if (!NOT_WORK.has(e.type)) {
-      this.engage(entry);
-      entry.autoGone = false; // 아직 👋로 보이던 중에 일을 다시 시작한 경우
-    }
+    const hiddenAuto = entry.autoGone && !entry.engaged; // 자동 퇴근해 숨은 세션
+    if (!NOT_WORK.has(e.type)) this.engage(entry);
     // Codex 자동 승인: AI가 곧 허용하는데 '승인됐다'는 신호가 없어 긴 명령 내내 대기로 보이므로 무시하고 하던 일을 그대로
-    if (e.type === 'permission' && a.kind === 'codex' && this.opts.codexAutoApprove?.()) return this.fingerprint() !== before;
+    if (e.type === 'permission' && a.kind === 'codex' && this.opts.codexAutoApprove?.()) {
+      this.settleAutoGone(entry, hiddenAuto);
+      return this.fingerprint() !== before;
+    }
     if (e.subagentId) {
       this.applySubagentEvent(entry, e, e.subagentId);
     } else {
       this.applyMainEvent(entry, e);
     }
+    this.settleAutoGone(entry, hiddenAuto);
     return this.fingerprint() !== before;
+  }
+
+  /** 사건 뒤 자동 퇴근 표시 정리: 아직 gone이면(도구 끝 같은 낡은 신호) 숨은 채로 두고, 일하는 상태로 나왔으면 자동 퇴근을 푼다 */
+  private settleAutoGone(entry: Entry, hiddenAuto: boolean): void {
+    if (entry.agent.status !== 'gone') {
+      entry.autoGone = false;
+    } else if (hiddenAuto) {
+      entry.engaged = false;
+      entry.autoGone = true;
+    }
   }
 
   /** 세션이 만진 경로들(한 신호분)에서 처음 알아낸 프로젝트를 이름표로. 못 알아내면 그대로(마지막 것이 남음) */
@@ -332,7 +344,9 @@ export class OfficeState {
       a.project = entry.workProject ?? this.opts.resolveProject(x.cwd);
     }
     // 퇴근(SessionEnd) 직후 잠깐 남은 파일로 되살리지 않는다 — 그 뒤에 새로 쓰인 기록(이어서 열기)만
-    if (!entry.hookSeen || (a.status === 'gone' && x.statusUpdatedAt > a.since)) {
+    if (entry.autoGone && !entry.engaged) {
+      // 숨은 세션은 돌아오는 값(위에서 engage)이 아니면 건드리지 않는다
+    } else if (!entry.hookSeen || (a.status === 'gone' && x.statusUpdatedAt > a.since)) {
       this.mirror(entry, x);
     } else {
       const w = this.shownWait(entry);
@@ -556,6 +570,7 @@ export class OfficeState {
         }
         return;
       case 'session-end':
+        entry.autoGone = false; // 창을 닫은 퇴근은 숨기지 않고 지운다
         this.clearWork(entry);
         a.subagents = [];
         this.setStatus(a, 'gone', e.at);

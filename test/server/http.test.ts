@@ -221,7 +221,6 @@ test('loadConfig: 없으면 기본값 파일 생성', () => {
   assert.equal(c2.leaveMinutes, 120);
   fs.writeFileSync(path.join(h, 'config.json'), JSON.stringify({ idleMinutes: 30 }));
   assert.equal(loadConfig(h).restMinutes, 10, '옛 idleMinutes는 더 읽지 않음');
-  fs.writeFileSync(path.join(h, 'config.json'), JSON.stringify({ port: 5000, restMinutes: 5 }));
   assert.equal(c2.goneMinutes, 10);
   fs.writeFileSync(path.join(h, 'config.json'), '{깨짐');
   assert.equal(loadConfig(h).port, 4310);
