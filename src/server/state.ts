@@ -60,6 +60,8 @@ type Entry = {
   engaged: boolean;
   /** 메인 차례가 끝났나(Stop) — 그 뒤 도우미 대기가 풀리면 차례 끝 표시(finishTurn)로 돌아간다. 메시지·메인 도구·이어 감이면 false */
   turnEnded: boolean;
+  /** 이 차례가 다음 할 일 상자에 질문을 남겼나 — 차례가 끝나면 ✅ 대신 ❓. 메시지·메시지 없이 다시 일함이면 false */
+  turnAsk: boolean;
   /** 만진 경로로 알아낸 마지막 프로젝트 — 있으면 시작 폴더 이름표보다 우선 */
   workProject: string | null;
   /** 서버가 켜진 뒤 이 세션의 훅을 받은 적 있나 / 마지막 훅 시각 */
@@ -412,7 +414,7 @@ export class OfficeState {
       model: null,
     };
     const entry: Entry = {
-      agent, openTools: new Map(), transcriptPath: null, waitingMain: null, waitingSubs: new Map(), waitSince: null, approvalSince: new Map(), engaged: false, workProject: null, turnEnded: false,
+      agent, openTools: new Map(), transcriptPath: null, waitingMain: null, waitingSubs: new Map(), waitSince: null, approvalSince: new Map(), engaged: false, workProject: null, turnEnded: false, turnAsk: false,
       hookSeen: false, lastHookAt: null, reg: null, everInRegistry: false, inRegistry: false, missingReads: 0, regName: null, waitGuessed: false, stopError: null,
     };
     this.entries.set(sessionId, entry);
@@ -439,10 +441,12 @@ export class OfficeState {
         a.detail = null;
         return;
       case 'tool-start':
+        // 차례가 끝난 뒤 메시지 없이 다시 일함(백그라운드 작업이 끝나 이어 감 등) → 상자 질문은 지난 것
+        if (entry.turnEnded) entry.turnAsk = false;
         entry.turnEnded = false;
         entry.openTools.set(e.toolUseId, { activity: e.activity, detail: e.detail });
         entry.stopError = null; // 메인이 다시 일함
-        if (WAITS.has(a.status)) return;
+        if (WAITS.has(a.status) && this.shownWait(entry)) return;
         this.setStatus(a, e.activity, e.at);
         a.detail = e.detail;
         return;
@@ -464,6 +468,9 @@ export class OfficeState {
         this.noteApproval(entry, 'main', entry.waitingMain, e.type, e.at);
         entry.waitingMain = e.type;
         this.enterWait(entry, e.type, e.detail, e.at);
+        return;
+      case 'turn-ask':
+        entry.turnAsk = true;
         return;
       case 'stop': {
         entry.turnEnded = true;
@@ -616,12 +623,16 @@ export class OfficeState {
     a.detail = null;
   }
 
-  /** 메인 차례가 끝났을 때의 표시: 오류로 멈췄으면 ✅ + 오류, (Claude) 도우미가 일하면 👥, 아니면 ✅ */
+  /** 메인 차례가 끝났을 때의 표시: 오류로 멈췄으면 ✅ + 오류, 상자 질문을 남겼으면 ❓, (Claude) 도우미가 일하면 👥, 아니면 ✅ */
   private finishTurn(entry: Entry, at: number): void {
     const a = entry.agent;
     if (entry.stopError) {
       this.setStatus(a, 'done', at);
       a.detail = `오류: ${entry.stopError}`;
+    } else if (entry.turnAsk) {
+      // 다음 할 일 상자에 질문을 남기고 끝남 = 내 답을 기다림(도우미가 일해도 먼저). 다음 메시지까지 그대로
+      this.setStatus(a, 'question', at);
+      a.detail = null;
     } else {
       // Claude 도우미는 백그라운드에서 이어 일하면 👥. Codex 도우미는 일이 끝나도 살아 있다가 다음 차례에 다시 쓰여서
       // (followup_task·send_message, SubagentStop 없음) 차례 끝은 ✅ — 살아 있는 도우미 수는 목록의 '도우미 N'으로
@@ -641,6 +652,7 @@ export class OfficeState {
   private clearWork(entry: Entry): void {
     entry.openTools.clear();
     entry.stopError = null;
+    entry.turnAsk = false;
     this.clearWaits(entry);
   }
 

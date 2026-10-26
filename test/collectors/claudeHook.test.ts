@@ -147,6 +147,15 @@ test('AskUserQuestion: PreToolUse → tool-start + question, PermissionRequest �
   assert.deepEqual(kinds({ ...fx('ask-question'), hook_event_name: 'PermissionRequest' }), [{ type: 'question', detail: null }]);
 });
 
+test('다음 할 일 상자(wrap_up): 질문 있으면 tool-start + turn-ask, 없거나 다른 도구면 tool-start만', () => {
+  const p = { session_id: 's1', hook_event_name: 'PreToolUse', cwd: '/x', tool_name: 'mcp__ccd_turn__wrap_up', tool_use_id: 'w1', tool_input: { asks: true } };
+  const types = (q: object) => kinds(q).map((e) => e.type);
+  assert.deepEqual(types(p), ['tool-start', 'turn-ask']);
+  assert.deepEqual(types({ ...p, tool_input: {} }), ['tool-start']);
+  assert.deepEqual(types({ ...p, tool_name: 'Bash' }), ['tool-start']);
+  assert.deepEqual(types({ ...p, hook_event_name: 'PostToolUse' }), ['tool-end']);
+});
+
 test('Notification: 질문류 → question, 승인 → permission (둘 다 viaNotification), 한도 재개 3종', () => {
   const n = (t: string) => kinds({ ...fx('notification'), notification_type: t, message: '입력이 필요해요' });
   for (const t of ['elicitation_dialog', 'elicitation_url_dialog', 'agent_needs_input']) {
