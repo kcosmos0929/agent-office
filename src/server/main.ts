@@ -9,7 +9,7 @@ import { watchRegistry } from './collectors/sessionRegistry.ts';
 import { claudeSessionsDir, codexSessionIndex, homeFiles, soHome } from './paths.ts';
 import { loadProjectIndex, makeResolver, makeWorkResolver } from './projects.ts';
 import { OfficeState } from './state.ts';
-import { loadOrCreateToken } from './token.ts';
+import { loadOrCreateToken, loadOrCreateViewerToken, rotateViewerToken } from './token.ts';
 
 /** Codex '승인 확인 중' → ❗(5초)가 1초 안에 바뀌도록 촘촘히 */
 const TICK_MS = 1_000;
@@ -62,11 +62,14 @@ async function main(): Promise<void> {
   }
 
   const staticDir = path.join(REPO_ROOT, 'dist', 'web');
-  const server = await startServer({ config, token, state, staticDir, build: buildId(staticDir), codexTitle: makeCodexTitleReader(codexSessionIndex()), saveConfig: (patch) => saveConfigPatch(home, patch) });
+  // 밖에서 보기(터널 전용 문)는 config.remotePublicHost를 넣었을 때만 열린다
+  const remote = config.remotePublicHost ? { viewerToken: loadOrCreateViewerToken(home), rotateViewerToken: () => rotateViewerToken(home) } : {};
+  const server = await startServer({ config, token, state, staticDir, build: buildId(staticDir), codexTitle: makeCodexTitleReader(codexSessionIndex()), saveConfig: (patch) => saveConfigPatch(home, patch), ...remote });
   const endpoint = homeFiles(home).endpoint;
   fs.writeFileSync(endpoint, JSON.stringify({ port: server.port, token, pid: process.pid }) + '\n', { mode: 0o600 });
   fs.chmodSync(endpoint, 0o600);
   console.log(`[synthetic-office] 켜짐 — http://127.0.0.1:${server.port}`);
+  if (server.remotePort) console.log(`[synthetic-office] 밖에서 보기 문 — 127.0.0.1:${server.remotePort} → https://${config.remotePublicHost}`);
 
   const ticker = setInterval(() => {
     if (state.tick(Date.now())) server.notify();

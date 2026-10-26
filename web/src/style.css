@@ -124,6 +124,7 @@ html, body { margin: 0; height: 100%; background: var(--bg); }
 .settings {
   position: fixed; top: 48px; left: 12px; z-index: 30; width: 280px; background: #fff; border-radius: 14px;
   box-shadow: 0 10px 32px rgba(0, 0, 0, 0.18); padding: 14px; font-size: 12.5px;
+  max-height: calc(100vh - 60px); overflow-y: auto; /* QR 두 개라 화면보다 길면 패널 안에서 스크롤 */
 }
 .settings[hidden] { display: none; }
 .settings h3 { margin: 0 0 8px; font-size: 13px; }

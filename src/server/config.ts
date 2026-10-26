@@ -19,6 +19,10 @@ export type Config = {
   softSound: boolean;
   /** Codex 앱에서 자동 승인(AutoReview)을 쓰나 — 켜져 있으면 Codex 승인 요청을 무시하고 하던 일을 보여 줌(설정 창 스위치) */
   codexAutoApprove: boolean;
+  /** 밖에서 보기 주소(폰 주소창 그대로, 포트 포함 — 예: "1-2-3-4.sslip.io:8443"). null이면 터널 전용 문을 열지 않음 */
+  remotePublicHost: string | null;
+  /** 터널 전용 문이 듣는 맥 안 포트(127.0.0.1만) */
+  remotePort: number;
   projectNames: Record<string, string>;
 };
 
@@ -33,6 +37,8 @@ function defaults(): Config {
     forgetHours: 12,
     softSound: true,
     codexAutoApprove: true,
+    remotePublicHost: null,
+    remotePort: 4311,
     projectNames: { ...DEFAULT_PROJECT_NAMES },
   };
 }
