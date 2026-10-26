@@ -65,3 +65,35 @@ export class Press {
   }
 }
 
+/** 누르기의 주인은 먼저 누른 포인터 하나 — 두 손가락 터치·다른 포인터가 진행 중인 누르기를 덮거나 지우지 못하게 */
+export class PressOwner {
+  private active: { id: number; press: Press } | null = null;
+
+  /** 이미 누르는 중이면 새 누르기는 무시(false) */
+  down(id: number, x: number, y: number, start: Pan): boolean {
+    if (this.active) return false;
+    this.active = { id, press: new Press(x, y, start) };
+    return true;
+  }
+
+  move(id: number, x: number, y: number, zoom: number, worldPerPx: number): Pan | null {
+    return this.active?.id === id ? this.active.press.move(x, y, zoom, worldPerPx) : null;
+  }
+
+  /** 주인이 손을 뗌 → 누르기였나(카드 열기). 주인이 아니면 null */
+  up(id: number): boolean | null {
+    if (this.active?.id !== id) return null;
+    const click = this.active.press.isClick;
+    this.active = null;
+    return click;
+  }
+
+  cancel(id: number): void {
+    if (this.active?.id === id) this.active = null;
+  }
+
+  dragging(zoom: number): boolean {
+    return this.active?.press.dragging(zoom) ?? false;
+  }
+}
+
