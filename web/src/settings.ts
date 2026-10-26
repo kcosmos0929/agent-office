@@ -1,4 +1,4 @@
-// 설정 패널(이 맥에서 열었을 때만): 폰 연결 QR · 서버 다시 켜기/끄기 · Codex 자동 승인
+// 설정 패널(이 맥에서 열었을 때만): 폰 연결 QR · 밖에서 보기 QR · 서버 다시 켜기/끄기 · Codex 자동 승인
 export function buildSettings(initial: { codexAutoApprove: boolean }): { el: HTMLElement; toggle(): void } {
   const el = document.createElement('div');
   el.className = 'settings';
@@ -12,6 +12,31 @@ export function buildSettings(initial: { codexAutoApprove: boolean }): { el: HTM
   qr.alt = '폰 연결 QR 코드';
   const url = document.createElement('div');
   url.className = 'lan-url';
+
+  // 밖에서 보기(VPS 터널): 와이파이가 달라도 — 보기 토큰을 담은 QR, 새었으면 '토큰 새로 받기'
+  const remote = document.createElement('div');
+  remote.className = 'settings-section';
+  const remoteTitle = document.createElement('h3');
+  remoteTitle.textContent = '밖에서 보기';
+  const remoteHelp = document.createElement('div');
+  remoteHelp.textContent = '와이파이가 달라도 이 QR로 볼 수 있어요(보기만). 남에게 보였으면 토큰을 새로 받으세요.';
+  const remoteQr = document.createElement('img');
+  remoteQr.alt = '밖에서 보기 QR 코드';
+  const remoteUrl = document.createElement('div');
+  remoteUrl.className = 'lan-url';
+  const remoteActions = document.createElement('div');
+  remoteActions.className = 'actions';
+  const rotate = document.createElement('button');
+  rotate.type = 'button';
+  rotate.textContent = '토큰 새로 받기';
+  rotate.addEventListener('click', async () => {
+    if (!confirm('밖에서 보기 토큰을 새로 받을까요? 지금 밖에서 보던 화면은 끊기고, QR을 다시 찍어야 해요.')) return;
+    const r = await fetch('/api/admin/remote-token', { method: 'POST', headers: { 'x-so-admin': '1' } }).catch(() => null);
+    if (r?.ok) void loadRemote();
+    else remoteUrl.textContent = '새로 받지 못했어요';
+  });
+  remoteActions.append(rotate);
+  remote.append(remoteTitle, remoteHelp, remoteQr, remoteUrl, remoteActions);
 
   const actions = document.createElement('div');
   actions.className = 'actions';
@@ -53,7 +78,7 @@ export function buildSettings(initial: { codexAutoApprove: boolean }): { el: HTM
   });
   codex.append(codexTitle, row, codexHelp);
 
-  el.append(title, help, qr, url, actions, codex);
+  el.append(title, help, qr, url, actions, remote, codex);
 
   async function load() {
     try {
@@ -70,11 +95,32 @@ export function buildSettings(initial: { codexAutoApprove: boolean }): { el: HTM
     }
   }
 
+  async function loadRemote() {
+    try {
+      const info = (await (await fetch('/api/remote-info')).json()) as { url: string | null; qrSvg: string | null };
+      const on = Boolean(info.url && info.qrSvg);
+      remoteQr.hidden = !on;
+      remoteActions.hidden = !on;
+      if (info.url && info.qrSvg) {
+        remoteQr.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(info.qrSvg)}`;
+        remoteUrl.textContent = info.url.replace(/token=.*/, 'token=…');
+      } else {
+        remoteQr.removeAttribute('src');
+        remoteUrl.textContent = '꺼져 있어요 — config.json의 remotePublicHost를 넣고 다시 켜세요';
+      }
+    } catch {
+      remoteUrl.textContent = '정보를 불러오지 못했어요';
+    }
+  }
+
   return {
     el,
     toggle() {
       el.hidden = !el.hidden;
-      if (!el.hidden) void load();
+      if (!el.hidden) {
+        void load();
+        void loadRemote();
+      }
     },
   };
 }

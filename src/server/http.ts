@@ -1,11 +1,14 @@
 // 로컬 서버: 신호 받기(POST) · 화면에 실시간 전송(WebSocket) · 화면 파일 제공(GET).
 // 인증: 루프백 GET은 그대로, 그 밖의 GET은 토큰 쿠키, 모든 POST /api/*는 Bearer 토큰. 관리 명령은 루프백 + 전용 헤더 + 같은 출처.
+// 터널 전용 문(밖에서 보기, 설정했을 때만): 127.0.0.1의 따로 된 포트. 터널은 맥 안 주소로 들어오므로 이 문은 언제나 바깥으로 다룬다 —
+// 정해 둔 주소(Host)만, GET·WebSocket만, 보기 토큰 쿠키(so_view) 필수. 설계서 docs/specs/2026-10-27-외부-접속-VPS-설계.md
 import { spawn } from 'node:child_process';
 import fs from 'node:fs';
 import http from 'node:http';
 import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
+import type { Duplex } from 'node:stream';
 import QRCode from 'qrcode';
 import { WebSocketServer, WebSocket } from 'ws';
 import type { Config } from './config.ts';
@@ -38,9 +41,18 @@ export type ServerOptions = {
   codexTitle?: (sessionId: string) => string | null;
   /** 화면 빌드 지문(켜질 때 한 번). 바뀌면 열린 화면이 새로 고침. 없으면 null */
   build?: string | null;
+  /** 밖에서 보기 토큰(터널 전용 문). config.remotePublicHost와 함께 있어야 전용 문을 연다 */
+  viewerToken?: string;
+  /** 보기 토큰 새로 받기(파일에 저장해 돌려줌) — 설정 창 버튼 */
+  rotateViewerToken?: () => string;
+  /** 터널 전용 문 포트(테스트는 0). 없으면 config.remotePort */
+  remoteListenPort?: number;
 };
 
-export type RunningServer = { port: number; close(): Promise<void>; notify(): void };
+/** remotePort = 터널 전용 문이 연 포트(안 열었으면 null) */
+export type RunningServer = { port: number; remotePort: number | null; close(): Promise<void>; notify(): void };
+
+type Door = 'main' | 'remote';
 
 const LOOPBACK = new Set(['127.0.0.1', '::1', '::ffff:127.0.0.1']);
 const MAX_BODY = 1024 * 1024;
@@ -89,11 +101,14 @@ function originAllowed(req: http.IncomingMessage): boolean {
   }
 }
 
-function cookieToken(req: http.IncomingMessage): string | null {
+/** 지금 문은 so_token(훅 토큰), 터널 전용 문은 so_view(보기 토큰) */
+const COOKIE: Record<Door, string> = { main: 'so_token', remote: 'so_view' };
+
+function cookieToken(req: http.IncomingMessage, door: Door = 'main'): string | null {
   const raw = req.headers.cookie ?? '';
   for (const part of raw.split(';')) {
     const [k, ...v] = part.trim().split('=');
-    if (k === 'so_token') return v.join('=');
+    if (k === COOKIE[door]) return v.join('=');
   }
   return null;
 }
@@ -144,6 +159,12 @@ export function startServer(opts: ServerOptions): Promise<RunningServer> {
   const titleTried = new Map<string, number>();
   let timer: NodeJS.Timeout | null = null;
   let port = 0;
+  let viewer = opts.viewerToken ?? null;
+  const remoteSockets = new Set<WebSocket>();
+  const remoteOn = () => !!config.remotePublicHost && viewer !== null;
+  /** 터널 전용 문: 정해 둔 주소(포트 포함, 대소문자 무시)로 들어온 요청만 */
+  const remoteHostOk = (host: string | undefined) =>
+    !!host && !!config.remotePublicHost && host.trim().toLowerCase() === config.remotePublicHost.toLowerCase();
 
   const send = (ws: WebSocket) => {
     if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'snapshot', build: opts.build ?? null, ...state.snapshot(now()) }));
@@ -195,6 +216,17 @@ export function startServer(opts: ServerOptions): Promise<RunningServer> {
         config.codexAutoApprove = on;
         // 켜는 순간 이미 떠 있던 Codex 승인 대기(🛡️·❗)도 지운다
         if (on && !was && state.dropCodexApprovals(now())) notify();
+        return text(res, 204);
+      }
+      if (action === 'remote-token') {
+        // 밖에서 보기 토큰 새로 받기 → 옛 토큰으로 열려 있던 바깥 화면은 바로 끊는다
+        if (!remoteOn() || !opts.rotateViewerToken) return text(res, 404);
+        try {
+          viewer = opts.rotateViewerToken();
+        } catch {
+          return text(res, 500);
+        }
+        for (const ws of remoteSockets) ws.terminate();
         return text(res, 204);
       }
       if (action !== 'restart' && action !== 'stop') return text(res, 404);
@@ -265,18 +297,23 @@ export function startServer(opts: ServerOptions): Promise<RunningServer> {
     fs.createReadStream(file).pipe(res);
   };
 
-  const handleGet = async (req: http.IncomingMessage, res: http.ServerResponse, url: URL, local: boolean) => {
+  /** door = 'remote'면 보기 토큰·so_view 쿠키(HTTPS라 Secure)를 쓰고, local은 늘 false로 들어온다 */
+  const handleGet = async (req: http.IncomingMessage, res: http.ServerResponse, url: URL, local: boolean, door: Door = 'main') => {
+    const secret = door === 'remote' ? viewer : token;
     const given = url.searchParams.get('token');
     if (given !== null) {
-      if (!tokenMatches(given, token)) return text(res, 401, '토큰이 맞지 않아요');
+      if (!secret || !tokenMatches(given, secret)) return text(res, 401, '토큰이 맞지 않아요');
       url.searchParams.delete('token');
+      const attrs = ['Path=/', 'HttpOnly', ...(door === 'remote' ? ['Secure'] : []), 'SameSite=Strict', 'Max-Age=31536000'];
       res.writeHead(302, {
         location: url.pathname + (url.searchParams.size ? `?${url.searchParams}` : ''),
-        'set-cookie': `so_token=${token}; Path=/; HttpOnly; SameSite=Strict; Max-Age=31536000`,
+        'set-cookie': `${COOKIE[door]}=${secret}; ${attrs.join('; ')}`,
       });
       return res.end();
     }
-    if (!local && !tokenMatches(cookieToken(req), token)) return text(res, 401, '토큰이 필요해요 — 맥의 설정 화면에서 QR로 접속하세요');
+    if (!local && (!secret || !tokenMatches(cookieToken(req, door), secret))) {
+      return text(res, 401, door === 'remote' ? '토큰이 필요해요 — 맥의 설정 화면에서 「밖에서 보기」 QR을 찍으세요' : '토큰이 필요해요 — 맥의 설정 화면에서 QR로 접속하세요');
+    }
     switch (url.pathname) {
       case '/healthz':
         return local ? text(res, 200, 'ok') : text(res, 404);
@@ -291,8 +328,21 @@ export function startServer(opts: ServerOptions): Promise<RunningServer> {
         const lan = `http://${ip}:${port}/?token=${token}`;
         return json(res, { url: lan, qrSvg: await QRCode.toString(lan, { type: 'svg', margin: 1 }) });
       }
+      case '/api/remote-info': {
+        // 밖에서 보기 QR(보기 토큰을 담음) — 맥 안에서만
+        if (!local) return text(res, 404);
+        if (!remoteOn()) return json(res, { url: null, qrSvg: null });
+        const remote = `https://${config.remotePublicHost}/?token=${viewer}`;
+        return json(res, { url: remote, qrSvg: await QRCode.toString(remote, { type: 'svg', margin: 1 }) });
+      }
     }
     return serveStatic(res, url);
+  };
+
+  const fail = (res: http.ServerResponse) => (err: unknown) => {
+    console.error('[synthetic-office] 요청 처리 실패', err instanceof Error ? err.message : err);
+    if (!res.headersSent) text(res, 500);
+    else res.end();
   };
 
   const server = http.createServer((req, res) => {
@@ -301,53 +351,87 @@ export function startServer(opts: ServerOptions): Promise<RunningServer> {
     const url = new URL(req.url ?? '/', 'http://localhost');
     const run = req.method === 'POST' ? handlePost : req.method === 'GET' || req.method === 'HEAD' ? handleGet : null;
     if (!run) return text(res, 405);
-    run(req, res, url, local).catch((err: unknown) => {
-      console.error('[synthetic-office] 요청 처리 실패', err instanceof Error ? err.message : err);
-      if (!res.headersSent) text(res, 500);
-      else res.end();
-    });
+    run(req, res, url, local).catch(fail(res));
+  });
+
+  // 터널 전용 문: 정해 둔 주소만, 보기만(GET·HEAD·WebSocket) — 훅·사용량·관리 POST는 여기로 못 들어온다
+  const doorServer = http.createServer((req, res) => {
+    if (!remoteHostOk(req.headers.host)) return text(res, 403);
+    if (req.method !== 'GET' && req.method !== 'HEAD') return text(res, 405);
+    const url = new URL(req.url ?? '/', 'http://localhost');
+    handleGet(req, res, url, false, 'remote').catch(fail(res));
   });
 
   // 화면은 서버에 메시지를 보내지 않는다 → 아주 작은 한도, 잘못된 프레임은 그 연결만 끊는다(서버는 계속)
   const wss = new WebSocketServer({ noServer: true, maxPayload: 4096 });
-  server.on('upgrade', (req, socket, head) => {
-    const local = isLoopback(req.socket.remoteAddress ?? '');
+  const upgrade = (req: http.IncomingMessage, socket: Duplex, head: Buffer, door: Door) => {
+    const local = door === 'main' && isLoopback(req.socket.remoteAddress ?? '');
     const url = new URL(req.url ?? '/', 'http://localhost');
-    if (!hostAllowed(req.headers.host) || !originAllowed(req)) {
+    const hostOk = door === 'remote' ? remoteHostOk(req.headers.host) : hostAllowed(req.headers.host);
+    if (!hostOk || !originAllowed(req)) {
       socket.write('HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n');
       socket.destroy();
       return;
     }
-    if (url.pathname !== '/ws' || (!local && !tokenMatches(cookieToken(req), token))) {
+    const secret = door === 'remote' ? viewer : token;
+    if (url.pathname !== '/ws' || (!local && (!secret || !tokenMatches(cookieToken(req, door), secret)))) {
       socket.write('HTTP/1.1 401 Unauthorized\r\nConnection: close\r\n\r\n');
       socket.destroy();
       return;
     }
     wss.handleUpgrade(req, socket, head, (ws) => {
       sockets.add(ws);
+      if (door === 'remote') remoteSockets.add(ws);
       ws.on('error', () => ws.terminate());
-      ws.on('close', () => sockets.delete(ws));
+      ws.on('close', () => {
+        sockets.delete(ws);
+        remoteSockets.delete(ws);
+      });
       send(ws);
     });
-  });
+  };
+  server.on('upgrade', (req, socket, head) => upgrade(req, socket, head, 'main'));
+  doorServer.on('upgrade', (req, socket, head) => upgrade(req, socket, head, 'remote'));
+
+  /** 설정했을 때만 127.0.0.1에 연다. 못 열면(포트 사용 중 등) 경고만 — 지금 문은 그대로 */
+  const openDoor = () =>
+    new Promise<number | null>((done) => {
+      if (!remoteOn()) return done(null);
+      doorServer.once('error', (err) => {
+        console.warn('[synthetic-office] 밖에서 보기 문을 열지 못했어요 —', err.message);
+        done(null);
+      });
+      doorServer.listen(opts.remoteListenPort ?? config.remotePort, '127.0.0.1', () => {
+        const addr = doorServer.address();
+        done(typeof addr === 'object' && addr ? addr.port : null);
+      });
+    });
+
+  const closeServer = (s: http.Server) =>
+    new Promise<void>((done) => {
+      if (!s.listening) return done();
+      s.closeAllConnections();
+      s.close(() => done());
+    });
 
   return new Promise((resolve, reject) => {
     server.once('error', reject);
     server.listen(opts.listenPort ?? config.port, opts.host ?? '0.0.0.0', () => {
       const addr = server.address();
       port = typeof addr === 'object' && addr ? addr.port : 0;
-      resolve({
-        port,
-        notify,
-        close: () =>
-          new Promise<void>((done) => {
+      void openDoor().then((remotePort) =>
+        resolve({
+          port,
+          remotePort,
+          notify,
+          close: async () => {
             if (timer) clearTimeout(timer);
             for (const ws of sockets) ws.terminate();
             wss.close();
-            server.closeAllConnections();
-            server.close(() => done());
-          }),
-      });
+            await Promise.all([closeServer(server), closeServer(doorServer)]);
+          },
+        }),
+      );
     });
   });
 }

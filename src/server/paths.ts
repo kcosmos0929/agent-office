@@ -20,6 +20,7 @@ export function homeFiles(home: string) {
   return {
     config: path.join(home, 'config.json'),
     token: path.join(home, 'token'),
+    viewerToken: path.join(home, 'viewer-token'),
     endpoint: path.join(home, 'endpoint.json'),
   };
 }
