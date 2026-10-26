@@ -901,3 +901,23 @@ test('Claude 승인 요청은 지금처럼 바로 ❗', () => {
   st.apply(ev.perm('c1', 1_000));
   assert.equal(one(st).status, 'permission');
 });
+
+test('겹친 Codex 승인: 오래된 요청이 풀리고 새 요청만 남으면 새 요청 기준으로 다시 🛡️, 5초 뒤 ❗ (리뷰 P2)', () => {
+  const st = make();
+  const cx = (e: Ev): Ev => ({ ...e, kind: 'codex' });
+  st.apply(cx(ev.prompt('x1', 0)));
+  st.apply(cx(ev.subStart('x1', 0, 'A')));
+  st.apply(cx(ev.subStart('x1', 0, 'B')));
+  st.apply(cx(ev.perm('x1', 0, 'A')));
+  st.apply(cx(ev.perm('x1', 4_000, 'B')));
+  assert.equal(one(st).status, 'approving');
+  st.tick(5_000);
+  assert.equal(one(st).status, 'permission');
+  st.apply(cx(ev.perm('x1', 5_500, 'B'))); // 같은 대기가 다시 와도 B의 시작 시각(4초)은 그대로
+  st.apply(cx(ev.end('x1', 6_000, 'tA', 'A')));
+  assert.equal(one(st).status, 'approving');
+  st.tick(8_900);
+  assert.equal(one(st).status, 'approving');
+  st.tick(9_000);
+  assert.equal(one(st).status, 'permission');
+});
