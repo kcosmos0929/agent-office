@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { CHAIR_PULLBACK, DESKS, DESK_DEPTH, IDLE_SPOTS, ROOMS, ROOM_DOORS, SPLIT_X, chairPosition, seatPosition, meetingSpot, waitingSpot, DOOR, pathTo, facingAt, forwardFrom, backwardFrom, segmentAt, type Point, BAND_LANE_Y, DEV_LANE_Y, REST_SPOTS, OVERFLOW_SPOTS, CORRIDOR, FLOOR_Z, devSpot, routeBetween, simplifyPath } from '../../web/src/office/layout.ts';
+import { CHAIR_PULLBACK, DESKS, DESK_DEPTH, IDLE_SPOTS, ROOMS, ROOM_DOORS, SPLIT_X, chairPosition, seatPosition, meetingSpot, waitingSpot, DOOR, pathTo, facingAt, forwardFrom, backwardFrom, segmentAt, type Point, BAND_LANE_Y, DEV_LANE_Y, REST_SPOTS, OVERFLOW_SPOTS, CORRIDOR, FLOOR_Z, devSpot, routeBetween, simplifyPath, EXTRA_REST_SPOTS } from '../../web/src/office/layout.ts';
 import { targetFps } from '../../web/src/office/fps.ts';
 
 const inside = (p: { x: number; y: number }, r: { x0: number; y0: number; x1: number; y1: number }) => p.x > r.x0 && p.x < r.x1 && p.y > r.y0 && p.y < r.y1;
@@ -117,7 +117,8 @@ const allPlaces = (): Point[] => [
   ...[0, 1, 2].map(devSpot),
   ...REST_SPOTS.map((r) => r.at),
   ...OVERFLOW_SPOTS,
-  ...Array.from({ length: 5 }, (_, i) => waitingSpot(i)),
+  ...EXTRA_REST_SPOTS,
+  ...Array.from({ length: 12 }, (_, i) => waitingSpot(i)),
   ...Array.from({ length: 6 }, (_, i) => meetingSpot(i)),
   DOOR,
 ];
@@ -213,4 +214,28 @@ test('targetFps', () => {
   assert.equal(targetFps(['scroll'], false), 8);
   assert.equal(targetFps(['sleep', 'lean-back', 'stand'], false), 1);
   assert.equal(targetFps([], false), 1);
+});
+
+test('로비 대기 자리 0~11은 서로 다른 12곳, 사무실 안, 입구가 아니고, 길은 격자 방향만', () => {
+  const spots = Array.from({ length: 12 }, (_, k) => waitingSpot(k));
+  assert.equal(new Set(spots.map((p) => `${p.x},${p.y}`)).size, 12);
+  for (let i = 0; i < spots.length; i++) {
+    const p = spots[i];
+    assert.ok(p.x > ROOMS.claude.x0 && p.x < ROOMS.claude.x1 && p.y > 9.2 && p.y < ROOMS.claude.y1, JSON.stringify(p));
+    assert.notDeepEqual(p, DOOR);
+    assert.deepEqual(facingAt(p), { x: 0, y: -1 });
+    assert.ok(isGrid(pathTo(p)), JSON.stringify(pathTo(p)));
+    for (let j = 0; j < i; j++) assert.ok(Math.hypot(p.x - spots[j].x, p.y - spots[j].y) >= 0.7, `${i}/${j}`);
+  }
+});
+
+test('넘침 너머 쉼 자리(EXTRA_REST_SPOTS)는 휴게실·탕비실 띠 안, 서로·기존 쉼·넘침 자리와 0.3 이상 떨어짐', () => {
+  const others = [...REST_SPOTS.map((r) => r.at), ...OVERFLOW_SPOTS];
+  assert.ok(EXTRA_REST_SPOTS.length >= 17);
+  EXTRA_REST_SPOTS.forEach((p, i) => {
+    assert.ok(p.x > CORRIDOR.x1 && p.x <= 14.3 && p.y > 15 && p.y < FLOOR_Z, JSON.stringify(p));
+    for (const q of others) assert.ok(Math.hypot(p.x - q.x, p.y - q.y) >= 0.3, `${JSON.stringify(p)} ~ ${JSON.stringify(q)}`);
+    for (let j = 0; j < i; j++) assert.ok(Math.hypot(p.x - EXTRA_REST_SPOTS[j].x, p.y - EXTRA_REST_SPOTS[j].y) >= 0.3);
+    assert.deepEqual(facingAt(p), { x: 1, y: 0 });
+  });
 });

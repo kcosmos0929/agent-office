@@ -1,5 +1,5 @@
 // 화면 확인용: 켜져 있는 서버(SO_HOME의 endpoint.json)에 가짜 세션 신호를 보낸다. 실제 대화 내용 없음.
-// 사용: SO_HOME=/tmp/x node scripts/demo.ts [scene]   scene = all(기본) | subagent | end | wake | stop | accuracy | codex-lab
+// 사용: SO_HOME=/tmp/x node scripts/demo.ts [scene]   scene = all(기본) | subagent | end | wake | stop | accuracy | codex-lab | crowd | crowd-rest
 // accuracy: ❓·🧹·⏳·대화 게이지 + (SO_CLAUDE_SESSIONS가 있으면) 그 폴더에 훅 없는 세션 등록부 파일
 // codex: Codex 세션 셋(📖 읽기 · ✏️ 고치기 · ❗ 승인)을 /api/codex/hook으로
 import fs from 'node:fs';
@@ -62,6 +62,24 @@ if (scene === 'all') {
   await codexHook('lab-read', `${DEV}/synthetic-office`, 'PreToolUse', { tool_name: 'Bash', tool_use_id: 'l2', tool_input: { command: 'rg TODO src' } });
   await codexHook('lab-done', `${DEV}/lst_ss`, 'UserPromptSubmit');
   await codexHook('lab-done', `${DEV}/lst_ss`, 'Stop');
+} else if (scene === 'crowd') {
+  // 붐빔 확인: Claude 12 + Codex 6이 모두 일함 → 책상(8+3)을 빼고 7명이 로비에서 기다림
+  for (let i = 0; i < 12; i++) {
+    await hook(`crowd-c${i}`, `${DEV}/synthetic-office`, 'UserPromptSubmit', { session_title: `붐빔 ${i}` });
+    await hook(`crowd-c${i}`, `${DEV}/synthetic-office`, 'PreToolUse', { tool_name: 'Bash', tool_input: { command: 'ls' }, tool_use_id: `cc${i}` });
+  }
+  for (let i = 0; i < 6; i++) {
+    await codexHook(`crowd-x${i}`, `${DEV}/lst_ss`, 'UserPromptSubmit');
+    await codexHook(`crowd-x${i}`, `${DEV}/lst_ss`, 'PreToolUse', { tool_name: 'Bash', tool_use_id: `cx${i}`, tool_input: { command: 'ls' } });
+  }
+} else if (scene === 'crowd-rest') {
+  // 휴게실 붐빔: crowd 세션 모두 + 새 세션 7개를 끝냄(restMinutes를 작게 두고 기다리면 모두 쉼)
+  for (let i = 0; i < 12; i++) await hook(`crowd-c${i}`, `${DEV}/synthetic-office`, 'Stop', {});
+  for (let i = 0; i < 6; i++) await codexHook(`crowd-x${i}`, `${DEV}/lst_ss`, 'Stop');
+  for (let i = 0; i < 7; i++) {
+    await hook(`crowd-m${i}`, `${DEV}/synthetic-office`, 'UserPromptSubmit', {});
+    await hook(`crowd-m${i}`, `${DEV}/synthetic-office`, 'Stop', {});
+  }
 } else if (scene === 'accuracy') {
   await hook('demo-ask', `${DEV}/lst_ss`, 'UserPromptSubmit', { session_title: '질문 대기 예시' });
   await hook('demo-ask', `${DEV}/lst_ss`, 'PreToolUse', { tool_name: 'AskUserQuestion', tool_input: {}, tool_use_id: 'q1' });

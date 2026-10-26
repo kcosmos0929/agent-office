@@ -16,6 +16,8 @@ import { FIGURE_LAYER } from './sprites/figure.ts';
 import { createTv } from './tv.ts';
 import { clampPan, PressOwner, snapPan, type Pan } from './pan.ts';
 
+/** 이만큼(ms) 넘게 화면이 멈췄다 돌아오면 걸어서 따라잡지 않고 자리에 바로 세운다 */
+const HIDDEN_SETTLE_MS = 5000;
 const TARGET = new THREE.Vector3(FLOOR_X / 2, 0.7, FLOOR_Z / 2);
 const VIEW_DIR = new THREE.Vector3(...VIEW).normalize();
 
@@ -42,6 +44,8 @@ export class OfficeView implements OfficeHost {
   private worldPerPx = 1;
   private cast: Cast;
   private lastT = 0;
+  /** 탭이 숨은 때(performance.now) — 숨지 않았으면 null */
+  private hiddenAt: number | null = null;
   private snap: Snapshot | null = null;
   /** 스냅샷을 받은 때(브라우저 시각) — 서버 시각을 이어 세려고 */
   private receivedAt = 0;
@@ -186,6 +190,7 @@ export class OfficeView implements OfficeHost {
 
   /** 매 프레임 움직임(하위 클래스·캐릭터가 씀) */
   protected animate(t: number): void {
+    if (this.lastT && t - this.lastT > HIDDEN_SETTLE_MS) this.cast.settle(); // 프레임이 오래 끊겼다 이어짐
     const dt = this.lastT ? Math.min(0.25, (t - this.lastT) / 1000) : 0;
     this.lastT = t;
     this.cast.animate(t, dt);
@@ -215,7 +220,14 @@ export class OfficeView implements OfficeHost {
   }
 
   private onVisibility = () => {
-    if (!document.hidden) this.invalidate();
+    if (document.hidden) {
+      this.hiddenAt = performance.now();
+      return;
+    }
+    // 오래 숨어 있었다면 밀린 걸음을 걷지 않고 지금 계획의 자리에 바로 선다
+    if (this.hiddenAt !== null && performance.now() - this.hiddenAt > HIDDEN_SETTLE_MS) this.cast.settle();
+    this.hiddenAt = null;
+    this.invalidate();
   };
 
   /** 창을 레티나 ↔ 일반 모니터로 옮기면 기기 해상도가 바뀐다 */

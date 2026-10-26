@@ -122,6 +122,19 @@ export class Cast {
     for (const actor of this.actors.values()) actor.prev = undefined;
   }
 
+  /** 오래 안 보이다 돌아왔을 때: 계획을 다시 보고 모두를 지금 가야 할 자리에 바로 세운다(밀린 걸음을 되풀이하지 않게). 퇴근자는 다음 프레임에 사라진다 */
+  settle(): void {
+    if (!this.agents) return;
+    this.follow(direct(this.agents, this.clock()));
+    for (const actor of this.actors.values()) {
+      actor.route = [actor.target];
+      actor.path = [actor.target];
+      this.place(actor, actor.target);
+      this.resetClock(actor);
+    }
+    this.onChange();
+  }
+
   /** 링 퍼짐이 진행 중인가(렌더 속도를 올리려고) */
   bursting(t: number): boolean {
     for (const a of this.actors.values()) if (a.burstAt !== null && burstElapsed(t, a.burstAt) < BURST_MS) return true;
@@ -309,7 +322,7 @@ export class Cast {
       ring.visible = false;
       group.add(ring);
       // 퍼지는 링: 의자·책상에 가리지 않게 깊이 검사를 끄고 나중에 그림, 바닥 링과 겹쳐 깜빡이지 않게 살짝 위
-      burstRing = new THREE.Mesh(new THREE.RingGeometry(0.5, 0.62, 40), new THREE.MeshBasicMaterial({ color: WAIT_COLOR, transparent: true, opacity: 1, side: THREE.DoubleSide, depthTest: false }));
+      burstRing = new THREE.Mesh(new THREE.RingGeometry(0.5, 0.62, 40), new THREE.MeshBasicMaterial({ color: WAIT_COLOR, transparent: true, opacity: 1, side: THREE.DoubleSide, depthTest: false, depthWrite: false }));
       burstRing.rotation.x = -Math.PI / 2;
       burstRing.position.y = 0.06;
       burstRing.renderOrder = 10;

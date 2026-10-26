@@ -139,3 +139,13 @@ test('restAssignments: 쉬는 사람끼리 안 겹침', () => {
   const keys = new Set([...m.values()].map((r) => `${r.at.x},${r.at.y}`));
   assert.equal(keys.size, 12);
 });
+
+test('restAssignments: 25명이어도 모두 다른 자리, 휴게실·탕비실 띠 안, 서로 0.3 이상', () => {
+  const ids = Array.from({ length: 25 }, (_, i) => `r${i}`);
+  const pts = [...restAssignments(ids, 99_000).values()].map((r) => r.at);
+  assert.equal(pts.length, 25);
+  pts.forEach((p, i) => {
+    assert.ok(p.x > 4.4 && p.x <= 14.3 && p.y > 15 && p.y < 18, JSON.stringify(p));
+    for (let j = 0; j < i; j++) assert.ok(Math.hypot(p.x - pts[j].x, p.y - pts[j].y) >= 0.3, `${i}/${j}`);
+  });
+});

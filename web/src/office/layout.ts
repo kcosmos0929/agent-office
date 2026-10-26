@@ -75,10 +75,14 @@ export const ARIA_DESK = { w: 1.3, d: 0.6, h: 0.8 };
 const WAIT_SPOTS: readonly Point[] = [
   { x: 4.7, y: 14.25 }, { x: 5.7, y: 14.25 }, { x: 6.7, y: 14.25 },
   { x: 5.2, y: 14.75 }, { x: 6.2, y: 14.75 },
+  // 6번째부터: 입구 통로(x=DOOR.x) 왼쪽 빈터(옷걸이 x 3.0·y 14.5, 화분·의자·낮은 테이블 오른쪽)에 엇갈려 선다
+  { x: 2.9, y: 13.5 }, { x: 2.0, y: 13.5 }, { x: 1.1, y: 13.5 },
+  { x: 2.45, y: 14.1 }, { x: 1.55, y: 14.1 },
+  { x: 2.45, y: 12.9 }, { x: 1.55, y: 12.9 },
 ];
 const WAITING_SPOT = WAIT_SPOTS[0];
 
-/** k번째 대기 자리(넘치면 처음부터 다시) */
+/** k번째 대기 자리(12곳 넘치면 처음부터 다시) */
 export function waitingSpot(k: number): Point {
   return WAIT_SPOTS[Math.max(0, k) % WAIT_SPOTS.length];
 }
@@ -102,6 +106,13 @@ export const REST_SPOTS: readonly RestSpot[] = [
 ];
 /** 쉬는 자리가 찼을 때 서 있는 넘침 자리(휴게실·탕비실 가로 길 옆) */
 export const OVERFLOW_SPOTS: readonly Point[] = [{ x: 6.1, y: 17.05 }, { x: 8.0, y: 17.05 }, { x: 9.55, y: 17.4 }];
+/** 넘침 자리도 찼을 때 서는 자리(가구·가로 길 y 17.55를 피한 휴게실 앞줄·탕비실). 이 너머는 처음부터 다시 쓴다 */
+export const EXTRA_REST_SPOTS: readonly Point[] = [
+  { x: 5.1, y: 17.05 }, { x: 7.1, y: 17.05 }, { x: 8.1, y: 16.6 },
+  { x: 5.4, y: 17.85 }, { x: 6.4, y: 17.85 }, { x: 7.4, y: 17.85 }, { x: 8.4, y: 17.85 }, { x: 9.4, y: 17.85 }, { x: 10.4, y: 17.85 },
+  { x: 11.5, y: 17.05 }, { x: 11.5, y: 16.6 }, { x: 12.6, y: 16.1 }, { x: 13.4, y: 16.1 }, { x: 14.0, y: 16.7 }, { x: 14.0, y: 17.15 },
+  { x: 11.6, y: 17.85 }, { x: 12.6, y: 17.85 }, { x: 13.6, y: 17.85 },
+];
 
 /** 개발실 책상 앞(의자 뒤 길) 서 있는 자리: 0~2, 그 밖 → 로비 첫 자리 */
 export function devSpot(seat: number): Point {
@@ -182,7 +193,7 @@ export function facingAt(p: Point): Point {
   if ([0, 1, 2].some((i) => { const d = devSpot(i); return d.x === p.x && d.y === p.y; })) return { x: 0, y: -1 };
   const rest = REST_SPOTS.find((r) => r.at.x === p.x && r.at.y === p.y);
   if (rest) return rest.face;
-  if (OVERFLOW_SPOTS.some((o) => o.x === p.x && o.y === p.y)) return { x: 1, y: 0 };
+  if ([...OVERFLOW_SPOTS, ...EXTRA_REST_SPOTS].some((o) => o.x === p.x && o.y === p.y)) return { x: 1, y: 0 };
   if (WAIT_SPOTS.some((w) => w.x === p.x && w.y === p.y)) return { x: 0, y: -1 };
   return { x: 1, y: 0 };
 }

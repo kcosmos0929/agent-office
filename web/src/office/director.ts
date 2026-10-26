@@ -1,7 +1,7 @@
 // 연출 감독: 에이전트들과 서버 시각만으로 캐릭터마다 자리·방향·자세·걸음·효과를 정하는 순수 계산(three.js·DOM 없음).
 // 같은 입력이면 같은 출력 → 화면끼리 같은 장면. cast.ts는 이 계획을 실행만 한다. (설계서 5-1~5-3)
 import type { Agent } from '../../../src/shared/types.ts';
-import { DOOR, OVERFLOW_SPOTS, REST_SPOTS, devSpot, facingAt, meetingSpot, seatPosition, waitingSpot, type Point, type RestSpot } from './layout.ts';
+import { DOOR, EXTRA_REST_SPOTS, OVERFLOW_SPOTS, REST_SPOTS, devSpot, facingAt, meetingSpot, seatPosition, waitingSpot, type Point, type RestSpot } from './layout.ts';
 import { poseFor, type Pose } from './pose.ts';
 import { dirFor, type Dir, type Pace } from './sprites/look.ts';
 
@@ -37,11 +37,9 @@ export function frontOf(dir: Dir): Dir {
   return dir;
 }
 
-const NEXT_TO_LAST = 0.4;
-
 /**
  * 쉬는 세션들의 쉼 자리. id를 정렬해 차례로 받는다:
- * 바라는 자리 (해시 + 시간 칸) mod 쉼 자리 수 → 차 있으면 다음 빈 쉼 자리 → 넘침 자리 → 마지막 넘침 자리 옆 0.4칸씩.
+ * 바라는 자리 (해시 + 시간 칸) mod 쉼 자리 수 → 차 있으면 다음 빈 쉼 자리 → 넘침 자리 → 그 너머 자리(EXTRA_REST_SPOTS, 다 쓰면 처음부터 다시).
  * 머무는 시간은 id마다 3~6분(고정), 세션별 어긋남으로 칸 경계를 흩뜨린다.
  */
 export function restAssignments(ids: string[], now: number): Map<string, RestSpot> {
@@ -70,9 +68,7 @@ export function restAssignments(ids: string[], now: number): Map<string, RestSpo
       taken.add(REST_SPOTS.length + o);
       out.set(id, { at: OVERFLOW_SPOTS[o], face: overflowFace });
     } else {
-      const last = OVERFLOW_SPOTS[OVERFLOW_SPOTS.length - 1];
-      beyond++;
-      out.set(id, { at: { x: last.x + NEXT_TO_LAST * beyond, y: last.y }, face: overflowFace });
+      out.set(id, { at: EXTRA_REST_SPOTS[beyond++ % EXTRA_REST_SPOTS.length], face: overflowFace });
     }
   }
   return out;
