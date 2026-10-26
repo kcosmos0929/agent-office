@@ -79,7 +79,7 @@ html, body { margin: 0; height: 100%; background: var(--bg); }
 .row.urgent { background: var(--wait-bg); border-left-color: var(--wait); }
 .row.waiting { border-left-color: var(--done); }
 .row.rest, .row.stalled { opacity: 0.55; }
-.avatar { flex: none; }
+.avatar { flex: none; width: 46px; height: 46px; image-rendering: pixelated; }
 .meta { min-width: 0; flex: 1; }
 .name { font-size: 11px; color: #5a5047; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .state { font-size: 14px; font-weight: 700; line-height: 1.3; }
@@ -166,3 +166,32 @@ body:not(.view-list) .toolbar button.blink { border-color: var(--wait); animatio
 .tv-label { font: 11px/1.35 'Galmuri11', monospace; color: #7ce0a3; text-align: center; white-space: nowrap; -webkit-font-smoothing: none; pointer-events: none; }
 .tv-label .tv-sub { color: #9aa5b4; }
 
+
+/* ---------- 목록형: 기기가 다크 모드면 어두운 판 (오피스 화면은 늘 어두움) ---------- */
+@media (prefers-color-scheme: dark) {
+  html, body { background: #1c1c1f; }
+  .board { background: var(--panel); box-shadow: 0 0 0 1px var(--panel-line); }
+  .board-bar { background: #232529; }
+  .board-title { color: var(--panel-muted); }
+  .row { background: var(--panel); border-bottom-color: #34373d; }
+  .row.urgent { background: #3a2e14; }
+  .name, .detail, .time, .gauge { color: var(--panel-muted); }
+  .state { color: #e6e9ee; }
+  .row.urgent .state { color: #f5c66a; }
+  .chip { background: rgba(217, 119, 87, 0.2); color: #f0a487; }
+  .gauge-track { background: #3a3d44; }
+  .gauge.warn .gauge-label { color: #f5c66a; }
+  .badge { background: #1f3a2a; color: #7ce0a3; }
+  .badge.urgent { background: var(--wait); color: #3a2600; }
+  .tag-hookless { background: #3a3d44; color: #b8bec7; }
+  .empty { color: var(--panel-muted); }
+  body.view-list .toolbar button { color: #d9dde3; background: var(--panel); border-color: var(--panel-line); }
+  body.view-list .toolbar button.blink { animation-name: blink-dark; }
+  .board-bar .strip summary { background: var(--panel); border-color: var(--panel-line); }
+  .board-bar .strip.green summary { color: #7ce0a3; }
+  .board-bar .strip.gray summary { color: #9aa0a8; }
+  .board-bar .strip.orange summary { color: #f5c66a; background: #3a2e14; border-color: var(--wait); }
+  .board-bar .strip-panel { background: var(--panel); color: #d9dde3; box-shadow: 0 0 0 1px var(--panel-line), 0 10px 32px rgba(0, 0, 0, 0.5); }
+  body.view-list .settings { background: var(--panel); color: #e6e9ee; }
+  body.view-list .settings .actions button { color: #d9dde3; background: #1f2125; border-color: var(--panel-line); }
+}
