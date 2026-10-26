@@ -1,7 +1,7 @@
 import type { Status } from '../../../src/shared/types.ts';
 
 // 캐릭터 자세
-export type Pose = 'type-fast' | 'scroll' | 'think' | 'wave' | 'lean-back' | 'sleep' | 'walk' | 'stand';
+export type Pose = 'type-fast' | 'scroll' | 'think' | 'wave' | 'lean-back' | 'sleep' | 'walk' | 'stand' | 'stroll';
 
 const POSE: Record<Status, Pose> = {
   permission: 'wave',
