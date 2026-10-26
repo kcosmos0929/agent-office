@@ -76,11 +76,28 @@ export function speckle(base: string, dot: string, seed = 4): THREE.CanvasTextur
   });
 }
 
-/** 통창 밖 풍경: 낮 하늘(띠 3개) + 먼 빌딩·가까운 빌딩과 창문 점. w×h칸 한 장 */
-export function cityView(w: number, h: number, seed = 7): THREE.CanvasTexture {
+/** 해 질 녘·밤 풍경 팔레트(level별). 하늘은 위→아래 띠, 창문 불은 확률 lit(난수 호출 수는 낮과 같아 건물 배치가 안 바뀜) */
+type Dusk = { sky: string[]; far: string[]; near: string[]; dark: string; lit: string; litChance: number };
+export const DUSK: Record<number, Dusk> = {
+  0.6: { sky: ['#8FB0D6', '#E4B7B0', '#F7C28F'], far: ['#8A97B3', '#929FBA', '#8190AC'], near: ['#66769A', '#6F7FA2', '#5C6C90'], dark: '#586890', lit: '#FFE29A', litChance: 0.35 },
+  0.4: { sky: ['#6C7FB5', '#C58FA6', '#F0956F'], far: ['#6F7A9E', '#7782A5', '#667196'], near: ['#4F5A80', '#586389', '#47527A'], dark: '#424D74', lit: '#FFD777', litChance: 0.5 },
+  0.2: { sky: ['#3E4A7E', '#8A6A94', '#D9736B'], far: ['#4A5380', '#535C88', '#444D78'], near: ['#323A62', '#3A426B', '#2B3358'], dark: '#262D52', lit: '#FFD36B', litChance: 0.6 },
+  0: { sky: ['#101A3A', '#16224A', '#1E2C5A'], far: ['#1F2A52', '#26315A', '#1A2448'], near: ['#141B3A', '#19213F', '#101733'], dark: '#0D1330', lit: '#FFD45E', litChance: 0.4 },
+};
+
+const CITY_CACHE = new Map<string, THREE.CanvasTexture>();
+
+/** 통창 밖 풍경: 하늘(띠 3개) + 먼 빌딩·가까운 빌딩과 창문 점. w×h칸 한 장.
+ * level ≥ 0.8 낮(지금 그림 그대로), 0.2~0.6 노을, 0 밤(남색 하늘·노란 불 켜진 창). level별로 한 번만 만들어 캐시 */
+export function cityView(w: number, h: number, seed = 7, level = 1): THREE.CanvasTexture {
+  const stage = level >= 0.8 ? null : DUSK[level] ?? DUSK[level < 0.1 ? 0 : level < 0.3 ? 0.2 : level < 0.5 ? 0.4 : 0.6];
+  const key = `${w}x${h}:${seed}:${stage ? level : 1}`;
+  const cached = CITY_CACHE.get(key);
+  if (cached) return cached;
   const t = pixelTexture(w, h, seed, (put, rand) => {
-    const sky = ['#A4CDEA', '#B8DAF0', '#CDE6F4'];
+    const sky = stage ? stage.sky : ['#A4CDEA', '#B8DAF0', '#CDE6F4'];
     for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) put(x, y, sky[Math.min(2, Math.floor((y / h) * 3))]);
+    const litChance = stage ? stage.litChance : 0.3;
     const layer = (minH: number, maxH: number, tones: string[], lit: string, dark: string) => {
       let x = Math.floor(rand() * 4) - 4;
       while (x < w) {
@@ -91,16 +108,17 @@ export function cityView(w: number, h: number, seed = 7): THREE.CanvasTexture {
           for (let xx = Math.max(0, x); xx < Math.min(w, x + bw); xx++) {
             const inner = xx > x && xx < x + bw - 1 && yy > h - bh;
             const win = inner && (xx - x) % 2 === 0 && (yy - (h - bh)) % 2 === 0;
-            put(xx, yy, win ? (rand() < 0.3 ? lit : dark) : tone);
+            put(xx, yy, win ? (rand() < litChance ? lit : dark) : tone);
           }
         }
         x += bw + (rand() < 0.3 ? 1 : 0);
       }
     };
-    layer(Math.floor(h * 0.45), Math.floor(h * 0.9), ['#93AFC8', '#9DB8CF', '#88A5BF'], '#C9DCEB', '#7F9CB7');
-    layer(Math.floor(h * 0.2), Math.floor(h * 0.6), ['#6E8CA8', '#7895B0', '#64829E'], '#BFD6E8', '#5A7894');
+    layer(Math.floor(h * 0.45), Math.floor(h * 0.9), stage ? stage.far : ['#93AFC8', '#9DB8CF', '#88A5BF'], stage ? stage.lit : '#C9DCEB', stage ? stage.dark : '#7F9CB7');
+    layer(Math.floor(h * 0.2), Math.floor(h * 0.6), stage ? stage.near : ['#6E8CA8', '#7895B0', '#64829E'], stage ? stage.lit : '#BFD6E8', stage ? stage.dark : '#5A7894');
   });
   t.wrapS = t.wrapT = THREE.ClampToEdgeWrapping;
+  CITY_CACHE.set(key, t);
   return t;
 }
 

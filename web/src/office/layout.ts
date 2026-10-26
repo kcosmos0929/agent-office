@@ -75,10 +75,14 @@ export const ARIA_DESK = { w: 1.3, d: 0.6, h: 0.8 };
 const WAIT_SPOTS: readonly Point[] = [
   { x: 4.7, y: 14.25 }, { x: 5.7, y: 14.25 }, { x: 6.7, y: 14.25 },
   { x: 5.2, y: 14.75 }, { x: 6.2, y: 14.75 },
+  // 6번째부터: 입구 통로(x=DOOR.x) 왼쪽 빈터(옷걸이 x 3.0·y 14.5, 화분·의자·낮은 테이블 오른쪽)에 엇갈려 선다
+  { x: 2.9, y: 13.5 }, { x: 2.0, y: 13.5 }, { x: 1.1, y: 13.5 },
+  { x: 2.45, y: 14.1 }, { x: 1.55, y: 14.1 },
+  { x: 2.45, y: 12.9 }, { x: 1.55, y: 12.9 },
 ];
 const WAITING_SPOT = WAIT_SPOTS[0];
 
-/** k번째 대기 자리(넘치면 처음부터 다시) */
+/** k번째 대기 자리(12곳 넘치면 처음부터 다시) */
 export function waitingSpot(k: number): Point {
   return WAIT_SPOTS[Math.max(0, k) % WAIT_SPOTS.length];
 }
@@ -86,6 +90,35 @@ export function waitingSpot(k: number): Point {
 const CROSS_Y = 9.2;
 /** 책상 묶음 양옆 세로 통로: 창 쪽, 유리벽 쪽 */
 const AISLE_X = { window: 1.0, glass: 6.4 };
+/** 휴게실·탕비실을 잇는 가로 길(두 문 y 16.85~17.75 안, 가구와 안 겹침) */
+export const BAND_LANE_Y = 17.55;
+/** 개발실 안 가로 길(의자 등받이 y 약 3.3 뒤, 개발실 문 y 2.8~3.8 안) */
+export const DEV_LANE_Y = 3.6;
+
+/** 쉬는 자리: 자리와 보는 방향(자판기·소파·책장·커피머신·카페 테이블 순, IDLE_SPOTS 좌표) */
+export type RestSpot = { at: Point; face: Point };
+export const REST_SPOTS: readonly RestSpot[] = [
+  { at: IDLE_SPOTS.vending, face: { x: 0, y: -1 } },
+  { at: IDLE_SPOTS.sofa, face: { x: 1, y: 0 } },
+  { at: IDLE_SPOTS.bookshelf, face: { x: 0, y: -1 } },
+  { at: IDLE_SPOTS.coffee, face: { x: 0, y: -1 } },
+  { at: IDLE_SPOTS.pantryTable, face: { x: 0, y: -1 } },
+];
+/** 쉬는 자리가 찼을 때 서 있는 넘침 자리(휴게실·탕비실 가로 길 옆) */
+export const OVERFLOW_SPOTS: readonly Point[] = [{ x: 6.1, y: 17.05 }, { x: 8.0, y: 17.05 }, { x: 9.55, y: 17.4 }];
+/** 넘침 자리도 찼을 때 서는 자리(가구·가로 길 y 17.55를 피한 휴게실 앞줄·탕비실). 이 너머는 처음부터 다시 쓴다 */
+export const EXTRA_REST_SPOTS: readonly Point[] = [
+  { x: 5.1, y: 17.05 }, { x: 7.1, y: 17.05 }, { x: 8.1, y: 16.6 },
+  { x: 5.4, y: 17.85 }, { x: 6.4, y: 17.85 }, { x: 7.4, y: 17.85 }, { x: 8.4, y: 17.85 }, { x: 9.4, y: 17.85 }, { x: 10.4, y: 17.85 },
+  { x: 11.5, y: 17.05 }, { x: 11.5, y: 16.6 }, { x: 12.6, y: 16.1 }, { x: 13.4, y: 16.1 }, { x: 14.0, y: 16.7 }, { x: 14.0, y: 17.15 },
+  { x: 11.6, y: 17.85 }, { x: 12.6, y: 17.85 }, { x: 13.6, y: 17.85 },
+];
+
+/** 개발실 책상 앞(의자 뒤 길) 서 있는 자리: 0~2, 그 밖 → 로비 첫 자리 */
+export function devSpot(seat: number): Point {
+  if (seat < 0 || seat >= DEV_DESKS.length) return WAITING_SPOT;
+  return { x: DEV_DESKS[seat].x + DEV_DESK.w / 2, y: DEV_LANE_Y };
+}
 
 /** 사무용 의자를 책상 가장자리 안쪽(0.02)에서 책상 반대쪽으로 빼는 거리 — 앉은 몸통이 상판에 묻히지 않게(Codex 앉기 v16 요청, 2026-10-26) */
 export const CHAIR_PULLBACK = 0.2;
@@ -121,9 +154,18 @@ export function meetingSpot(i: number): Point {
 
 const inRoom = (p: Point, r: Room) => p.x > r.x0 && p.x < r.x1 && p.y > r.y0 && p.y < r.y1;
 
+/** 앞쪽 띠 안쪽(휴게실·탕비실) */
+const inBand = (p: Point) => p.x > CORRIDOR.x1 && p.y > FRONT_Y;
+
 /** 입구에서 목적지까지 걷는 길. 바닥 격자 방향(x만 또는 y만 바뀌는 구간)으로만 꺾는다 — 비스듬한 4방향 그림과 맞추려고.
  *  입구 복도를 곧게 지나, 사무실 책상은 가로 통로 → 묶음 옆 통로로, 회의실은 회의실 문을 지난다 */
 export function pathTo(dest: Point): Point[] {
+  if (inBand(dest)) {
+    return [DOOR, { x: DOOR.x, y: BAND_LANE_Y }, { x: dest.x, y: BAND_LANE_Y }, dest];
+  }
+  if (inRoom(dest, ROOMS.codex)) {
+    return [DOOR, { x: DOOR.x, y: CROSS_Y }, { x: AISLE_X.glass, y: CROSS_Y }, { x: AISLE_X.glass, y: DEV_LANE_Y }, dest];
+  }
   if (inRoom(dest, ROOMS.meeting)) {
     const y = ROOM_DOORS.meeting.y;
     return [DOOR, { x: DOOR.x, y }, { x: SPLIT_X, y }, { x: 8.6, y }, { x: 8.6, y: dest.y }, dest];
@@ -148,6 +190,10 @@ export function facingAt(p: Point): Point {
     if (p.y > t.y1) return { x: 0, y: -1 };
     return p.x < t.x0 ? { x: 1, y: 0 } : { x: -1, y: 0 };
   }
+  if ([0, 1, 2].some((i) => { const d = devSpot(i); return d.x === p.x && d.y === p.y; })) return { x: 0, y: -1 };
+  const rest = REST_SPOTS.find((r) => r.at.x === p.x && r.at.y === p.y);
+  if (rest) return rest.face;
+  if ([...OVERFLOW_SPOTS, ...EXTRA_REST_SPOTS].some((o) => o.x === p.x && o.y === p.y)) return { x: 1, y: 0 };
   if (WAIT_SPOTS.some((w) => w.x === p.x && w.y === p.y)) return { x: 0, y: -1 };
   return { x: 1, y: 0 };
 }
@@ -178,4 +224,39 @@ export function forwardFrom(route: Point[], p: Point): Point[] {
 }
 export function backwardFrom(route: Point[], p: Point): Point[] {
   return [p, ...route.slice(0, segmentAt(route, p) + 1).reverse()];
+}
+
+/** 길을 단순화: 같은 점 연속·한 줄 위 가운데 점(되돌아가는 꼭짓점 포함)을 바뀌지 않을 때까지 지움. 처음·끝 점은 남김 */
+export function simplifyPath(path: Point[]): Point[] {
+  let cur = path.slice();
+  for (;;) {
+    const next: Point[] = [];
+    for (const q of cur) {
+      const last = next.at(-1);
+      if (last && last.x === q.x && last.y === q.y) continue;
+      next.push(q);
+    }
+    let removed = false;
+    for (let i = 1; i < next.length - 1; i++) {
+      const a = next[i - 1];
+      const b = next[i];
+      const c = next[i + 1];
+      if (Math.abs((b.x - a.x) * (c.y - b.y) - (b.y - a.y) * (c.x - b.x)) < 1e-9) {
+        next.splice(i, 1);
+        removed = true;
+        break;
+      }
+    }
+    if (!removed && next.length === cur.length) return next;
+    cur = next;
+  }
+}
+
+/** 어디서든 어디로든 걷는 길(격자 방향만): 같은 띠(휴게실·탕비실 / 개발실) 안이면 그 방의 가로 길로, 아니면 입구 복도를 등뼈로 */
+export function routeBetween(from: Point, to: Point): Point[] {
+  if (from.x === to.x && from.y === to.y) return [from];
+  const lane = (p: Point) => (inBand(p) ? BAND_LANE_Y : inRoom(p, ROOMS.codex) ? DEV_LANE_Y : null);
+  const l = lane(from);
+  if (l !== null && l === lane(to)) return simplifyPath([from, { x: from.x, y: l }, { x: to.x, y: l }, to]);
+  return simplifyPath([from, ...pathTo(from).slice(1, -1).reverse(), ...pathTo(to).slice(1)]);
 }

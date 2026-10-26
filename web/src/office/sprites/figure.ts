@@ -2,7 +2,7 @@
 // 판은 FIGURE_LAYER에서 기기 해상도로 그리고(pixelPass), 발밑 그림자는 사무실과 같은 굵은 점으로 그린다.
 import * as THREE from 'three';
 import { atlasFor } from './atlas.ts';
-import { cellOf, COLS, DIRS, IDLE_COL, planeOffset, planeSize, type Dir, type Face, type Look } from './look.ts';
+import { cellOf, COLS, DIRS, DOT, UPRIGHT, IDLE_COL, planeOffset, planeSize, type Dir, type Face, type Look } from './look.ts';
 
 export const FIGURE_LAYER = 1;
 /** 사람을 그린 기기 점에 남기는 스텐실 값(pixelPass가 그 점에만 유리를 따로 덮는다) */
@@ -22,6 +22,8 @@ export class Figure {
   private face: Face | null = null;
   private dir: Dir = 'SE';
   private col = IDLE_COL;
+  /** 폴짝으로 판을 띄운 도트 수 */
+  private lifted = 0;
   private disposed = false;
 
   constructor(look: Look, face: Face, scale: number, onReady: () => void) {
@@ -69,6 +71,13 @@ export class Figure {
     this.apply();
   }
 
+  /** 판만 도트 단위로 위로 띄운다(그림자는 땅에 그대로) */
+  lift(dots: number): void {
+    if (dots === this.lifted) return;
+    this.lifted = dots;
+    this.apply();
+  }
+
   dispose(): void {
     this.disposed = true;
     this.material.map?.dispose();
@@ -79,7 +88,7 @@ export class Figure {
 
   private apply(): void {
     const o = planeOffset(this.dir, this.scale);
-    this.mesh.position.set(o.x, o.y, 0);
+    this.mesh.position.set(o.x, o.y + (this.lifted * DOT * this.scale) / UPRIGHT, 0);
     const t = this.material.map;
     if (!t) return;
     const { col, row } = cellOf(this.dir, this.col);

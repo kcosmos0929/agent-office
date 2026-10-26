@@ -12,7 +12,7 @@ export function nameplateText(a: Pick<Agent, 'project'>): string {
   return a.project;
 }
 
-export function bubbleTone(a: Pick<Agent, 'status'>): { bg: string; fg: string } {
+export function bubbleTone(a: Pick<Agent, 'status'> & Partial<Pick<Agent, 'kind'>>): { bg: string; fg: string } {
   if (a.status === 'quota') return { bg: QUOTA_COLOR, fg: '#FFFFFF' };
   switch (groupOf(a.status)) {
     case 'urgent':
@@ -20,7 +20,7 @@ export function bubbleTone(a: Pick<Agent, 'status'>): { bg: string; fg: string }
     case 'waiting':
       return { bg: '#2F9E5B', fg: '#FFFFFF' };
     case 'working':
-      return a.status === 'stalled' ? { bg: '#B5ADA3', fg: '#FFFFFF' } : { bg: KIND_COLOR.claude, fg: '#FFFFFF' };
+      return a.status === 'stalled' ? { bg: '#B5ADA3', fg: '#FFFFFF' } : { bg: KIND_COLOR[a.kind ?? 'claude'], fg: '#FFFFFF' };
     default:
       return { bg: '#B5ADA3', fg: '#FFFFFF' };
   }
@@ -44,7 +44,7 @@ export function bubbleShown(a: Pick<Agent, 'status'>): string {
 }
 
 /** 말풍선 DOM: 글자는 textContent로 */
-export function makeBubble(doc: Document): { el: HTMLElement; set(a: Pick<Agent, 'status' | 'project'>): void } {
+export function makeBubble(doc: Document): { el: HTMLElement; set(a: Pick<Agent, 'status' | 'project'> & Partial<Pick<Agent, 'kind'>>): void } {
   const el = doc.createElement('div');
   el.className = 'bubble';
   let last = '';
@@ -60,6 +60,7 @@ export function makeBubble(doc: Document): { el: HTMLElement; set(a: Pick<Agent,
       el.classList.toggle('compact', bubbleCompact(a));
       el.style.background = tone.bg;
       el.style.color = tone.fg;
+      el.classList.toggle('thinking', a.status === 'thinking');
       el.classList.toggle('urgent', groupOf(a.status) === 'urgent');
     },
   };

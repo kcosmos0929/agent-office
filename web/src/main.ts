@@ -10,7 +10,7 @@ import { chooseView, initialOverride, type ViewName } from './view.ts';
 import { reloadOnce } from './reload.ts';
 
 /** 3D 오피스가 구현하는 화면 (Task 11에서 연결) */
-export type OfficeHost = { update(s: Snapshot): void; dispose(): void };
+export type OfficeHost = { update(s: Snapshot): void; rebase?(): void; dispose(): void };
 export type OfficeFactory = (container: HTMLElement) => OfficeHost;
 
 type ClientConfig = { softSound: boolean; loopback: boolean; codexAutoApprove?: boolean; build?: string | null };
@@ -97,6 +97,8 @@ export async function start(makeOffice: OfficeFactory | null): Promise<void> {
     return snap && { ...snap, now: snap.now + (Date.now() - receivedAt) };
   }
 
+  let awaitFresh = false;
+
   function render() {
     const s = current();
     const view = currentView();
@@ -115,8 +117,9 @@ export async function start(makeOffice: OfficeFactory | null): Promise<void> {
       strip.replaceChildren(renderStrip(document, connected, s?.health ?? null, s?.now ?? Date.now(), open));
     }
     if (!s) return;
-    if (view === 'office') office?.update(s);
-    else renderList(listEl, s, document, connected);
+    if (view === 'office') {
+      if (!awaitFresh) office?.update(s); // 다시 연결한 직후엔 낡은 스냅샷으로 기준을 잡지 않는다
+    } else renderList(listEl, s, document, connected);
     for (const m of minis) renderList(m.root, s, m.doc, connected);
   }
 
@@ -125,6 +128,7 @@ export async function start(makeOffice: OfficeFactory | null): Promise<void> {
       // 새 빌드면 새로 고침(소리가 켜져 있었음을 남김) — 곧 사라질 화면이라 소리·그리기는 건너뜀
       if (reloadOnce(config.build ?? null, build, () => { if (player.enabled) storedSet(SOUND_KEY, '1'); })) return;
       for (const kind of soundEvents(prev, s)) player.play(kind);
+      awaitFresh = false;
       prev = s;
       snap = s;
       receivedAt = Date.now();
@@ -132,6 +136,8 @@ export async function start(makeOffice: OfficeFactory | null): Promise<void> {
     },
     (up) => {
       connected = up;
+      awaitFresh = up; // 다시 연결: 새로 오는 스냅샷이 기준(반짝·링 퍼짐 없음) — 그 전엔 낡은 스냅샷을 오피스에 안 넘김. 끊기면 풀어 둠(끊긴 채 만든 화면이 비지 않게)
+      if (up) office?.rebase?.();
       render();
     },
   );
@@ -156,6 +162,10 @@ function lazyOffice(container: HTMLElement): OfficeHost {
     update(s) {
       last = s;
       view?.update(s);
+    },
+    rebase() {
+      last = null; // 아직 three.js를 받는 중이면 낡은 스냅샷을 버려, 불러온 뒤 첫 동기화가 새 스냅샷의 기준이 되게
+      view?.rebase?.();
     },
     dispose() {
       disposed = true;

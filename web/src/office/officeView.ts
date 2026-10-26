@@ -7,6 +7,7 @@ import { targetFps } from './fps.ts';
 import type { Pose } from './pose.ts';
 import { showCard } from './card.ts';
 import { Cast } from './cast.ts';
+import { applyDaylight, clockOverride, lightLevel } from './daylight.ts';
 import { PALETTE, officeLights } from './backdrop.ts';
 import { FIT, FLOOR_X, FLOOR_Z, VIEW_DIR as VIEW } from './layout.ts';
 import { buildOffice, type OfficeScene } from './scene.ts';
@@ -15,6 +16,8 @@ import { FIGURE_LAYER } from './sprites/figure.ts';
 import { createTv } from './tv.ts';
 import { clampPan, PressOwner, snapPan, type Pan } from './pan.ts';
 
+/** 이만큼(ms) 넘게 화면이 멈췄다 돌아오면 걸어서 따라잡지 않고 자리에 바로 세운다 */
+const HIDDEN_SETTLE_MS = 5000;
 const TARGET = new THREE.Vector3(FLOOR_X / 2, 0.7, FLOOR_Z / 2);
 const VIEW_DIR = new THREE.Vector3(...VIEW).normalize();
 
@@ -41,11 +44,19 @@ export class OfficeView implements OfficeHost {
   private worldPerPx = 1;
   private cast: Cast;
   private lastT = 0;
+  /** 탭이 숨은 때(performance.now) — 숨지 않았으면 null */
+  private hiddenAt: number | null = null;
   private snap: Snapshot | null = null;
+  /** 스냅샷을 받은 때(브라우저 시각) — 서버 시각을 이어 세려고 */
+  private receivedAt = 0;
   private closeCard: (() => void) | null = null;
   private readonly pass = new PixelPass(PALETTE.bg);
   private readonly px: number;
   private dprQuery: MediaQueryList | null = null;
+  private readonly lights: THREE.Object3D[];
+  /** 지금 낮밤 단계(바뀔 때만 다시 그림) */
+  private daylight = -1;
+  private daylightTimer: ReturnType<typeof setInterval> | null = null;
 
   constructor(container: HTMLElement) {
     this.container = container;
@@ -66,11 +77,18 @@ export class OfficeView implements OfficeHost {
     const lights = officeLights();
     for (const l of lights) l.layers.enable(GLASS_LAYER); // 유리 패스도 조명을 받게
     this.scene.add(...lights);
+    this.lights = lights;
 
     this.office = buildOffice();
     splitTransparent(this.office.group); // 유리·칸막이는 사람 뒤에 한 번 더 합성(pixelPass)
     this.scene.add(this.office.group, this.tv.group);
-    this.cast = new Cast(this.scene, this.office, () => this.invalidate());
+    // 동작 줄이기 설정이면 폴짝을 끈다(한 번만 읽음)
+    const reduced = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
+    this.cast = new Cast(this.scene, this.office, () => this.invalidate(), () => (this.snap ? this.snap.now + (Date.now() - this.receivedAt) : Date.now()), reduced);
+
+    // 서울 해에 맞춘 낮밤: 지금 한 번, 그 뒤 1분마다 확인(단계가 바뀔 때만 다시 그림)
+    this.checkDaylight();
+    this.daylightTimer = setInterval(() => this.checkDaylight(), 60_000);
 
     this.camera.position.copy(TARGET).addScaledVector(VIEW_DIR, 30);
     this.camera.lookAt(TARGET);
@@ -122,9 +140,26 @@ export class OfficeView implements OfficeHost {
 
   update(s: Snapshot): void {
     this.snap = s;
+    this.receivedAt = Date.now();
     this.tv.update(s.usage, s.now);
     this.cast.sync(s);
     this.poses = this.cast.poses();
+    this.invalidate();
+  }
+
+  /** 다시 연결된 뒤 첫 스냅샷은 효과 없이 기준만 */
+  rebase(): void {
+    this.cast.rebase();
+  }
+
+  /** 낮밤 단계를 다시 재서 바뀌었으면 조명·창밖 풍경을 바꾸고 한 번 그린다(`?clock=HH:MM`이면 그 시각으로 미리 보기) */
+  private checkDaylight(): void {
+    const now = Date.now();
+    const level = lightLevel(clockOverride(location.search, now) ?? now);
+    if (level === this.daylight) return;
+    this.daylight = level;
+    applyDaylight(this.lights, level);
+    this.office.backdrop.setDaylight(level);
     this.invalidate();
   }
 
@@ -143,9 +178,11 @@ export class OfficeView implements OfficeHost {
     this.disposed = true;
     if (this.timer) clearTimeout(this.timer);
     cancelAnimationFrame(this.raf);
+    if (this.daylightTimer) clearInterval(this.daylightTimer);
     this.resizeObserver.disconnect();
     document.removeEventListener('visibilitychange', this.onVisibility);
     this.dprQuery?.removeEventListener('change', this.onDpr);
+    this.cast.dispose();
     this.pass.dispose();
     this.renderer.dispose();
     this.container.replaceChildren();
@@ -153,6 +190,7 @@ export class OfficeView implements OfficeHost {
 
   /** 매 프레임 움직임(하위 클래스·캐릭터가 씀) */
   protected animate(t: number): void {
+    if (this.lastT && t - this.lastT > HIDDEN_SETTLE_MS) this.cast.settle(false); // 프레임이 오래 끊겼다 이어짐 — 이 프레임이 곧 그리니 다시 그리기를 예약하지 않는다(예약하면 반복이 두 줄로 늘어남)
     const dt = this.lastT ? Math.min(0.25, (t - this.lastT) / 1000) : 0;
     this.lastT = t;
     this.cast.animate(t, dt);
@@ -173,7 +211,7 @@ export class OfficeView implements OfficeHost {
     this.pass.render(this.renderer, this.scene, this.camera);
     this.labels.render(this.scene, this.camera);
     this.frames++;
-    const fps = targetFps(this.poses, document.hidden);
+    const fps = targetFps(this.poses, document.hidden, this.cast.bursting(t));
     if (fps === 0) return;
     // requestAnimationFrame이 다음 화면 갱신까지 더 기다리니 그만큼 일찍 깨운다(16장/초를 지키려고)
     this.timer = setTimeout(() => {
@@ -182,7 +220,14 @@ export class OfficeView implements OfficeHost {
   }
 
   private onVisibility = () => {
-    if (!document.hidden) this.invalidate();
+    if (document.hidden) {
+      this.hiddenAt = performance.now();
+      return;
+    }
+    // 오래 숨어 있었다면 밀린 걸음을 걷지 않고 지금 계획의 자리에 바로 선다
+    if (this.hiddenAt !== null && performance.now() - this.hiddenAt > HIDDEN_SETTLE_MS) this.cast.settle();
+    this.hiddenAt = null;
+    this.invalidate();
   };
 
   /** 창을 레티나 ↔ 일반 모니터로 옮기면 기기 해상도가 바뀐다 */

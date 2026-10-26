@@ -1,8 +1,10 @@
 // 사무실 장면: 배경(backdrop.ts) + 가구. 모두 코드로 만든 상자들 — 그림 파일 없음.
 import * as THREE from 'three';
 import { CSS2DObject } from 'three/examples/jsm/renderers/CSS2DRenderer.js';
-import { buildBackdrop, SLAB_H } from './backdrop.ts';
+import { buildBackdrop, SLAB_H, type Backdrop } from './backdrop.ts';
 import { armchair, beanBag, bigPlant, binders, bookshelf, boxStack, coatRack, copier, deskLamp, fileCabinet, fridge, FURN, lowCabinet, kitchenCounter, lowTable, officeChair, podDesk, podDivider, printer, receptionDesk, screenStand, shredder, smallPlant, sofa, stool, storageShelf, supplyCabinet, toilet, trashBin, vendingMachine, washbasin, waterCooler, whiteboard } from './furniture.ts';
+import { buildRacks } from './rack.ts';
+import { SCREEN } from './screens.ts';
 import { ARIA_DESK, ARIA_DESK_XS, ARIA_DESK_Y, DEV_DESK, DEV_DESKS, DESK_DEPTH, FLOOR_X, DESK_WIDTH, DESKS, MEETING_TABLE, POD_X0, POD_YS, ROOMS, chairPosition, meetingSpot } from './layout.ts';
 
 export const WALL_H = 3.0;
@@ -43,11 +45,11 @@ function roomSign(text: string, y: number): CSS2DObject {
   return sign;
 }
 
-export type OfficeScene = { group: THREE.Group; deskScreens: THREE.Mesh[] };
+export type OfficeScene = { group: THREE.Group; deskScreens: THREE.Mesh[]; devScreens: THREE.Mesh[]; racks: THREE.MeshLambertMaterial[][]; backdrop: Backdrop };
 
 export function buildOffice(): OfficeScene {
   const g = new THREE.Group();
-  buildBackdrop(g);
+  const backdrop = buildBackdrop(g);
 
   // 사무실: 4인 책상 묶음 2개(두 자리씩 마주 보고 가운데 칸막이). 순서는 seatPosition과 같게(DESKS)
   const deskScreens = DESKS.map((d, seat) => podDesk(g, d.x0, d.y0, DESK_DEPTH, DESK_WIDTH, d.facing, seat, chairPosition(seat)));
@@ -108,17 +110,16 @@ export function buildOffice(): OfficeScene {
   trashBin(g, 14.6, 17.6);
 
   // 개발실(Codex): 서버랙 + 큰 모니터 책상 3개
-  for (const x0 of [12.0, 13.0, 14.0]) {
-    g.add(block(x0, 0.2, 0.8, 0.8, 0, 1.7, '#3C4656'));
-    for (let k = 0; k < 4; k++) g.add(block(x0 + 0.15, 1.0, 0.08, 0.02, 0.35 + k * 0.36, 0.06, k % 2 ? '#7CE0A3' : '#5BC0EB', { emissive: k % 2 ? '#7CE0A3' : '#5BC0EB' }));
-  }
+  const racks = buildRacks(g);
+  const devScreens: THREE.Mesh[] = [];
   for (const { x: x0, y: y0 } of DEV_DESKS) {
     const cx = x0 + DEV_DESK.w / 2;
     lowTable(g, x0, y0, DEV_DESK.w, DEV_DESK.d, 0.58);
     g.add(block(cx - 0.6, y0 + 0.08, 1.2, 0.12, 0.63, 0.7, FURN.monitor));
-    const screen = new THREE.Mesh(new THREE.PlaneGeometry(1.04, 0.53), new THREE.MeshBasicMaterial({ color: '#CFF1E6' }));
+    const screen = new THREE.Mesh(new THREE.PlaneGeometry(1.04, 0.53), new THREE.MeshBasicMaterial({ color: SCREEN.off }));
     screen.position.set(cx, 0.63 + 0.35, y0 + 0.205);
     g.add(screen);
+    devScreens.push(screen); // 빈 개발실은 꺼진 화면, Codex가 앉으면 cast가 칠한다
     officeChair(g, cx, y0 + 1.2, 'pz');
   }
 
@@ -148,5 +149,5 @@ export function buildOffice(): OfficeScene {
   // 방 팻말: 오른쪽 방들(개발실·비서실·회의실)만, 판 오른쪽 옆면의 각 방 가운데
   for (const r of [ROOMS.codex, ROOMS.aria, ROOMS.meeting]) g.add(roomSign(r.label, (r.y0 + r.y1) / 2));
 
-  return { group: g, deskScreens };
+  return { group: g, deskScreens, devScreens, racks, backdrop };
 }
