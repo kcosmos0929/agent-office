@@ -296,7 +296,7 @@ test('POST /api/codex/hook: Codex 제목 읽기가 주는 제목을 붙임(Claud
 
 test('admin codex-auto-approve: 루프백+헤더만, {on: boolean}이면 설정을 바꾸고 저장, 아니면 400', async () => {
   const saved: unknown[] = [];
-  const { url, srv } = await boot({ saveConfig: (patch) => saved.push(patch) });
+  const { url, srv } = await boot({ saveConfig: (patch) => { saved.push(patch); return true; } });
   const post = (body: string, headers: Record<string, string> = { 'x-so-admin': '1' }) => fetch(url + '/api/admin/codex-auto-approve', { method: 'POST', headers, body });
   assert.equal((await post('{"on":false}', {})).status, 403);
   assert.equal((await post('{"on":"아니"}')).status, 400);
@@ -307,10 +307,38 @@ test('admin codex-auto-approve: 루프백+헤더만, {on: boolean}이면 설정�
   void srv;
 });
 
+test('admin codex-auto-approve: 저장에 실패하면(false·예외) 500이고 설정은 그대로, 켜면 이미 떠 있던 Codex 승인 대기를 지움 (리뷰 P2)', { timeout: 5000 }, async () => {
+  let fail: 'no' | 'false' | 'throw' = 'false';
+  const { url } = await boot({ saveConfig: () => { if (fail === 'throw') throw new Error('디스크'); return fail === 'no'; } });
+  const post = (on: boolean) => fetch(url + '/api/admin/codex-auto-approve', { method: 'POST', headers: { 'x-so-admin': '1' }, body: JSON.stringify({ on }) });
+  const cfg = async () => (await (await fetch(url + '/api/client-config')).json()).codexAutoApprove;
+  assert.equal((await post(false)).status, 500);
+  assert.equal(await cfg(), true);
+  fail = 'throw';
+  assert.equal((await post(false)).status, 500);
+  assert.equal(await cfg(), true);
+  fail = 'no';
+  assert.equal((await post(false)).status, 204);
+  assert.equal(await cfg(), false);
+  const hook = (o: Record<string, unknown>) => fetch(url + '/api/codex/hook', { method: 'POST', headers: { authorization: `Bearer ${TOKEN}` }, body: JSON.stringify({ session_id: 'x5', cwd: '/x', ...o }) });
+  await hook({ hook_event_name: 'UserPromptSubmit' });
+  await hook({ hook_event_name: 'PreToolUse', tool_name: 'Bash', tool_use_id: 'u1', tool_input: { command: 'npm test' } });
+  await hook({ hook_event_name: 'PermissionRequest', tool_name: 'Bash', tool_input: { command: 'npm test' } });
+  const ws = new WebSocket(url.replace('http', 'ws') + '/ws');
+  await nextSnapshot(ws, (s) => s.agents.some((a) => a.sessionId === 'x5' && a.status === 'approving'));
+  const cleared = nextSnapshot(ws, (s) => s.agents.some((a) => a.sessionId === 'x5' && a.status === 'running'));
+  assert.equal((await post(true)).status, 204);
+  await cleared;
+  ws.close();
+});
+
 test('saveConfigPatch: config.json의 다른 값·프로젝트 이름은 그대로 두고 그 키만 바꿈', () => {
   const h = fs.mkdtempSync(path.join(os.tmpdir(), 'so-cfgp-'));
   fs.writeFileSync(path.join(h, 'config.json'), JSON.stringify({ port: 4999, projectNames: { a: '가' }, extra: 1 }));
-  saveConfigPatch(h, { codexAutoApprove: false });
+  assert.equal(saveConfigPatch(h, { codexAutoApprove: false }), true);
   assert.deepEqual(JSON.parse(fs.readFileSync(path.join(h, 'config.json'), 'utf8')), { port: 4999, projectNames: { a: '가' }, extra: 1, codexAutoApprove: false });
   assert.equal(loadConfig(h).codexAutoApprove, false);
+  fs.writeFileSync(path.join(h, 'config.json'), '{ 깨진');
+  assert.equal(saveConfigPatch(h, { codexAutoApprove: true }), false);
+  assert.equal(fs.readFileSync(path.join(h, 'config.json'), 'utf8'), '{ 깨진');
 });

@@ -146,6 +146,42 @@ export class OfficeState {
     return false;
   }
 
+  /** 'Codex 자동 승인'을 켤 때: 이미 걸린 Codex 승인 대기(메인·도우미)만 지우고 하던 일로 되돌린다. 질문 대기는 그대로 */
+  dropCodexApprovals(now: number): boolean {
+    const before = this.fingerprint();
+    for (const entry of this.entries.values()) {
+      if (entry.agent.kind !== 'codex') continue;
+      let dropped = false;
+      if (entry.waitingMain === 'permission') {
+        entry.waitingMain = null;
+        dropped = true;
+      }
+      for (const [id, kind] of entry.waitingSubs) {
+        if (kind !== 'permission') continue;
+        entry.waitingSubs.delete(id);
+        dropped = true;
+      }
+      if (!dropped || !WAITS.has(entry.agent.status)) continue;
+      const a = entry.agent;
+      const shown = this.shownWait(entry);
+      if (shown) {
+        this.setStatus(a, this.waitStatus(entry, shown, now), now);
+        a.detail = null;
+        continue;
+      }
+      entry.waitSince = null;
+      if (entry.stopError) {
+        this.finishTurn(entry, now);
+        continue;
+      }
+      // 하던 일로: 열린 메인 도구가 있으면 그 활동·내용, 없으면 도우미가 일하면 👥, 아니면 💭
+      const open = [...entry.openTools.values()].at(-1);
+      this.setStatus(a, open ? open.activity : a.subagents.length > 0 ? 'delegating' : 'thinking', now);
+      a.detail = open ? open.detail : null;
+    }
+    return this.fingerprint() !== before;
+  }
+
   tick(now: number): boolean {
     let changed = false;
     for (const [id, entry] of this.entries) {

@@ -1018,3 +1018,28 @@ test('touchPaths: 만진 경로로 알아낸 마지막 프로젝트가 이름표
   assert.equal(one(st).project, 'Beta');
   assert.equal(st.touchPaths('없음', ['/w/alpha/a.ts'], CWD), false);
 });
+
+test('스위치를 켜면 이미 떠 있던 Codex 승인 대기(메인·도우미)만 지우고 하던 일로 되돌림, 질문 대기·Claude는 그대로 (리뷰 P2)', () => {
+  const st = make();
+  const cx = (e: Ev): Ev => ({ ...e, kind: 'codex' });
+  st.apply(cx(ev.prompt('x1', 0)));
+  st.apply(cx(ev.tool('x1', 100, 'u1')));
+  st.apply(cx(ev.perm('x1', 200)));
+  st.tick(6_000);
+  const find = (id: string) => st.snapshot(0).agents.find((a) => a.sessionId === id)!;
+  assert.equal(find('x1').status, 'permission');
+  st.apply(cx(ev.prompt('x2', 0)));
+  st.apply(cx(ev.subStart('x2', 100, 'A')));
+  st.apply(cx(ev.perm('x2', 200, 'A')));
+  st.apply(cx(ev.question('x2', 300)));
+  st.apply(ev.prompt('c1', 0));
+  st.apply(ev.tool('c1', 100, 'u1'));
+  st.apply(ev.perm('c1', 200));
+  assert.equal(st.dropCodexApprovals(7_000), true);
+  assert.deepEqual([find('x1').status, find('x1').detail], ['running', 'running u1']);
+  assert.equal(find('x2').status, 'question');
+  assert.equal(find('c1').status, 'permission');
+  st.apply(cx(ev.end('x1', 8_000, 'u1')));
+  assert.equal(find('x1').status, 'thinking');
+  assert.equal(st.dropCodexApprovals(9_000), false);
+});

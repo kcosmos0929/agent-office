@@ -32,8 +32,8 @@ export type ServerOptions = {
   onAdmin?: (action: AdminAction) => void;
   /** 대화 게이지 읽기(테스트에서 바꿈) */
   readContext?: (file: string) => Promise<ContextReading>;
-  /** 설정 창에서 바꾼 값을 config.json에 저장(테스트에서 바꿈) */
-  saveConfig?: (patch: Partial<Config>) => void;
+  /** 설정 창에서 바꾼 값을 config.json에 저장 — 저장했으면 true(테스트에서 바꿈) */
+  saveConfig?: (patch: Partial<Config>) => boolean;
   /** Codex 세션 id → 제목(Codex 색인 파일, 테스트에서 바꿈). 없으면 Codex 제목을 안 읽음 */
   codexTitle?: (sessionId: string) => string | null;
 };
@@ -181,8 +181,18 @@ export function startServer(opts: ServerOptions): Promise<RunningServer> {
           on = undefined;
         }
         if (typeof on !== 'boolean') return text(res, 400);
+        // 저장이 된 뒤에만 반영 — 실패하면 화면(체크 되돌림)·서버·파일이 같은 값으로 남게
+        let saved: boolean;
+        try {
+          saved = opts.saveConfig ? opts.saveConfig({ codexAutoApprove: on }) : true;
+        } catch {
+          saved = false;
+        }
+        if (!saved) return text(res, 500);
+        const was = config.codexAutoApprove;
         config.codexAutoApprove = on;
-        opts.saveConfig?.({ codexAutoApprove: on });
+        // 켜는 순간 이미 떠 있던 Codex 승인 대기(🛡️·❗)도 지운다
+        if (on && !was && state.dropCodexApprovals(now())) notify();
         return text(res, 204);
       }
       if (action !== 'restart' && action !== 'stop') return text(res, 404);

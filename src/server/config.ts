@@ -59,8 +59,8 @@ export function peekConfig(home: string): Config {
   }
 }
 
-/** config.json에서 patch의 키만 바꿔 저장한다(다른 값은 그대로). 파일이 깨져 있으면 건드리지 않는다 */
-export function saveConfigPatch(home: string, patch: Partial<Config>): void {
+/** config.json에서 patch의 키만 바꿔 저장한다(다른 값은 그대로). 저장했으면 true, 파일이 깨져 있어 건드리지 않았으면 false. 쓰기 오류는 던진다 */
+export function saveConfigPatch(home: string, patch: Partial<Config>): boolean {
   const file = homeFiles(home).config;
   let current: Record<string, unknown> = {};
   try {
@@ -68,10 +68,11 @@ export function saveConfigPatch(home: string, patch: Partial<Config>): void {
   } catch (err) {
     if ((err as NodeJS.ErrnoException).code !== 'ENOENT') {
       console.warn('[synthetic-office] config.json을 읽지 못해 설정을 저장하지 않았어요');
-      return;
+      return false;
     }
   }
   const tmp = file + '.tmp';
   fs.writeFileSync(tmp, JSON.stringify({ ...current, ...patch }, null, 2) + '\n');
   fs.renameSync(tmp, file);
+  return true;
 }
