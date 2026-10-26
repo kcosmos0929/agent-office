@@ -4,6 +4,10 @@
 export type Point = { x: number; y: number };
 export type Room = { x0: number; y0: number; x1: number; y1: number; label: string };
 
+/** 카메라: 장면 가운데를 (1, 0.82, 1) 방향에서 내려다보는 고정 아이소(방위 45°, 약 30° 아래로). 창에 장면 폭·높이(월드 단위)를 맞춘다 */
+export const VIEW_DIR = [1, 0.82, 1] as const;
+export const FIT = { w: 25.8, h: 18.6 };
+
 export const FLOOR_X = 15;
 export const FLOOR_Z = 18;
 /** 일하는 방들의 앞 끝 = 앞쪽 띠(창고·화장실·입구 복도·휴게실→안쪽 탕비실)의 시작 */
@@ -93,7 +97,8 @@ export function meetingSpot(i: number): Point {
 
 const inRoom = (p: Point, r: Room) => p.x > r.x0 && p.x < r.x1 && p.y > r.y0 && p.y < r.y1;
 
-/** 입구에서 목적지까지 걷는 길. 입구 복도를 곧게 지나, 사무실 책상은 가로 통로 → 묶음 옆 통로로, 회의실은 회의실 문을 지난다 */
+/** 입구에서 목적지까지 걷는 길. 바닥 격자 방향(x만 또는 y만 바뀌는 구간)으로만 꺾는다 — 비스듬한 4방향 그림과 맞추려고.
+ *  입구 복도를 곧게 지나, 사무실 책상은 가로 통로 → 묶음 옆 통로로, 회의실은 회의실 문을 지난다 */
 export function pathTo(dest: Point): Point[] {
   if (inRoom(dest, ROOMS.meeting)) {
     const y = ROOM_DOORS.meeting.y;
@@ -103,6 +108,50 @@ export function pathTo(dest: Point): Point[] {
     const x = dest.x < POD_X0 + DESK_DEPTH ? AISLE_X.window : AISLE_X.glass;
     return [DOOR, { x: DOOR.x, y: CROSS_Y }, { x, y: CROSS_Y }, { x, y: dest.y }, dest];
   }
-  // 그 밖(로비 대기 자리 등): 입구 복도를 곧게 지나 로비로 들어온 뒤
-  return dest.y < FRONT_Y ? [DOOR, { x: DOOR.x, y: FRONT_Y - 0.4 }, dest] : [DOOR, dest];
+  // 그 밖(로비 대기 자리 등): 입구 복도를 곧게 지나 그 줄에서 옆으로
+  return [DOOR, { x: DOOR.x, y: dest.y }, dest];
+}
+
+/** 머무는 곳에서 바라보는 격자 방향: 책상 자리 = 모니터 쪽, 회의실 = 테이블 쪽, 로비 대기 = 안내 데스크 쪽, 그 밖 = 보는 사람 쪽(+x) */
+export function facingAt(p: Point): Point {
+  for (let i = 0; i < DESKS.length; i++) {
+    const s = seatPosition(i);
+    if (s.x === p.x && s.y === p.y) return DESKS[i].facing === 'px' ? { x: -1, y: 0 } : { x: 1, y: 0 };
+  }
+  if (inRoom(p, ROOMS.meeting)) {
+    const t = MEETING_TABLE;
+    if (p.y < t.y0) return { x: 0, y: 1 };
+    if (p.y > t.y1) return { x: 0, y: -1 };
+    return p.x < t.x0 ? { x: 1, y: 0 } : { x: -1, y: 0 };
+  }
+  if (p.x === WAITING_SPOT.x && p.y === WAITING_SPOT.y) return { x: 0, y: -1 };
+  return { x: 1, y: 0 };
+}
+
+/** 경로(꺾이는 점 목록)에서 p가 놓인 구간 번호(가장 가까운 구간) */
+export function segmentAt(route: Point[], p: Point): number {
+  let best = 0;
+  let bestD = Infinity;
+  for (let i = 0; i < route.length - 1; i++) {
+    const a = route[i];
+    const b = route[i + 1];
+    const dx = b.x - a.x;
+    const dy = b.y - a.y;
+    const L = dx * dx + dy * dy;
+    const t = L ? Math.max(0, Math.min(1, ((p.x - a.x) * dx + (p.y - a.y) * dy) / L)) : 0;
+    const d = Math.hypot(p.x - (a.x + dx * t), p.y - (a.y + dy * t));
+    if (d < bestD - 1e-9) {
+      best = i;
+      bestD = d;
+    }
+  }
+  return best;
+}
+
+/** 경로 위 p에서 끝(머무는 곳)까지 / 처음(입구)까지 — 같은 길을 따라가니 격자 방향이 유지된다 */
+export function forwardFrom(route: Point[], p: Point): Point[] {
+  return [p, ...route.slice(segmentAt(route, p) + 1)];
+}
+export function backwardFrom(route: Point[], p: Point): Point[] {
+  return [p, ...route.slice(0, segmentAt(route, p) + 1).reverse()];
 }
