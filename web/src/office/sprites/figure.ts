@@ -12,6 +12,7 @@ export class Figure {
   /** 발 위치에 붙일 묶음 */
   readonly root = new THREE.Group();
   readonly mesh: THREE.Mesh;
+  private readonly shadow: THREE.Mesh;
   private readonly material = new THREE.MeshBasicMaterial({ alphaTest: 0.5, visible: false });
   private readonly look: Look;
   private readonly scale: number;
@@ -31,11 +32,11 @@ export class Figure {
     const pivot = new THREE.Group();
     pivot.rotation.y = Math.PI / 4; // 판이 카메라(+x, +z) 쪽을 보게
     pivot.add(this.mesh);
-    const shadow = new THREE.Mesh(new THREE.CircleGeometry(0.26 * scale, 20), shadowMat);
-    shadow.rotation.x = -Math.PI / 2;
-    shadow.scale.y = 0.6;
-    shadow.position.y = 0.012;
-    this.root.add(shadow, pivot);
+    this.shadow = new THREE.Mesh(new THREE.CircleGeometry(0.26 * scale, 20), shadowMat);
+    this.shadow.rotation.x = -Math.PI / 2;
+    this.shadow.scale.y = 0.6;
+    this.shadow.position.y = 0.012;
+    this.root.add(this.shadow, pivot);
     this.setFace(face);
     this.show('SE', 'idle');
   }
@@ -71,6 +72,7 @@ export class Figure {
     this.material.map?.dispose();
     this.material.dispose();
     this.mesh.geometry.dispose();
+    this.shadow.geometry.dispose(); // 그림자 재질(shadowMat)은 모두 같이 쓰니 남긴다
   }
 
   private apply(): void {
