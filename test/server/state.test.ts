@@ -36,13 +36,14 @@ const ev = {
 };
 const one = (st: OfficeState, now = 0) => st.snapshot(now).agents[0];
 
-test('새 세션: done(새 세션), 프로젝트 이름표, 모자 0·자리 0', () => {
+test('새 세션: 시작 신호만으론 안 보이고(열기만 한 세션), 첫 메시지부터 💭 · 프로젝트 이름표, 모자 0·자리 0', () => {
   const st = make();
-  assert.equal(st.apply(ev.start('s1', 0)), true);
+  st.apply(ev.start('s1', 0));
+  assert.deepEqual(st.snapshot(0).agents, []);
+  st.apply(ev.prompt('s1', 1));
   const a = one(st);
   assert.equal(a.id, 'claude:s1');
-  assert.equal(a.status, 'done');
-  assert.equal(a.detail, '새 세션');
+  assert.equal(a.status, 'thinking');
   assert.equal(a.project, '가로망 중심성');
   assert.equal(a.hat, 0);
   assert.equal(a.seat, 0);
@@ -68,7 +69,7 @@ test('권한 대기 중 병렬 도구 하나가 끝나도 permission 유지, 마
 
 test('session-start 중복(resume·compact)에도 에이전트 하나, 모자·자리·상태 그대로', () => {
   const st = make();
-  st.apply(ev.start('s1', 0));
+  st.apply(ev.prompt('s1', 0));
   st.apply(ev.start('s2', 1));
   st.apply(ev.prompt('s2', 2));
   st.apply(ev.tool('s2', 3, 'A', 'editing'));
@@ -115,15 +116,15 @@ test('running은 2시간이 지나도 running', () => {
 
 test('gone 10분 뒤 제거되고 모자 0이 다음 세션에 재사용', () => {
   const st = make();
-  st.apply(ev.start('s1', 0));
-  st.apply(ev.start('s2', 0));
+  st.apply(ev.prompt('s1', 0));
+  st.apply(ev.prompt('s2', 0));
   st.apply(ev.end_('s1', 1 * M));
   assert.equal(st.snapshot(1 * M).agents.find((a) => a.sessionId === 's1')!.status, 'gone');
   st.tick(11 * M - 1);
   assert.equal(st.snapshot(0).agents.length, 2);
   assert.equal(st.tick(11 * M), true);
   assert.equal(st.snapshot(0).agents.length, 1);
-  st.apply(ev.start('s3', 12 * M));
+  st.apply(ev.prompt('s3', 12 * M));
   const s3 = st.snapshot(0).agents.find((a) => a.sessionId === 's3')!;
   assert.equal(s3.hat, 0);
   assert.equal(s3.seat, 0);
@@ -131,7 +132,7 @@ test('gone 10분 뒤 제거되고 모자 0이 다음 세션에 재사용', () =>
 
 test('모자·자리가 8개를 넘으면 모자는 개수 % 8, 자리는 -1', () => {
   const st = make();
-  for (let i = 0; i < 9; i++) st.apply(ev.start(`s${i}`, i));
+  for (let i = 0; i < 9; i++) st.apply(ev.prompt(`s${i}`, i));
   const ninth = st.snapshot(0).agents.find((a) => a.sessionId === 's8')!;
   assert.equal(ninth.hat, 0);
   assert.equal(ninth.seat, -1);
@@ -172,17 +173,20 @@ test('stop 뒤의 늦은 tool-end는 무시', () => {
   assert.equal(one(st).status, 'done');
 });
 
-test('퇴근 뒤 다시 열면(session-start) done으로 살아남', () => {
+test('퇴근 뒤 다시 열기만 하면(session-start) 안 보이고, 메시지를 보내면 다시 보임', () => {
   const st = make();
-  st.apply(ev.start('s1', 0));
+  st.apply(ev.prompt('s1', 0));
   st.apply(ev.end_('s1', 1));
+  assert.equal(one(st).status, 'gone');
   st.apply(ev.start('s1', 2));
-  assert.equal(one(st).status, 'done');
+  assert.deepEqual(st.snapshot(0).agents, []);
+  st.apply(ev.prompt('s1', 3));
+  assert.equal(one(st).status, 'thinking');
 });
 
 test('제목: 이벤트의 title이 반영되고, 제목 없고 기록 경로를 알면 needsTitle이 그 경로', () => {
   const st = make();
-  st.apply({ ...ev.start('s1', 0), transcriptPath: '/tmp/t.jsonl' });
+  st.apply({ ...ev.prompt('s1', 0), transcriptPath: '/tmp/t.jsonl' });
   assert.equal(st.needsTitle('s1'), '/tmp/t.jsonl');
   st.apply({ ...b('s1', 1), type: 'title', title: '정류장 승하차 결합' });
   assert.equal(one(st).title, '정류장 승하차 결합');
@@ -225,12 +229,12 @@ test('12시간 동안 아무 신호가 없으면(닫혔는데 종료 신호가 �
   st.apply(ev.stop('s1', 0));
   st.apply(ev.prompt('s2', 0));
   st.apply(ev.perm('s2', 0));
-  st.apply(ev.start('s3', 6 * 60 * M));
+  st.apply(ev.prompt('s3', 6 * 60 * M));
   st.tick(12 * 60 * M - 1);
   assert.equal(st.snapshot(0).agents.length, 3);
   assert.equal(st.tick(12 * 60 * M), true);
   assert.deepEqual(st.snapshot(0).agents.map((a) => a.sessionId), ['s3']);
-  st.apply(ev.start('s4', 12 * 60 * M + 1));
+  st.apply(ev.prompt('s4', 12 * 60 * M + 1));
   assert.equal(st.snapshot(0).agents.find((a) => a.sessionId === 's4')!.hat, 0);
 });
 
@@ -499,7 +503,7 @@ test('R5: 등록부 name이 제목이고, 그 뒤 훅의 제목이 덮어쓰지 
 
 test('등록부에 있으면 12시간 무신호여도 안 지움', () => {
   const st = make();
-  st.apply(ev.start('s1', 0));
+  st.apply(ev.prompt('s1', 0));
   st.applyRegistry(read(reg('s1', 'idle', 0)), 1_000);
   st.tick(13 * 60 * M);
   assert.equal(st.snapshot(0).agents.length, 1);
@@ -948,6 +952,53 @@ test('Codex 자동 승인 스위치가 켜져 있으면 Codex 승인 요청(메�
   st.apply(cx(ev.tool('x1', 62_000, 'u2')));
   st.apply(cx(ev.perm('x1', 62_100)));
   assert.equal(st.snapshot(0).agents.find((a) => a.sessionId === 'x1')!.status, 'approving');
+});
+
+// 열기만 하고 메시지는 안 보낸 세션은 보드에 안 보인다(2026-10-26 사용자 결정) — 앱이 지난 세션을 열면 시작 신호만 옴
+test('열기만 한 세션: 시작·제목·idle 알림·퇴근만으론 안 보이고, 도구·승인 같은 일 신호부터 보임', () => {
+  const st = make();
+  st.apply(ev.start('s1', 0));
+  st.apply({ ...b('s1', 1), type: 'title', title: '지난 작업' });
+  st.apply({ ...b('s1', 2), type: 'idle' });
+  assert.deepEqual(st.snapshot(0).agents, []);
+  st.apply(ev.end_('s1', 3));
+  assert.deepEqual(st.snapshot(0).agents, []);
+  const cx = make();
+  cx.apply({ ...ev.start('x1', 0), kind: 'codex' });
+  assert.deepEqual(cx.snapshot(0).agents, []);
+  cx.apply({ ...ev.tool('x1', 1, 'u1'), kind: 'codex' });
+  assert.equal(one(cx).status, 'running');
+});
+
+test('열기만 한 세션은 모자·자리를 차지하지 않음: 나중에 일을 시작하면 그때 빈 것을 받음', () => {
+  const st = make();
+  st.apply(ev.start('hidden', 0));
+  st.apply(ev.prompt('c1', 1));
+  const c1 = st.snapshot(0).agents.find((a) => a.sessionId === 'c1')!;
+  assert.deepEqual([c1.hat, c1.seat], [0, 0]);
+  st.apply(ev.prompt('hidden', 2));
+  const h = st.snapshot(0).agents.find((a) => a.sessionId === 'hidden')!;
+  assert.deepEqual([h.hat, h.seat], [1, 1]);
+});
+
+test('훅 없이 등록부로만 보는 세션: 일하는 중·기다림은 보이고, idle은 시작 뒤 한 차례라도 했을 때만(startedAt과 10초 넘게 차이)', () => {
+  const st = make();
+  st.applyRegistry(read(
+    reg('opened', 'idle', 100_000, { startedAt: 99_000 }),
+    reg('worked', 'idle', 100_000, { startedAt: 10_000 }),
+    reg('busy', 'busy', 100_000, { startedAt: 99_500 }),
+    reg('old', 'idle', 100_000),
+  ), 100_500);
+  assert.deepEqual(st.snapshot(0).agents.map((a) => a.sessionId).sort(), ['busy', 'old', 'worked']);
+});
+
+test('시작 신호를 받은 세션은 등록부 idle로는 보이지 않음(열기만 함), 메시지를 보내면 보임', () => {
+  const st = make();
+  st.apply(ev.start('s1', 1_000));
+  st.applyRegistry(read(reg('s1', 'idle', 30_000, { startedAt: 1_000 })), 30_000);
+  assert.deepEqual(st.snapshot(0).agents, []);
+  st.apply(ev.prompt('s1', 31_000));
+  assert.equal(one(st).status, 'thinking');
 });
 
 test('touchPaths: 만진 경로로 알아낸 마지막 프로젝트가 이름표, 못 알아내면 그대로, 시작 폴더가 바뀌어도 유지', () => {
