@@ -136,11 +136,15 @@ export function waterCooler(g: THREE.Group, x0: number, z0: number): void {
   g.add(block(x0 + 0.05, z0 + 0.05, 0.26, 0.26, 0.82, 0.32, '#7FB8D9', { transparent: true, opacity: 0.85 }));
 }
 
-/** 복합기: 회색 몸통 + 진한 조작판 */
-export function printer(g: THREE.Group, x0: number, z0: number): void {
+/** 앞이 front 쪽인 x 깊이 depth짜리 물건에서, 앞면부터 u만큼 들어간 곳의 상자(크기 size) 시작 x */
+const fromFront = (x0: number, depth: number, front: 'px' | 'nx') => (u: number, size: number) => (front === 'px' ? x0 + depth - u - size : x0 + u);
+
+/** 복합기: 회색 몸통 + 진한 조작판(앞쪽 위). front = 사람이 서는 쪽 */
+export function printer(g: THREE.Group, x0: number, z0: number, front: 'px' | 'nx' = 'px'): void {
+  const X = fromFront(x0, 0.6, front);
   g.add(block(x0, z0, 0.6, 0.85, 0.04, 0.72, F.appliance));
   g.add(block(x0 + 0.05, z0 + 0.05, 0.5, 0.75, 0.76, 0.06, '#9EA3AA'));
-  g.add(block(x0 + 0.45, z0 + 0.55, 0.12, 0.25, 0.82, 0.03, F.steel));
+  g.add(block(X(0.03, 0.12), z0 + 0.55, 0.12, 0.25, 0.82, 0.03, F.steel));
 }
 
 /** 서류 캐비닛: 진한 회색 + 손잡이 3단 */
@@ -283,18 +287,22 @@ export function lowCabinet(g: THREE.Group, x0: number, z0: number, w: number, d:
   }
 }
 
-/** 바인더 줄(바닥 높이 h0, z 방향으로 n개) */
-export function binders(g: THREE.Group, x0: number, z0: number, h0: number, n: number): void {
+/** 바인더 줄(바닥 높이 h0, n개). along = 벽을 따라 늘어서는 방향(z: 창가 벽, 등이 +x / x: 뒷벽, 등이 +z) */
+export function binders(g: THREE.Group, x0: number, z0: number, h0: number, n: number, along: 'z' | 'x' = 'z'): void {
   const colors = ['#3E6E8E', '#C0563F', '#2E3036', '#D9B44A', '#5E8F4E'];
-  for (let i = 0; i < n; i++) g.add(block(x0, z0 + i * 0.08, 0.26, 0.07, h0, 0.3, colors[i % colors.length]));
+  for (let i = 0; i < n; i++) {
+    if (along === 'z') g.add(block(x0, z0 + i * 0.08, 0.26, 0.07, h0, 0.3, colors[i % colors.length]));
+    else g.add(block(x0 + i * 0.08, z0, 0.07, 0.26, h0, 0.3, colors[i % colors.length]));
+  }
 }
 
-/** 큰 복사기(앞이 +x): 몸통 + 위 덮개 + 종이 서랍 줄 + 조작판 */
-export function copier(g: THREE.Group, x0: number, z0: number): void {
+/** 큰 복사기: 몸통 + 위 덮개 + 종이 서랍 줄(앞면) + 조작판(앞쪽 위). front = 사람이 서는 쪽 */
+export function copier(g: THREE.Group, x0: number, z0: number, front: 'px' | 'nx' = 'px'): void {
+  const X = fromFront(x0, 0.6, front);
   g.add(block(x0, z0, 0.6, 0.75, 0.04, 0.95, F.appliance));
   g.add(block(x0 + 0.04, z0 + 0.04, 0.52, 0.67, 0.99, 0.08, '#9EA3AA'));
-  for (const h of [0.2, 0.42, 0.64]) g.add(block(x0 + 0.6, z0 + 0.08, 0.01, 0.59, h, 0.015, '#8A9099'));
-  g.add(block(x0 + 0.45, z0 + 0.5, 0.15, 0.22, 1.07, 0.04, F.steel));
+  for (const h of [0.2, 0.42, 0.64]) g.add(block(X(-0.01, 0.01), z0 + 0.08, 0.01, 0.59, h, 0.015, '#8A9099'));
+  g.add(block(X(0, 0.15), z0 + 0.5, 0.15, 0.22, 1.07, 0.04, F.steel));
 }
 
 /** 문서 파쇄기 */
@@ -303,11 +311,12 @@ export function shredder(g: THREE.Group, x0: number, z0: number): void {
   g.add(block(x0 + 0.04, z0 + 0.12, 0.28, 0.06, 0.59, 0.005, F.black));
 }
 
-/** 비품 수납장(앞이 +x): 높은 철제 + 문 두 짝 줄 + 손잡이 */
-export function supplyCabinet(g: THREE.Group, x0: number, z0: number): void {
+/** 비품 수납장: 높은 철제 + 문 두 짝 줄 + 손잡이(앞면). front = 문이 열리는 쪽 */
+export function supplyCabinet(g: THREE.Group, x0: number, z0: number, front: 'px' | 'nx' = 'px'): void {
+  const X = fromFront(x0, 0.5, front);
   g.add(block(x0, z0, 0.5, 0.9, 0.04, 1.6, '#4A4E57'));
-  g.add(block(x0 + 0.5, z0 + 0.445, 0.005, 0.01, 0.1, 1.45, F.black));
-  for (const z of [z0 + 0.35, z0 + 0.5]) g.add(block(x0 + 0.5, z, 0.02, 0.05, 0.8, 0.18, F.handle));
+  g.add(block(X(-0.005, 0.005), z0 + 0.445, 0.005, 0.01, 0.1, 1.45, F.black));
+  for (const z of [z0 + 0.35, z0 + 0.5]) g.add(block(X(-0.02, 0.02), z, 0.02, 0.05, 0.8, 0.18, F.handle));
 }
 
 /** 이동식 화이트보드(앞이 +z): 바퀴 받침 + 다리 + 흰 판 + 낙서 몇 줄 */
