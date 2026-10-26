@@ -24,7 +24,7 @@ export function mergeCodexHooks(file: Record<string, unknown>, command: string):
   return changed ? { next, changed, conflict: null } : unchanged(null);
 }
 
-/** 우리 것만 뺀다. empty = 훅이 다 비고 다른 키도 없음(그러면 파일을 지워도 됨) */
+/** 우리 것만 뺀다. 훅이 다 비면 hooks 키도 빼서 {}가 될 수 있다(파일은 지우지 않음) */
 export function removeCodexHooks(file: Record<string, unknown>): { next: Record<string, unknown>; changed: boolean } {
   if (!isObject(file.hooks)) return { next: file, changed: false };
   const next = structuredClone(file);
