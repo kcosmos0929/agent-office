@@ -41,6 +41,8 @@ export function makeCodexTitleReader(file: string): (sessionId: string) => strin
   return (sessionId) => {
     try {
       const st = fs.statSync(file);
+      // FIFO·장치 파일(또는 그 바로가기)은 동기 읽기가 서버 전체를 멈출 수 있어 읽지 않는다
+      if (!st.isFile()) throw new Error('정규 파일 아님');
       const next = `${st.size}:${st.mtimeMs}`;
       if (next !== key) {
         titles = parseCodexIndex(readTail(file, st.size));
