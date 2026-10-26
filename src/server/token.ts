@@ -13,11 +13,19 @@ function loadOrCreate(home: string, file: string): string {
   return write(home, file);
 }
 
+/** 같은 폴더의 임시 파일에 0600으로 다 쓴 뒤 한 번에 바꾼다 — 실패하면 옛 파일이 그대로라 서버(메모리)와 어긋나지 않는다 */
 function write(home: string, file: string): string {
   fs.mkdirSync(home, { recursive: true, mode: 0o700 });
   const token = crypto.randomBytes(32).toString('hex');
-  fs.writeFileSync(file, token + '\n', { mode: 0o600 });
-  fs.chmodSync(file, 0o600);
+  const tmp = `${file}.${process.pid}.${crypto.randomBytes(4).toString('hex')}.tmp`;
+  try {
+    fs.writeFileSync(tmp, token + '\n', { mode: 0o600, flag: 'wx' });
+    fs.chmodSync(tmp, 0o600);
+    fs.renameSync(tmp, file);
+  } catch (err) {
+    fs.rmSync(tmp, { force: true });
+    throw err;
+  }
   return token;
 }
 

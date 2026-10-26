@@ -101,6 +101,15 @@ function originAllowed(req: http.IncomingMessage): boolean {
   }
 }
 
+/** 요청 주소 → URL. 이상한 주소(`//%5B` 등)는 null — new URL이 던지면 요청 처리 밖이라 서버 전체가 꺼진다 */
+function parseUrl(raw: string | undefined): URL | null {
+  try {
+    return new URL(raw ?? '/', 'http://localhost');
+  } catch {
+    return null;
+  }
+}
+
 /** 지금 문은 so_token(훅 토큰), 터널 전용 문은 so_view(보기 토큰) */
 const COOKIE: Record<Door, string> = { main: 'so_token', remote: 'so_view' };
 
@@ -165,6 +174,13 @@ export function startServer(opts: ServerOptions): Promise<RunningServer> {
   /** 터널 전용 문: 정해 둔 주소(포트 포함, 대소문자 무시)로 들어온 요청만 */
   const remoteHostOk = (host: string | undefined) =>
     !!host && !!config.remotePublicHost && host.trim().toLowerCase() === config.remotePublicHost.toLowerCase();
+  /** 전용 문 WebSocket 출처: 없거나 https://<정해 둔 주소>만(스킴·포트까지) */
+  const remoteOriginOk = (req: http.IncomingMessage) => {
+    const origin = req.headers.origin;
+    return !origin || (!!config.remotePublicHost && origin.toLowerCase() === `https://${config.remotePublicHost}`.toLowerCase());
+  };
+  /** 전용 문이 실제로 열렸나(설정했어도 포트가 사용 중이면 false) */
+  let doorOpen = false;
 
   const send = (ws: WebSocket) => {
     if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'snapshot', build: opts.build ?? null, ...state.snapshot(now()) }));
@@ -332,6 +348,7 @@ export function startServer(opts: ServerOptions): Promise<RunningServer> {
         // 밖에서 보기 QR(보기 토큰을 담음) — 맥 안에서만
         if (!local) return text(res, 404);
         if (!remoteOn()) return json(res, { url: null, qrSvg: null });
+        if (!doorOpen) return json(res, { url: null, qrSvg: null, problem: 'door-failed' });
         const remote = `https://${config.remotePublicHost}/?token=${viewer}`;
         return json(res, { url: remote, qrSvg: await QRCode.toString(remote, { type: 'svg', margin: 1 }) });
       }
@@ -348,7 +365,8 @@ export function startServer(opts: ServerOptions): Promise<RunningServer> {
   const server = http.createServer((req, res) => {
     if (!hostAllowed(req.headers.host)) return text(res, 403);
     const local = isLoopback(req.socket.remoteAddress ?? '');
-    const url = new URL(req.url ?? '/', 'http://localhost');
+    const url = parseUrl(req.url);
+    if (!url) return text(res, 400);
     const run = req.method === 'POST' ? handlePost : req.method === 'GET' || req.method === 'HEAD' ? handleGet : null;
     if (!run) return text(res, 405);
     run(req, res, url, local).catch(fail(res));
@@ -358,7 +376,8 @@ export function startServer(opts: ServerOptions): Promise<RunningServer> {
   const doorServer = http.createServer((req, res) => {
     if (!remoteHostOk(req.headers.host)) return text(res, 403);
     if (req.method !== 'GET' && req.method !== 'HEAD') return text(res, 405);
-    const url = new URL(req.url ?? '/', 'http://localhost');
+    const url = parseUrl(req.url);
+    if (!url) return text(res, 400);
     handleGet(req, res, url, false, 'remote').catch(fail(res));
   });
 
@@ -366,9 +385,15 @@ export function startServer(opts: ServerOptions): Promise<RunningServer> {
   const wss = new WebSocketServer({ noServer: true, maxPayload: 4096 });
   const upgrade = (req: http.IncomingMessage, socket: Duplex, head: Buffer, door: Door) => {
     const local = door === 'main' && isLoopback(req.socket.remoteAddress ?? '');
-    const url = new URL(req.url ?? '/', 'http://localhost');
+    const url = parseUrl(req.url);
+    if (!url) {
+      socket.write('HTTP/1.1 400 Bad Request\r\nConnection: close\r\n\r\n');
+      socket.destroy();
+      return;
+    }
     const hostOk = door === 'remote' ? remoteHostOk(req.headers.host) : hostAllowed(req.headers.host);
-    if (!hostOk || !originAllowed(req)) {
+    const originOk = door === 'remote' ? remoteOriginOk(req) : originAllowed(req);
+    if (!hostOk || !originOk) {
       socket.write('HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n');
       socket.destroy();
       return;
@@ -403,6 +428,7 @@ export function startServer(opts: ServerOptions): Promise<RunningServer> {
       });
       doorServer.listen(opts.remoteListenPort ?? config.remotePort, '127.0.0.1', () => {
         const addr = doorServer.address();
+        doorOpen = true;
         done(typeof addr === 'object' && addr ? addr.port : null);
       });
     });

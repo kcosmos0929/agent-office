@@ -5,6 +5,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import http from 'node:http';
+import net from 'node:net';
 import { WebSocket } from 'ws';
 import { startServer } from '../../src/server/http.ts';
 import { loadConfig } from '../../src/server/config.ts';
@@ -22,12 +23,12 @@ const PUBLIC = 'office-1-2-3-4.sslip.io:8443';
 const closers: Array<() => Promise<void>> = [];
 after(async () => { for (const c of closers) await c(); });
 
-async function boot(o: { publicHost?: string | null } = {}) {
+async function boot(o: { publicHost?: string | null; remoteListenPort?: number; rotate?: () => string } = {}) {
   const config = { ...loadConfig(home), remotePublicHost: o.publicHost === undefined ? PUBLIC : o.publicHost };
   const state = new OfficeState({ restMs: 30 * M, leaveMs: 120 * M, goneMs: 10 * M, stalledMs: 15 * M, forgetMs: 12 * 60 * M, resolveProject: () => 'x', startedAt: 0, registryWaitRule: false });
   const srv = await startServer({
-    config, token: TOKEN, viewerToken: VIEW, rotateViewerToken: () => NEXT, state, staticDir,
-    listenPort: 0, host: '127.0.0.1', remoteListenPort: 0, onAdmin: () => {},
+    config, token: TOKEN, viewerToken: VIEW, rotateViewerToken: o.rotate ?? (() => NEXT), state, staticDir,
+    listenPort: 0, host: '127.0.0.1', remoteListenPort: o.remoteListenPort ?? 0, onAdmin: () => {},
   });
   closers.push(srv.close);
   return { main: srv.port, door: srv.remotePort };
@@ -160,4 +161,69 @@ test('지금 문: 토큰 새로 받기 — 맥 안 + 관리 머리말만, 옛 �
   assert.equal((await req(door!, '/', view(NEXT))).status, 200);
   const info = JSON.parse((await req(main, '/api/remote-info', { host: `127.0.0.1:${main}` })).body) as { url: string };
   assert.equal(info.url, `https://${PUBLIC}/?token=${NEXT}`);
+});
+
+/** Upgrade 요청을 보내고 어떻게 끝나는지(응답 코드·연결 끊김)만 본다 */
+function rawUpgrade(port: number, p: string): Promise<string> {
+  return new Promise((resolve) => {
+    const r = http.request({ host: '127.0.0.1', port, path: p, headers: { host: PUBLIC, connection: 'Upgrade', upgrade: 'websocket', 'sec-websocket-key': 'dGhlIHNhbXBsZSBub25jZQ==', 'sec-websocket-version': '13', ...view() } });
+    r.on('response', (res) => { res.resume(); resolve(`status ${res.statusCode}`); });
+    r.on('upgrade', (_res, socket) => { socket.destroy(); resolve('upgraded'); });
+    r.on('error', () => resolve('closed'));
+    r.end();
+  });
+}
+
+test('잘못된 주소 한 줄(//%5B)로 서버가 꺼지지 않음 — 두 문 모두 400, WebSocket은 거절, 그 뒤에도 응답 (리뷰 P2)', async () => {
+  const { main, door } = await boot();
+  assert.equal((await req(main, '//%5B', { host: `127.0.0.1:${main}` })).status, 400);
+  assert.equal((await req(door!, '//%5B', view())).status, 400);
+  assert.notEqual(await rawUpgrade(door!, '//%5B'), 'upgraded');
+  assert.notEqual(await rawUpgrade(main, '//%5B'), 'upgraded');
+  assert.equal((await req(main, '/', { host: `127.0.0.1:${main}` })).status, 200);
+  assert.equal((await req(door!, '/', view())).status, 200);
+});
+
+test('전용 문 WebSocket: http:// 출처는 주소가 같아도 403 — https 출처만 (리뷰 P2)', async () => {
+  const { door } = await boot();
+  assert.equal(await wsStatus(door!, view(), `http://${PUBLIC}`), 403);
+  assert.equal(await wsStatus(door!, view(), `https://${PUBLIC.replace(':8443', ':9443')}`), 403);
+  assert.equal(await wsStatus(door!, view(), `https://${PUBLIC}`), 101);
+});
+
+test('토큰 새로 받기 실패(저장 오류) → 500, 옛 토큰·열린 WebSocket은 그대로 (리뷰 P2)', async () => {
+  const { main, door } = await boot({ rotate: () => { throw new Error('disk'); } });
+  const ws = new WebSocket(`ws://127.0.0.1:${door}/ws`, { headers: { host: PUBLIC, ...view() } });
+  await new Promise((r) => ws.once('message', r));
+  assert.equal((await req(main, '/api/admin/remote-token', { host: `127.0.0.1:${main}`, 'x-so-admin': '1' }, 'POST')).status, 500);
+  assert.equal(ws.readyState, WebSocket.OPEN);
+  assert.equal((await req(door!, '/', view())).status, 200);
+  ws.close();
+});
+
+test('보기 토큰 새로 받기는 통째로 바꾸거나 그대로 둠 — 새 파일을 못 만들면 옛 토큰 파일이 그대로 (리뷰 P2)', () => {
+  const h = fs.mkdtempSync(path.join(os.tmpdir(), 'so-remote-atomic-'));
+  const v = loadOrCreateViewerToken(h);
+  fs.chmodSync(h, 0o500);
+  try {
+    assert.throws(() => rotateViewerToken(h));
+    assert.equal(fs.readFileSync(path.join(h, 'viewer-token'), 'utf8').trim(), v);
+  } finally {
+    fs.chmodSync(h, 0o700);
+  }
+  assert.deepEqual(fs.readdirSync(h).filter((f) => f.includes('.tmp')), []);
+});
+
+test('전용 문을 못 열면(포트 사용 중) 지금 문은 그대로, remote-info는 QR 대신 실패 상태 (리뷰 P3)', async () => {
+  const busy = net.createServer();
+  await new Promise<void>((r) => busy.listen(0, '127.0.0.1', () => r()));
+  closers.push(() => new Promise<void>((r) => busy.close(() => r())));
+  const taken = (busy.address() as net.AddressInfo).port;
+  const { main, door } = await boot({ remoteListenPort: taken });
+  assert.equal(door, null);
+  const info = JSON.parse((await req(main, '/api/remote-info', { host: `127.0.0.1:${main}` })).body) as { url: unknown; qrSvg: unknown; problem?: string };
+  assert.equal(info.url, null);
+  assert.equal(info.qrSvg, null);
+  assert.equal(info.problem, 'door-failed');
+  assert.equal((await req(main, '/', { host: `127.0.0.1:${main}` })).status, 200);
 });

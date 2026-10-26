@@ -97,7 +97,7 @@ export function buildSettings(initial: { codexAutoApprove: boolean }): { el: HTM
 
   async function loadRemote() {
     try {
-      const info = (await (await fetch('/api/remote-info')).json()) as { url: string | null; qrSvg: string | null };
+      const info = (await (await fetch('/api/remote-info')).json()) as { url: string | null; qrSvg: string | null; problem?: string };
       const on = Boolean(info.url && info.qrSvg);
       remoteQr.hidden = !on;
       remoteActions.hidden = !on;
@@ -106,7 +106,9 @@ export function buildSettings(initial: { codexAutoApprove: boolean }): { el: HTM
         remoteUrl.textContent = info.url.replace(/token=.*/, 'token=…');
       } else {
         remoteQr.removeAttribute('src');
-        remoteUrl.textContent = '꺼져 있어요 — config.json의 remotePublicHost를 넣고 다시 켜세요';
+        remoteUrl.textContent = info.problem === 'door-failed'
+          ? '밖에서 보기 문을 열지 못했어요 — 포트(remotePort)가 쓰이고 있는지 보고 다시 켜 보세요'
+          : '꺼져 있어요 — config.json의 remotePublicHost를 넣고 다시 켜세요';
       }
     } catch {
       remoteUrl.textContent = '정보를 불러오지 못했어요';
