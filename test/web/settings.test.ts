@@ -65,41 +65,96 @@ const info = (url: string) => ({ url, qrSvg: '<svg/>' });
 const OLD = 'https://door.example:8443/?token=old';
 const NEW = 'https://door.example:8443/?token=new';
 
+/** 부를 때마다 차례로 손으로 끝내는 응답을 내주는 가짜 /api/remote-info */
+function infoQueue() {
+  const replies: ReturnType<typeof deferred<{ url: string; qrSvg: string }>>[] = [];
+  return {
+    fetchInfo: () => {
+      const d = deferred<{ url: string; qrSvg: string }>();
+      replies.push(d);
+      return d.promise;
+    },
+    reply: (k: number, url: string) => replies[k].resolve(info(url)),
+  };
+}
+
 test('토큰을 바꾸는 동안엔 옛 주소를 복사하지 못하고 버튼이 잠김, 새 주소를 받으면 다시 풀림', async () => {
   const v = view();
-  const replies = [deferred<{ url: string; qrSvg: string }>(), deferred<{ url: string; qrSvg: string }>()];
-  let n = 0;
-  const s = remoteState(v, () => replies[n++].promise);
+  const q = infoQueue();
+  const s = remoteState(v, q.fetchInfo);
   const first = s.load();
-  replies[0].resolve(info(OLD));
+  q.reply(0, OLD);
   await first;
   assert.equal(s.full, OLD);
   assert.equal(v.copy.disabled, false);
 
-  s.invalidate(); // '토큰 새로 받기'를 누름
+  const post = deferred<boolean>();
+  const rotating = s.rotate(() => post.promise); // '토큰 새로 받기'를 누름
   assert.equal(s.full, null);
   assert.equal(v.copy.disabled, true);
   let written: string | null = null;
   assert.equal(await copyRemoteUrl(s.full, { writeText: async (t: string) => { written = t; } }), COPY_FAIL);
   assert.equal(written, null);
 
-  const second = s.load();
-  replies[1].resolve(info(NEW));
-  await second;
+  post.resolve(true);
+  await Promise.resolve();
+  await Promise.resolve();
+  q.reply(1, NEW);
+  assert.equal(await rotating, true);
   assert.equal(s.full, NEW);
+  assert.equal(v.copy.disabled, false);
+});
+
+test('토큰을 바꾸는 중에 설정을 다시 열어도(재조회) 옛 주소로 잠금이 풀리지 않음', async () => {
+  const v = view();
+  const q = infoQueue();
+  const s = remoteState(v, q.fetchInfo);
+  const first = s.load();
+  q.reply(0, OLD);
+  await first;
+
+  const post = deferred<boolean>();
+  const rotating = s.rotate(() => post.promise);
+  const reopen = s.load(); // 갱신 POST가 끝나기 전에 설정을 닫았다 다시 엶
+  q.reply(1, OLD); // 서버는 아직 옛 토큰
+  await reopen;
+  assert.equal(s.full, null);
+  assert.equal(v.copy.disabled, true);
+
+  post.resolve(true);
+  await Promise.resolve();
+  await Promise.resolve();
+  q.reply(2, NEW);
+  await rotating;
+  assert.equal(s.full, NEW);
+  assert.equal(v.copy.disabled, false);
+});
+
+test('토큰을 새로 받지 못하면 다시 받아 그린 지금 주소로 복사가 풀리고 실패를 알려 줌', async () => {
+  const v = view();
+  const q = infoQueue();
+  const s = remoteState(v, q.fetchInfo);
+  const first = s.load();
+  q.reply(0, OLD);
+  await first;
+  const rotating = s.rotate(async () => false);
+  await Promise.resolve();
+  await Promise.resolve();
+  q.reply(1, OLD);
+  assert.equal(await rotating, false);
+  assert.equal(s.full, OLD);
   assert.equal(v.copy.disabled, false);
 });
 
 test('먼저 시작한 요청이 늦게 끝나도 새 주소를 옛 주소로 덮어쓰지 않음', async () => {
   const v = view();
-  const replies = [deferred<{ url: string; qrSvg: string }>(), deferred<{ url: string; qrSvg: string }>()];
-  let n = 0;
-  const s = remoteState(v, () => replies[n++].promise);
+  const q = infoQueue();
+  const s = remoteState(v, q.fetchInfo);
   const a = s.load(); // 토큰을 바꾸기 전 요청
   const b = s.load(); // 바꾼 뒤 요청
-  replies[1].resolve(info(NEW));
+  q.reply(1, NEW);
   await b;
-  replies[0].resolve(info(OLD));
+  q.reply(0, OLD);
   await a;
   assert.equal(s.full, NEW);
   assert.equal(v.url.textContent, 'https://door.example:8443/?token=…');

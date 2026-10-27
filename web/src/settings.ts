@@ -30,34 +30,51 @@ export function showRemote(v: RemoteView, info: RemoteInfo): string | null {
   return null;
 }
 
-/** 「밖에서 보기」 칸의 상태(복사할 전체 주소): 마지막에 시작한 요청의 응답만 반영하고, 토큰을 바꾸는 동안엔 복사를 막는다 */
+/**
+ * 「밖에서 보기」 칸의 상태(복사할 전체 주소): 마지막에 시작한 요청의 응답만 반영하고,
+ * 토큰을 바꾸는 동안엔(요청 순서와 따로 센다) 어떤 재조회도 옛 주소로 복사를 풀지 못한다
+ */
 export function remoteState(v: RemoteView, fetchInfo: () => Promise<RemoteInfo>) {
   let full: string | null = null;
   let seq = 0;
+  let rotating = 0;
+  async function load(): Promise<void> {
+    const mine = ++seq;
+    try {
+      const info = await fetchInfo();
+      if (mine !== seq) return;
+      full = showRemote(v, info);
+    } catch {
+      if (mine !== seq) return;
+      full = null;
+      v.copy.hidden = true;
+      v.url.textContent = '정보를 불러오지 못했어요';
+    }
+    if (rotating > 0) full = null; // 갱신 중 받은 주소는 곧 무효일 수 있다 — 그리기만 하고 복사는 잠근 채
+    v.copy.disabled = rotating > 0;
+  }
   return {
     get full(): string | null {
       return full;
     },
     /** 정보를 다시 받아 칸을 그린다 — 더 늦게 시작한 요청이 있으면 이 응답은 버린다(옛 주소가 새 주소를 덮지 않게) */
-    async load(): Promise<void> {
-      const mine = ++seq;
-      try {
-        const info = await fetchInfo();
-        if (mine !== seq) return;
-        full = showRemote(v, info);
-      } catch {
-        if (mine !== seq) return;
-        full = null;
-        v.copy.hidden = true;
-        v.url.textContent = '정보를 불러오지 못했어요';
-      }
-      v.copy.disabled = false;
-    },
-    /** 토큰을 바꾸기 시작: 옛 주소를 지우고 버튼을 잠근다(진행 중인 옛 요청의 응답도 버린다) */
-    invalidate(): void {
+    load,
+    /** 토큰 바꾸기: 옛 주소를 지우고 버튼을 잠근 채 post(새 토큰 요청)를 기다린 뒤, 새 정보를 받아 그리고 푼다. post 성공 여부를 돌려준다 */
+    async rotate(post: () => Promise<boolean>): Promise<boolean> {
+      rotating++;
       seq++;
       full = null;
       v.copy.disabled = true;
+      let ok = false;
+      try {
+        ok = await post();
+      } catch {
+        ok = false;
+      } finally {
+        rotating--;
+      }
+      await load();
+      return ok;
     },
   };
 }
@@ -120,10 +137,8 @@ export function buildSettings(initial: { codexAutoApprove: boolean }): { el: HTM
   rotate.textContent = '토큰 새로 받기';
   rotate.addEventListener('click', async () => {
     if (!confirm('밖에서 보기 토큰을 새로 받을까요? 지금 밖에서 보던 화면은 끊기고, QR을 다시 찍어야 해요.')) return;
-    remoteInfo.invalidate();
-    const r = await fetch('/api/admin/remote-token', { method: 'POST', headers: { 'x-so-admin': '1' } }).catch(() => null);
-    await remoteInfo.load();
-    if (!r?.ok) showStatus('토큰을 새로 받지 못했어요');
+    const ok = await remoteInfo.rotate(async () => (await fetch('/api/admin/remote-token', { method: 'POST', headers: { 'x-so-admin': '1' } }).catch(() => null))?.ok === true);
+    if (!ok) showStatus('토큰을 새로 받지 못했어요');
   });
   remoteActions.append(copy, rotate);
   remote.append(remoteTitle, remoteHelp, remoteQr, remoteUrl, remoteActions, copyStatus);
