@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { SCREEN, screenFrame } from '../../web/src/office/screens.ts';
+import { SCREEN, WORK_TONE, screenFrame } from '../../web/src/office/screens.ts';
 import { BEAT_MS } from '../../web/src/office/rack.ts';
 
 test('실행 중: 막대가 한 박자마다 1/16씩 차고 16박자에 한 바퀴', () => {
@@ -44,5 +44,24 @@ test('급한 상태는 노란 단색, 끝남은 초록 단색', () => {
 test('멈춤·쉼·빈 자리는 꺼진 단색', () => {
   for (const s of ['stalled', 'idle', 'quota', 'gone', null] as const) {
     assert.deepEqual(screenFrame(s, 123), { kind: 'solid', color: SCREEN.off });
+  }
+});
+
+test('일하는 중 바탕색: 일 종류마다 다르고, 급함·끝남·꺼짐 색과도 다르다', () => {
+  const kinds = { running: 'bar', editing: 'lines', reading: 'scroll', thinking: 'cursor' } as const;
+  for (const [s, kind] of Object.entries(kinds)) assert.equal(screenFrame(s as keyof typeof kinds, 0).kind, kind);
+  const bgs = Object.values(WORK_TONE).map((t) => t.bg);
+  assert.equal(new Set(bgs).size, 4);
+  for (const bg of bgs) assert.ok(![SCREEN.wait, SCREEN.done, SCREEN.off].includes(bg as never), bg);
+});
+
+test('일하는 중 먹색: 16×9칸 작은 화면에서도 보이게 바탕과 명암비 3 이상', () => {
+  const lum = (hex: string) => {
+    const [r, g, b] = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255).map((c) => (c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4));
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+  };
+  for (const [kind, { bg, ink }] of Object.entries(WORK_TONE)) {
+    const [hi, lo] = [lum(bg), lum(ink)].sort((a, b) => b - a);
+    assert.ok((hi + 0.05) / (lo + 0.05) >= 3, `${kind} ${bg}/${ink}`);
   }
 });
