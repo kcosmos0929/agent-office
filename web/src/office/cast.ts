@@ -6,13 +6,14 @@ import type { Agent, Snapshot, Status } from '../../../src/shared/types.ts';
 import { makeBubble, nameplateText } from './bubbles.ts';
 import { DOOR, backwardFrom, pathTo, routeBetween, segmentAt, simplifyPath, type Point } from './layout.ts';
 import { BURST_MS, burstElapsed, eventsFor, type FxEvent, hopDots, makeSparkle, makeZzz, ringBurst } from './effects.ts';
-import { direct, type Plan } from './director.ts';
+import { direct, hashId, type Plan } from './director.ts';
 import { paintRacks, rackStates } from './rack.ts';
 import { ScreenPainter, screenFrame } from './screens.ts';
 import type { Pose } from './pose.ts';
 import type { OfficeScene } from './scene.ts';
 import { Figure } from './sprites/figure.ts';
 import { dirFor, faceFor, headTop, lookFor, PACE_FPS, STEP, WALK_FRAMES, type Dir, type Pace } from './sprites/look.ts';
+import { SEATED_CYCLE_MS, seatedFrame, type SeatedPreview } from './sprites/seated.ts';
 
 const SUB_SCALE = 0.8; // 도우미는 매니저와 같은 옷, 조금 작게
 
@@ -41,6 +42,10 @@ type Actor = {
   target: Point;
   /** 남은 길(path[0] = 지금 위치) */
   path: Point[];
+  /** 지금 서 있는(걷는) 자리. 앉으면 판 묶음만 의자로 옮기고 이 자리는 그대로(길찾기는 여기서) */
+  at: Point;
+  /** 자리에 닿으면 앉는 의자(계획) */
+  sit: Plan['sit'];
   pace: Pace;
   /** 걷기 시계: 흐른 시간으로 넘길 장수를 정하고, 넘긴 장수만큼만 움직인다(발과 이동이 같은 시계) */
   clock: number;
@@ -83,9 +88,12 @@ export class Cast {
   private devStatus: (Status | null)[] = [];
   /** 마지막으로 그린 시각 — sync가 animate 사이에 칠할 때 쓴다 */
   private screenT = 0;
+  /** `?seated` 미리 보기: 사무실 책상에서 앉는가(still = 첫 칸에 멈춤) */
+  private readonly seated: SeatedPreview;
 
-  constructor(scene: THREE.Scene, office: OfficeScene, onChange: () => void, clock: () => number = Date.now, reduced = false) {
+  constructor(scene: THREE.Scene, office: OfficeScene, onChange: () => void, clock: () => number = Date.now, reduced = false, seated: SeatedPreview = 'off') {
     this.reduced = reduced;
+    this.seated = seated;
     this.scene = scene;
     this.office = office;
     this.onChange = onChange;
@@ -97,7 +105,7 @@ export class Cast {
   sync(s: Snapshot): void {
     const agents = s.agents;
     this.agents = agents;
-    const plans = direct(agents, this.clock());
+    const plans = this.planAll(agents);
     this.follow(plans);
     for (const a of agents) {
       const actor = this.actors.get(a.id);
@@ -125,7 +133,7 @@ export class Cast {
   /** 오래 안 보이다 돌아왔을 때: 계획을 다시 보고 모두를 지금 가야 할 자리에 바로 세운다(밀린 걸음을 되풀이하지 않게). 퇴근자는 다음 프레임에 사라진다. 그리는 프레임 안에서 부르면 notify=false(다시 그리기를 또 예약하면 프레임 반복이 두 줄이 된다) */
   settle(notify = true): void {
     if (!this.agents) return;
-    this.follow(direct(this.agents, this.clock()));
+    this.follow(this.planAll(this.agents));
     for (const actor of this.actors.values()) {
       actor.route = [actor.target];
       actor.path = [actor.target];
@@ -180,6 +188,7 @@ export class Cast {
       actor.leaving = plan.leave;
       actor.rest = plan.facing;
       actor.restPose = plan.pose;
+      actor.sit = plan.sit;
       actor.effects = plan.effects;
       if (actor.ring) actor.ring.visible = !plan.leave && plan.effects.includes('ring');
       if (actor.target.x !== plan.spot.x || actor.target.y !== plan.spot.y) this.redirect(actor, plan.spot, plan.pace);
@@ -220,7 +229,8 @@ export class Cast {
     paintRacks(this.office.racks, rackStates(this.agents ?? []), t); // 랙 불빛(Codex 실행 중이면 빠르게)
     this.drawScreens(t); // 모니터도 같은 t로 — 실행 중 책상의 막대와 짝 랙이 같은 박자에 움직인다
     // 쉼 자리가 바뀌는 때를 곧바로 따라잡으려고 걷기 전에 계획을 다시 본다
-    if (this.agents) this.follow(direct(this.agents, this.clock()));
+    if (this.agents) this.follow(this.planAll(this.agents));
+    const now = this.clock();
     for (const [id, actor] of this.actors) {
       if (actor.path.length > 1) {
         actor.clock += dt;
@@ -253,9 +263,14 @@ export class Cast {
       }
       if (!walking) this.resetClock(actor);
       actor.pose = walking ? (actor.pace === 'free' ? 'stroll' : 'walk') : actor.restPose;
-      // 업무 자세 그림이 오기 전까지 머무를 땐 서기 그림
+      // 업무 자세 그림이 없는 상태는 머무를 땐 서기 그림
       if (walking) actor.figure.show(actor.dir, (actor.phase + actor.steps) % WALK_FRAMES);
       else actor.figure.show(actor.rest, 'idle');
+      // 책상에 닿았고 앉는 상태면 의자 가운데로 옮겨 앉는다(사람마다 위상을 달리한 같은 시계). 앉은 그림을 불러오는 동안은 서 있는 자리에 선다
+      const seat = walking ? null : actor.sit;
+      const sitting = seat !== null && actor.figure.sit(seat.dir, this.seated === 'still' ? 0 : seatedFrame(seat.mode, now + (hashId(id) % SEATED_CYCLE_MS)));
+      const stage = sitting ? seat.at : actor.at;
+      actor.group.position.set(stage.x, 0.04, stage.y);
       // 승인·질문 대기는 폴짝(손 흔드는 그림이 오기 전까지), 쉬는 중엔 Z
       actor.figure.lift(!walking && actor.effects.includes('wave') ? hopDots(t, this.reduced) : 0);
       if (actor.zzz) actor.zzz.visible = !walking && actor.effects.includes('zzz');
@@ -284,8 +299,8 @@ export class Cast {
   /** 클릭한 캐릭터의 에이전트(하위 에이전트면 null) */
   pick(raycaster: THREE.Raycaster): Agent | null {
     const mains = [...this.actors.values()].filter((a) => !a.isSub);
-    const hit = raycaster.intersectObjects(mains.map((a) => a.figure.mesh), false)[0];
-    return hit ? (mains.find((a) => a.figure.mesh === hit.object)?.agent ?? null) : null;
+    const hit = raycaster.intersectObjects(mains.flatMap((a) => a.figure.pickables()), false)[0];
+    return hit ? (mains.find((a) => a.figure.pickables().includes(hit.object as THREE.Mesh))?.agent ?? null) : null;
   }
 
   private create(id: string, plan: Plan): Actor {
@@ -331,7 +346,7 @@ export class Cast {
     }
     const route = this.first ? [dest] : pathTo(dest);
     const actor: Actor = {
-      group, figure, label, plate, bubble, ring, burstRing, burstAt: null, prev: undefined, sparkles: new Map(), zzz, effects: plan.effects, route, target: dest, path: [route[0]], pace: plan.pace,
+      group, figure, label, plate, bubble, ring, burstRing, burstAt: null, prev: undefined, sparkles: new Map(), zzz, effects: plan.effects, route, target: dest, path: [route[0]], at: route[0], sit: plan.sit, pace: plan.pace,
       clock: 0, steps: 0, phase: 0, dir: 'SE', rest: plan.facing, leaving: false, agent: null, isSub, pose: 'stand', restPose: plan.pose,
     };
     this.actors.set(id, actor);
@@ -372,11 +387,16 @@ export class Cast {
   }
 
   private pos(actor: Actor): Point {
-    return { x: actor.group.position.x, y: actor.group.position.z };
+    return { ...actor.at };
   }
 
   private place(actor: Actor, p: Point): void {
+    actor.at = { ...p };
     actor.group.position.set(p.x, 0.04, p.y);
+  }
+
+  private planAll(agents: Agent[]): Map<string, Plan> {
+    return direct(agents, this.clock(), this.seated !== 'off');
   }
 
   /** 자리별 상태를 적어 두고(자리가 비면 null) 곧바로 한 번 칠한다 — 움직임은 animate가 프레임마다 이어 그린다 */
