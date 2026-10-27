@@ -2,8 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import type { Agent, Status } from '../../src/shared/types.ts';
 import { direct, frontOf, hashId, restAssignments } from '../../web/src/office/director.ts';
-import { DOOR, OVERFLOW_SPOTS, REST_SPOTS, devSpot, facingAt, meetingSpot, seatPosition, waitingSpot } from '../../web/src/office/layout.ts';
-import { dirFor } from '../../web/src/office/sprites/look.ts';
+import { DESKS, DOOR, OVERFLOW_SPOTS, REST_SPOTS, chairPosition, devSpot, facingAt, meetingSpot, seatPosition, waitingSpot } from '../../web/src/office/layout.ts';
+import { dirFor, seatedDir } from '../../web/src/office/sprites/look.ts';
 
 function agent(id: string, status: Status, extra: Partial<Agent> = {}): Agent {
   return {
@@ -148,4 +148,23 @@ test('restAssignments: 25명이어도 모두 다른 자리, 휴게실·탕비실
     assert.ok(p.x > 4.4 && p.x <= 14.3 && p.y > 15 && p.y < 18, JSON.stringify(p));
     for (let j = 0; j < i; j++) assert.ok(Math.hypot(p.x - pts[j].x, p.y - pts[j].y) >= 0.3, `${i}/${j}`);
   });
+});
+
+test('앉기(?seated): 사무실 책상의 JP01만, 실행·고침은 타이핑·읽기·생각류는 손 멈춤, 나머지는 서기', () => {
+  const sitOf = (a: Agent, seated = true) => direct([a], 1_000_000, seated).get(a.id)!.sit;
+  for (let seat = 0; seat < 8; seat++) {
+    const p = direct([agent('a', 'running', { hat: 0, seat })], 1_000_000, true).get('a')!;
+    assert.deepEqual(p.sit, { at: chairPosition(seat), dir: seatedDir(DESKS[seat].facing), mode: 'work' }, `seat ${seat}`);
+    assert.deepEqual(p.spot, seatPosition(seat), '걸어가는 곳은 그대로 서는 자리');
+  }
+  assert.equal(sitOf(agent('a', 'editing', { hat: 0 }))?.mode, 'work');
+  for (const s of ['reading', 'thinking', 'approving', 'delegating', 'compacting'] as const) assert.equal(sitOf(agent('a', s, { hat: 0 }))?.mode, 'upper', s);
+  for (const s of ['permission', 'question', 'done', 'stalled', 'quota', 'idle', 'gone'] as const) assert.equal(sitOf(agent('a', s, { hat: 0 })), null, s);
+  assert.equal(sitOf(agent('a', 'running', { hat: 0 }), false), null, '미리 보기가 꺼져 있으면 서 있는다');
+  assert.equal(sitOf(agent('a', 'running', { hat: 1 })), null, '앉은 그림이 없는 모습');
+  assert.equal(sitOf(agent('a', 'running', { hat: 8 }))?.mode, 'work', 'hat 8 = JP01');
+  assert.equal(sitOf(agent('a', 'running', { hat: 0, seat: 8 })), null, '책상 없는 자리(로비)');
+  assert.equal(sitOf(agent('a', 'running', { hat: 0, kind: 'codex', seat: 0 })), null, '개발실 의자는 다른 대각선');
+  const withSub = direct([agent('a', 'running', { hat: 0, subagents: [{ id: 's' } as never] })], 1_000_000, true);
+  assert.equal(withSub.get('a/s')!.sit, null, '도우미는 회의실에서 서 있다');
 });

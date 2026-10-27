@@ -4,6 +4,7 @@ import { CSS2DRenderer } from 'three/examples/jsm/renderers/CSS2DRenderer.js';
 import type { Snapshot } from '../../../src/shared/types.ts';
 import type { OfficeHost } from '../main.ts';
 import { targetFps } from './fps.ts';
+import { seatedPreview } from './sprites/seated.ts';
 import type { Pose } from './pose.ts';
 import { showCard } from './card.ts';
 import { deferredCard } from '../list/floatingList.ts';
@@ -93,7 +94,7 @@ export class OfficeView implements OfficeHost {
     this.scene.add(this.office.group, this.tv.group);
     // 동작 줄이기 설정이면 폴짝을 끈다(한 번만 읽음)
     const reduced = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
-    this.cast = new Cast(this.scene, this.office, () => this.invalidate(), () => (this.snap ? this.snap.now + (Date.now() - this.receivedAt) : Date.now()), reduced);
+    this.cast = new Cast(this.scene, this.office, () => this.invalidate(), () => (this.snap ? this.snap.now + (Date.now() - this.receivedAt) : Date.now()), reduced, seatedPreview(location.search));
 
     // 서울 해에 맞춘 낮밤: 지금 한 번, 그 뒤 1분마다 확인(단계가 바뀔 때만 다시 그림)
     this.checkDaylight();

@@ -1,9 +1,10 @@
 // 연출 감독: 에이전트들과 서버 시각만으로 캐릭터마다 자리·방향·자세·걸음·효과를 정하는 순수 계산(three.js·DOM 없음).
 // 같은 입력이면 같은 출력 → 화면끼리 같은 장면. cast.ts는 이 계획을 실행만 한다. (설계서 5-1~5-3)
 import type { Agent } from '../../../src/shared/types.ts';
-import { DOOR, EXTRA_REST_SPOTS, OVERFLOW_SPOTS, REST_SPOTS, devSpot, facingAt, meetingSpot, seatPosition, waitingSpot, type Point, type RestSpot } from './layout.ts';
+import { DESKS, DOOR, EXTRA_REST_SPOTS, OVERFLOW_SPOTS, REST_SPOTS, chairPosition, devSpot, facingAt, meetingSpot, seatPosition, waitingSpot, type Point, type RestSpot } from './layout.ts';
 import { poseFor, type Pose } from './pose.ts';
-import { dirFor, type Dir, type Pace } from './sprites/look.ts';
+import { dirFor, lookFor, seatedDir, type Dir, type Pace } from './sprites/look.ts';
+import { canSit, seatedMode, type SeatedMode } from './sprites/seated.ts';
 
 export type Effect = 'monitor' | 'zzz' | 'dots' | 'wave' | 'ring';
 export type Plan = {
@@ -18,6 +19,8 @@ export type Plan = {
   agent: Agent | null;
   hat: number;
   isSub: boolean;
+  /** 자리에 닿으면 의자에 앉는다(의자 가운데 바닥점·방향·움직임). 서 있으면 null */
+  sit: { at: Point; dir: 'SE' | 'NW'; mode: SeatedMode } | null;
 };
 
 /** FNV-1a 32비트(부호 없음) — 세션 id로 쉬는 시간·자리를 정하는 고정 해시 */
@@ -88,10 +91,20 @@ function deskEffects(status: Agent['status']): Effect[] {
 }
 
 /**
- * 에이전트(주어진 순서)마다 계획을 짠다. 키는 agent.id, 도우미는 `${agent.id}/${sub.id}`.
- * 로비 자리·회의실 자리는 종류와 상관없이 순서대로 이어서 센다.
+ * 사무실 책상(0~7)에서 앉는가: 의자가 SE/NW로 놓인 곳은 여기뿐이고(개발실·회의실 의자는 다른 대각선, 그림 없음),
+ * 앉은 그림이 있는 모습(JP01)이며 앉는 상태일 때만.
  */
-export function direct(agents: Agent[], now: number): Map<string, Plan> {
+function sitAt(a: Agent): Plan['sit'] {
+  const mode = seatedMode(a.status);
+  if (a.kind !== 'claude' || a.seat < 0 || a.seat > 7 || !mode || !canSit(lookFor(a.hat))) return null;
+  return { at: chairPosition(a.seat), dir: seatedDir(DESKS[a.seat].facing), mode };
+}
+
+/**
+ * 에이전트(주어진 순서)마다 계획을 짠다. 키는 agent.id, 도우미는 `${agent.id}/${sub.id}`.
+ * 로비 자리·회의실 자리는 종류와 상관없이 순서대로 이어서 센다. seated(`?seated` 미리 보기)면 책상에서 앉는다.
+ */
+export function direct(agents: Agent[], now: number, seated = false): Map<string, Plan> {
   const plans = new Map<string, Plan>();
   const resters = restAssignments(agents.filter((a) => a.status === 'idle').map((a) => a.id), now);
   let lobby = 0;
@@ -108,15 +121,15 @@ export function direct(agents: Agent[], now: number): Map<string, Plan> {
 
     let plan: Plan;
     if (a.status === 'gone') {
-      plan = { spot: DOOR, facing: deskFacing, pose: 'walk', pace: 'free', effects: [], leave: true, agent: a, hat: a.hat, isSub: false };
+      plan = { spot: DOOR, facing: deskFacing, pose: 'walk', pace: 'free', effects: [], leave: true, agent: a, hat: a.hat, isSub: false, sit: null };
     } else if (a.status === 'idle') {
       const r = resters.get(a.id)!;
-      plan = { spot: r.at, facing: dirFor(r.face.x, r.face.y), pose: 'sleep', pace: 'free', effects: ['zzz'], leave: false, agent: a, hat: a.hat, isSub: false };
+      plan = { spot: r.at, facing: dirFor(r.face.x, r.face.y), pose: 'sleep', pace: 'free', effects: ['zzz'], leave: false, agent: a, hat: a.hat, isSub: false, sit: null };
     } else {
       const wave = a.status === 'permission' || a.status === 'question';
       plan = {
         spot: desk, facing: wave ? frontOf(deskFacing) : deskFacing, pose: poseFor(a.status), pace: 'work',
-        effects: deskEffects(a.status), leave: false, agent: a, hat: a.hat, isSub: false,
+        effects: deskEffects(a.status), leave: false, agent: a, hat: a.hat, isSub: false, sit: seated ? sitAt(a) : null,
       };
     }
     plans.set(a.id, plan);
@@ -125,7 +138,7 @@ export function direct(agents: Agent[], now: number): Map<string, Plan> {
       const spot = meetingSpot(meeting++);
       const mf = facingAt(spot);
       plans.set(`${a.id}/${sub.id}`, {
-        spot, facing: dirFor(mf.x, mf.y), pose: 'type-fast', pace: 'work', effects: [], leave: false, agent: null, hat: a.hat, isSub: true,
+        spot, facing: dirFor(mf.x, mf.y), pose: 'type-fast', pace: 'work', effects: [], leave: false, agent: null, hat: a.hat, isSub: true, sit: null,
       });
     }
   }

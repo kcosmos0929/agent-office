@@ -103,6 +103,11 @@ export function planeOffset(dir: Dir, scale = 1): { x: number; y: number } {
   const [ax, ay] = ANCHOR[dir];
   return { x: (CELL.w / 2 - ax) * DOT * scale, y: ((ay - CELL.h / 2) * DOT * scale) / UPRIGHT };
 }
+/** 앉은 그림: 기준점(의자 가운데 바닥)을 원점에 둘 때 판 가운데의 위치 */
+export function seatedPlaneOffset(dir: 'SE' | 'NW', scale = 1): { x: number; y: number } {
+  const [ax, ay] = SEATED_ANCHOR[dir];
+  return { x: (CELL.w / 2 - ax) * DOT * scale, y: ((ay - CELL.h / 2) * DOT * scale) / UPRIGHT };
+}
 /** 발에서 머리 꼭대기까지(월드) — 말풍선 높이용. 머리 그림 맨 위 줄은 1 */
 export function headTop(scale = 1): number {
   return ((ANCHOR.SE[1] - 1) * DOT * scale) / UPRIGHT;
