@@ -23,6 +23,9 @@ export class FakeElement {
   getAttribute(k: string) {
     return this.attributes.get(k) ?? null;
   }
+  removeAttribute(k: string) {
+    this.attributes.delete(k);
+  }
   appendChild(c: FakeElement) {
     this.children.push(c);
     return c;
