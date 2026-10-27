@@ -120,6 +120,7 @@ export function buildOffice(): OfficeScene {
     screen.position.set(cx, 0.63 + 0.35, y0 + 0.205);
     g.add(screen);
     devScreens.push(screen); // 빈 개발실은 꺼진 화면, Codex가 앉으면 cast가 칠한다
+    g.add(block(cx - 0.25, y0 + 0.45, 0.5, 0.16, 0.63, 0.015, FURN.keyboard)); // 키보드(모니터와 의자 사이)
     officeChair(g, cx, y0 + 1.2, 'pz');
   }
 
@@ -132,6 +133,7 @@ export function buildOffice(): OfficeScene {
     g.add(block(x0 + sd.w - 0.17, y0 + 0.25, 0.07, 0.1, 0.04, sd.h - 0.04, FURN.black));
     g.add(block(x0 + 0.1, y0 + 0.22, sd.w - 0.2, 0.16, 0.04, 0.03, FURN.black));
     g.add(block(x0 + 0.3, y0 + 0.06, sd.w - 0.6, 0.06, sd.h + 0.05, 0.4, FURN.monitor));
+    g.add(block(x0 + sd.w / 2 - 0.2, y0 + 0.3, 0.4, 0.14, sd.h + 0.05, 0.015, FURN.keyboard)); // 키보드
   }
   bigPlant(g, 14.25, 8.75);
 
