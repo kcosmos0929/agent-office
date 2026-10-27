@@ -70,6 +70,8 @@ type Entry = {
   /** 서버가 켜진 뒤 이 세션의 훅을 받은 적 있나 / 마지막 훅 시각 */
   hookSeen: boolean;
   lastHookAt: number | null;
+  /** 마지막 훅 중 자동 정리 시작을 뺀 시각 — R6(등록부 쉼 → 차례 끝) 기준. 미리 정리는 쉬는지 구별 못 해 R6를 막지 않게 */
+  workHookAt: number | null;
   /** 등록부의 마지막 값. activeSince = busy/waiting이 이어진 시작(서버 켜진 시각보다 이르지 않게) */
   reg: { status: RegistryStatus; updatedAt: number; activeSince: number | null } | null;
   /** 등록부에서 본 적 있나 / 마지막 읽기에 있었나 / 연속으로 안 보인 횟수 */
@@ -110,12 +112,21 @@ export class OfficeState {
 
   apply(e: OfficeEvent): boolean {
     const before = this.fingerprint();
-    const entry = this.entries.get(e.sessionId) ?? this.create(e);
+    const known = this.entries.get(e.sessionId);
+    // 메인이 정리 중이 아닌 PreCompact — 상태·자리·세션의 마지막 신호 시각을 그대로(등록부 보정 R6도 이 신호에 막히지 않게)
+    if (this.quietCompact(known, e)) {
+      this.lastHook = e.at;
+      return this.fingerprint() !== before;
+    }
+    const entry = known ?? this.create(e);
     const a = entry.agent;
     a.lastEventAt = e.at;
     if (e.type !== 'title') {
       entry.hookSeen = true;
       entry.lastHookAt = e.at;
+      // 자동 정리 시작은 미리 정리일 수도 있어(쉬는지 구별 못 하는 경우) R6 기준 시각으로 삼지 않는다.
+      // 진짜 정리면 차례 도중이라 등록부가 일하는 중이어서 R6가 걸리지 않는다. R2(낡은 waiting 배제)는 lastHookAt 그대로
+      if (!(e.type === 'compact-start' && e.trigger === 'auto')) entry.workHookAt = e.at;
       this.lastHook = e.at;
       if (a.kind === 'codex') this.lastCodexHook = e.at;
       a.hookless = false;
@@ -151,6 +162,23 @@ export class OfficeState {
   }
 
   /** 사건 뒤 자동 퇴근 표시 정리: 아직 gone이면(도구 끝 같은 낡은 신호) 숨은 채로 두고, 일하는 상태로 나왔으면 자동 퇴근을 푼다 */
+  /**
+   * 메인이 정리 중이 아닌 PreCompact인가.
+   * 미리 정리(Claude Code 2.1.308 실측): 쉬는 동안·도구를 돌리는 동안 다음 정리본을 뒤에서 미리 만들며 자동 PreCompact만 보낸다
+   * (PostCompact는 다음에 실제로 바꿔 낄 때, 차례 안에서). 진짜 자동 정리는 메인 차례 도중 도구가 다 끝난 뒤에만 일어나므로
+   * 일하는 중이 아니거나(쉼·기다림·퇴근)·메인 도구가 열려 있거나·차례가 끝나 도우미만 일하면 미리 정리로 본다.
+   * 처음 보는 세션(서버를 막 켬)도 이 신호만으로 올리지 않는다 — 등록부·다음 신호가 데려온다.
+   * 도우미의 정리는 메인 상태를 바꾸지 않으니 메인의 보정 기준 시각도 건드리지 않는다
+   */
+  private quietCompact(entry: Entry | undefined, e: OfficeEvent): boolean {
+    if (e.type !== 'compact-start') return false;
+    if (e.subagentId) return true;
+    if (e.trigger !== 'auto') return false;
+    if (!entry) return true;
+    const a = entry.agent;
+    return groupOf(a.status) !== 'working' || entry.openTools.size > 0 || (entry.turnEnded && a.subagents.length > 0);
+  }
+
   private settleAutoGone(entry: Entry, hiddenAuto: boolean): void {
     if (entry.agent.status !== 'gone') {
       entry.autoGone = false;
@@ -382,7 +410,7 @@ export class OfficeState {
           this.setStatus(a, helping || tools.some((t) => t.activity === 'delegating') ? 'delegating' : 'thinking', x.statusUpdatedAt);
           a.detail = null;
         }
-      } else if (x.status === 'idle' && x.statusUpdatedAt > (entry.lastHookAt ?? 0) && (w || groupOf(a.status) === 'working')) {
+      } else if (x.status === 'idle' && x.statusUpdatedAt > (entry.workHookAt ?? 0) && (w || groupOf(a.status) === 'working')) {
         // R6: 마지막 훅 뒤에 등록부가 쉼 = Stop 훅 없이 차례가 끝남(승인 거절·중단 등) → 내 차례.
         // 등록부는 백그라운드 도우미가 일하는 동안 busy라서(실측) 쉼이면 도우미 목록도 비운다
         this.clearWork(entry);
@@ -477,7 +505,7 @@ export class OfficeState {
     };
     const entry: Entry = {
       agent, openTools: new Map(), transcriptPath: null, waitingMain: null, waitingSubs: new Map(), waitSince: null, approvalSince: new Map(), engaged: false, workProject: null, turnEnded: false, turnAsk: false,
-      hookSeen: false, lastHookAt: null, reg: null, everInRegistry: false, inRegistry: false, missingReads: 0, regName: null, waitGuessed: false, stopError: null, restFrom: null, autoGone: false,
+      hookSeen: false, lastHookAt: null, workHookAt: null, reg: null, everInRegistry: false, inRegistry: false, missingReads: 0, regName: null, waitGuessed: false, stopError: null, restFrom: null, autoGone: false,
     };
     this.entries.set(sessionId, entry);
     return entry;
