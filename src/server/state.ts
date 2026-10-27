@@ -70,6 +70,8 @@ type Entry = {
   /** 서버가 켜진 뒤 이 세션의 훅을 받은 적 있나 / 마지막 훅 시각 */
   hookSeen: boolean;
   lastHookAt: number | null;
+  /** 마지막 훅 중 자동 정리 시작을 뺀 시각 — R6(등록부 쉼 → 차례 끝) 기준. 미리 정리는 쉬는지 구별 못 해 R6를 막지 않게 */
+  workHookAt: number | null;
   /** 등록부의 마지막 값. activeSince = busy/waiting이 이어진 시작(서버 켜진 시각보다 이르지 않게) */
   reg: { status: RegistryStatus; updatedAt: number; activeSince: number | null } | null;
   /** 등록부에서 본 적 있나 / 마지막 읽기에 있었나 / 연속으로 안 보인 횟수 */
@@ -121,9 +123,10 @@ export class OfficeState {
     a.lastEventAt = e.at;
     if (e.type !== 'title') {
       entry.hookSeen = true;
-      // 자동 정리 시작은 미리 정리일 수도 있어(쉬는지 구별 못 하는 경우) 등록부 보정(R6 등)의 기준 시각으로 삼지 않는다.
-      // 진짜 정리면 차례 도중이라 등록부가 일하는 중이어서 보정이 걸리지 않는다
-      if (!(e.type === 'compact-start' && e.trigger === 'auto')) entry.lastHookAt = e.at;
+      entry.lastHookAt = e.at;
+      // 자동 정리 시작은 미리 정리일 수도 있어(쉬는지 구별 못 하는 경우) R6 기준 시각으로 삼지 않는다.
+      // 진짜 정리면 차례 도중이라 등록부가 일하는 중이어서 R6가 걸리지 않는다. R2(낡은 waiting 배제)는 lastHookAt 그대로
+      if (!(e.type === 'compact-start' && e.trigger === 'auto')) entry.workHookAt = e.at;
       this.lastHook = e.at;
       if (a.kind === 'codex') this.lastCodexHook = e.at;
       a.hookless = false;
@@ -407,7 +410,7 @@ export class OfficeState {
           this.setStatus(a, helping || tools.some((t) => t.activity === 'delegating') ? 'delegating' : 'thinking', x.statusUpdatedAt);
           a.detail = null;
         }
-      } else if (x.status === 'idle' && x.statusUpdatedAt > (entry.lastHookAt ?? 0) && (w || groupOf(a.status) === 'working')) {
+      } else if (x.status === 'idle' && x.statusUpdatedAt > (entry.workHookAt ?? 0) && (w || groupOf(a.status) === 'working')) {
         // R6: 마지막 훅 뒤에 등록부가 쉼 = Stop 훅 없이 차례가 끝남(승인 거절·중단 등) → 내 차례.
         // 등록부는 백그라운드 도우미가 일하는 동안 busy라서(실측) 쉼이면 도우미 목록도 비운다
         this.clearWork(entry);
@@ -502,7 +505,7 @@ export class OfficeState {
     };
     const entry: Entry = {
       agent, openTools: new Map(), transcriptPath: null, waitingMain: null, waitingSubs: new Map(), waitSince: null, approvalSince: new Map(), engaged: false, workProject: null, turnEnded: false, turnAsk: false,
-      hookSeen: false, lastHookAt: null, reg: null, everInRegistry: false, inRegistry: false, missingReads: 0, regName: null, waitGuessed: false, stopError: null, restFrom: null, autoGone: false,
+      hookSeen: false, lastHookAt: null, workHookAt: null, reg: null, everInRegistry: false, inRegistry: false, missingReads: 0, regName: null, waitGuessed: false, stopError: null, restFrom: null, autoGone: false,
     };
     this.entries.set(sessionId, entry);
     return entry;

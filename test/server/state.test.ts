@@ -707,6 +707,16 @@ test('R2: 규칙 켜짐 + 일함 + waiting 2초 + 그 뒤 훅 없음 → ❓; 1.
   assert.equal(one(off).status, 'thinking');
 });
 
+test('R2: 그 뒤 자동 정리 시작이 왔으면 낡은 waiting으로 ❓ 안 띄움 (자동 정리 시작은 R6 기준에서만 빠짐, Codex 재검토 P2)', () => {
+  const st = make({ rule: true });
+  st.apply(ev.prompt('s1', 0));
+  st.applyRegistry(read(reg('s1', 'waiting', 10_000)), 11_500);
+  assert.equal(one(st).status, 'thinking');
+  st.apply(ev.compactStart('s1', 11_990, 'auto'));
+  st.applyRegistry(read(reg('s1', 'waiting', 10_000)), 12_000);
+  assert.equal(one(st).status, 'compacting');
+});
+
 test('알림: 이미 걸린 ❓를 permission_prompt 알림이 ❗로 바꾸지 않음, 대기가 없으면 알림으로 ❗', () => {
   const st = make();
   st.apply(ev.prompt('s1', 0));
