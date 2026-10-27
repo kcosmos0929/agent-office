@@ -1,9 +1,27 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import type { Status } from '../../src/shared/types.ts';
 import { LOOKS } from '../../web/src/office/sprites/look.ts';
-import { SEATED_ATLAS, SEATED_CYCLE_MS, canSit, seatedCell, seatedFrame, seatedIndex, seatedMode } from '../../web/src/office/sprites/seated.ts';
+import { SEATED_ATLAS, SEATED_CYCLE_MS, SEATED_PARTS, canSit, seatedCell, seatedFiles, seatedFrame, seatedIndex, seatedMode } from '../../web/src/office/sprites/seated.ts';
+
+const CHARACTERS = new URL('../../web/public/characters/', import.meta.url);
+
+test('앉은 그림 파일: v24 먼저, 못 읽으면 v23 — 두 폴더 모두 세 장 × SE·NW가 같은 규격(512×864 RGBA)', () => {
+  assert.deepEqual(seatedFiles('SE', 'body'), ['seated-v24/SE/body.png', 'seated-v23/SE/body.png']);
+  const header = (rel: string) => {
+    const b = readFileSync(new URL(rel, CHARACTERS));
+    return [b.readUInt32BE(16), b.readUInt32BE(20), b[24], b[25]]; // IHDR 폭·높이·비트 깊이·색 형식(6 = RGBA)
+  };
+  for (const dir of ['SE', 'NW'] as const) for (const part of SEATED_PARTS) {
+    const files = seatedFiles(dir, part);
+    assert.equal(files.at(-1), `seated-v23/${dir}/${part}.png`);
+    for (const f of files) {
+      assert.ok(existsSync(new URL(f, CHARACTERS)), f);
+      assert.deepEqual(header(f), [512, 864, 8, 6], f);
+    }
+  }
+});
 
 // 원본 motion.json의 work·upper 시간표(칸 번호, 시작, 길이)를 그대로 옮긴 것
 const SEQ = JSON.parse(readFileSync(new URL('../fixtures/seated-v23-sequences.json', import.meta.url), 'utf8')) as Record<'work' | 'upper', [number, number, number][]>;

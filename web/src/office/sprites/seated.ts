@@ -14,6 +14,11 @@ export const SEATED_PARTS = ['body', 'nearArm', 'farArm'] as const;
 export type SeatedPart = (typeof SEATED_PARTS)[number];
 /** 아틀라스: 8열 × 9행(512×864), 칸 64×96 */
 export const SEATED_ATLAS = { cols: 8, rows: 9 } as const;
+/** 앉은 그림 폴더 후보(앞부터 읽는다): v24 = 서기 v18 옷·외곽선·펌프스를 맞춘 것, 못 읽으면 v23(되돌리려면 앞 항목을 지운다) */
+export const SEATED_VERSIONS = ['seated-v24', 'seated-v23'] as const;
+export function seatedFiles(dir: 'SE' | 'NW', part: SeatedPart): string[] {
+  return SEATED_VERSIONS.map((v) => `${v}/${dir}/${part}.png`);
+}
 
 /** work = 손(타이핑)+상체+눈, upper = 손 멈춤+상체+눈(읽기·생각용 임시 대용 — 전용 자세 아님) */
 export type SeatedMode = 'work' | 'upper';
