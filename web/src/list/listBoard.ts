@@ -39,7 +39,8 @@ function avatar(doc: Document, a: Agent): HTMLElement {
   return img;
 }
 
-function row(doc: Document, a: Agent, now: number): HTMLElement {
+/** 세션 한 줄 — 목록 보기와 사무실 위 작은 목록(floatingList)이 같이 쓴다 */
+export function row(doc: Document, a: Agent, now: number): HTMLElement {
   const group = groupOf(a.status);
   const r = el(doc, 'div', `row ${group}${a.status === 'stalled' ? ' stalled' : ''}`);
   r.setAttribute('data-agent', a.id);

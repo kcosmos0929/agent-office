@@ -120,6 +120,36 @@ html, body { margin: 0; height: 100%; background: var(--bg); }
 .board > .rows { min-height: 0; overflow-y: auto; }
 .board > .rows > * { flex-shrink: 0; } /* 목록이 길어도 줄이 눌리지 않고 스크롤로 */
 
+/* ---------- 사무실 위 작은 목록(오른쪽 위, 연결 띠 아래) — 목록 보기의 줄을 작게, 사무실 패널과 같은 도트 판 ---------- */
+.float-list {
+  position: fixed; top: 48px; right: 12px; z-index: 22; width: min(300px, calc(100vw - 24px)); max-height: 50vh;
+  display: flex; flex-direction: column; background: var(--panel); color: #e6e9ee;
+  box-shadow: 0 0 0 1px var(--panel-line), 5px 5px 0 rgba(0, 0, 0, 0.5); font-family: 'Galmuri11', monospace; -webkit-font-smoothing: none;
+}
+.float-list[hidden], .view-list .float-list { display: none; }
+.float-head {
+  flex: none; display: flex; align-items: center; gap: 8px; width: 100%; padding: 7px 10px; border: 0; background: #232529;
+  color: #e6e9ee; font: 12px 'Galmuri11', monospace; text-align: left; cursor: pointer;
+}
+.float-title { color: var(--panel-muted); }
+.float-summary { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.float-caret { color: var(--panel-muted); }
+.float-rows { min-height: 0; overflow-y: auto; }
+.float-rows[hidden] { display: none; }
+.float-rows > * { flex-shrink: 0; }
+.float-list .row { gap: 8px; padding: 6px 8px; background: transparent; border-bottom: 1px solid var(--panel-line); cursor: pointer; }
+.float-list .row:hover { background: #33363c; }
+.float-list .row.urgent { background: #3a2e14; }
+.float-list .avatar { width: 32px; height: 32px; }
+.float-list .name { font-size: 11px; color: var(--panel-muted); }
+.float-list .state { font-size: 12px; font-weight: 400; color: #e6e9ee; }
+.float-list .row.urgent .state { color: #f5c66a; }
+.float-list .chip { font-size: 10px; padding: 1px 6px; border-radius: 0; background: #1f2125; color: #f0a37d; }
+.float-list .time { font-size: 10.5px; color: var(--panel-muted); }
+/* 작게 보이려고 덜 중요한 것은 뺀다(카드·목록 보기에 다 있음) */
+.float-list .gauge, .float-list .detail, .float-list .model, .float-list .tag-hookless { display: none; }
+.float-list .empty { padding: 12px; font-size: 12px; color: var(--panel-muted); }
+
 /* ---------- 설정 패널 ---------- */
 .settings {
   position: fixed; top: 48px; left: 12px; z-index: 30; width: 280px; background: #fff; border-radius: 14px;

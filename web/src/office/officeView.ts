@@ -163,6 +163,13 @@ export class OfficeView implements OfficeHost {
     this.invalidate();
   }
 
+  /** 작은 목록(floatingList)에서 고른 세션의 카드 — 캐릭터를 누른 것과 같은 카드. at은 이 화면 기준 좌표 */
+  openCard(agentId: string, at: { x: number; y: number }): void {
+    const agent = this.snap?.agents.find((a) => a.id === agentId);
+    this.closeCard?.();
+    this.closeCard = agent && this.snap ? showCard(this.container, agent, this.snap.now, at) : null;
+  }
+
   private onPointer(e: PointerEvent): void {
     const rect = this.renderer.domElement.getBoundingClientRect();
     const ndc = new THREE.Vector2(((e.clientX - rect.left) / rect.width) * 2 - 1, -((e.clientY - rect.top) / rect.height) * 2 + 1);
