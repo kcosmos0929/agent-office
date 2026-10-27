@@ -1,13 +1,19 @@
 // 책상 모니터가 일하는 모습: 작업 중이면 화면에 아주 작은 도트 애니메이션을 그린다.
 // ▶ 실행 = 진행 막대(짝 랙과 같은 박자), ✏️ 고침 = 글줄이 하나씩, 📖 읽기 = 글줄이 위로 흐름, 💭·👥·🧹·🛡️ = 깜박이는 커서.
+// 바탕색도 일 종류마다 달라 멀리서 화면 색만 봐도 무슨 일인지 보인다(WORK_TONE).
 import * as THREE from 'three';
 import type { Status } from '../../../src/shared/types.ts';
 import { beat } from './rack.ts';
 
-/** 모니터 바탕색: 꺼짐 / 일하는 중 / 급함 / 끝남 */
-export const SCREEN = { off: '#3A404C', work: '#FFD9C7', wait: '#FFE7B3', done: '#D7F0DF' };
-/** 막대·글줄·커서의 먹색 — 바탕(SCREEN.work)보다 짙은 한 색 */
-const INK = '#7A4A38';
+/** 모니터 바탕색: 꺼짐 / 급함 / 끝남 */
+export const SCREEN = { off: '#3A404C', wait: '#FFE7B3', done: '#D7F0DF' };
+/** 일하는 중 바탕·먹색: 일 종류(장면 모양)마다 한 쌍. 급함 노랑·끝남 초록과 겹치지 않게 고른 옅은 색 */
+export const WORK_TONE = {
+  bar: { bg: '#CFE6FF', ink: '#2F5B86' }, // ▶ 실행: 하늘
+  lines: { bg: '#FFD9C7', ink: '#7A4A38' }, // ✏️ 고침: 복숭아
+  scroll: { bg: '#E6DDFF', ink: '#5B4A8A' }, // 📖 읽기: 연보라
+  cursor: { bg: '#DCE4EE', ink: '#46546A' }, // 💭·👥·🧹·🛡️: 회청
+} as const;
 
 export type ScreenFrame =
   | { kind: 'bar'; fill: number }
@@ -67,9 +73,16 @@ export class ScreenPainter {
     if (key === this.key) return;
     this.key = key;
     const { ctx, w, h } = this;
-    ctx.fillStyle = f.kind === 'solid' ? f.color : SCREEN.work;
+    if (f.kind === 'solid') {
+      ctx.fillStyle = f.color;
+      ctx.fillRect(0, 0, w, h);
+      this.tex.needsUpdate = true;
+      return;
+    }
+    const tone = WORK_TONE[f.kind];
+    ctx.fillStyle = tone.bg;
     ctx.fillRect(0, 0, w, h);
-    ctx.fillStyle = INK;
+    ctx.fillStyle = tone.ink;
     if (f.kind === 'bar') {
       const bh = Math.max(1, Math.floor(h / 5));
       ctx.fillRect(1, Math.floor((h - bh) / 2), Math.round(f.fill * (w - 2)), bh);
