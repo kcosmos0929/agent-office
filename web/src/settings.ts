@@ -30,6 +30,38 @@ export function showRemote(v: RemoteView, info: RemoteInfo): string | null {
   return null;
 }
 
+/** 「밖에서 보기」 칸의 상태(복사할 전체 주소): 마지막에 시작한 요청의 응답만 반영하고, 토큰을 바꾸는 동안엔 복사를 막는다 */
+export function remoteState(v: RemoteView, fetchInfo: () => Promise<RemoteInfo>) {
+  let full: string | null = null;
+  let seq = 0;
+  return {
+    get full(): string | null {
+      return full;
+    },
+    /** 정보를 다시 받아 칸을 그린다 — 더 늦게 시작한 요청이 있으면 이 응답은 버린다(옛 주소가 새 주소를 덮지 않게) */
+    async load(): Promise<void> {
+      const mine = ++seq;
+      try {
+        const info = await fetchInfo();
+        if (mine !== seq) return;
+        full = showRemote(v, info);
+      } catch {
+        if (mine !== seq) return;
+        full = null;
+        v.copy.hidden = true;
+        v.url.textContent = '정보를 불러오지 못했어요';
+      }
+      v.copy.disabled = false;
+    },
+    /** 토큰을 바꾸기 시작: 옛 주소를 지우고 버튼을 잠근다(진행 중인 옛 요청의 응답도 버린다) */
+    invalidate(): void {
+      seq++;
+      full = null;
+      v.copy.disabled = true;
+    },
+  };
+}
+
 /** 전체 주소(토큰 포함)를 클립보드에 — 집 PC처럼 QR을 못 찍는 기기로 넘길 때. 화면에 띄울 짧은 결과 문구를 돌려준다 */
 export async function copyRemoteUrl(full: string | null, clipboard: Pick<Clipboard, 'writeText'> | undefined): Promise<string> {
   if (!full || !clipboard) return COPY_FAIL;
@@ -68,8 +100,7 @@ export function buildSettings(initial: { codexAutoApprove: boolean }): { el: HTM
   remoteUrl.className = 'lan-url';
   const remoteActions = document.createElement('div');
   remoteActions.className = 'actions';
-  // 주소 복사: 화면엔 토큰을 가리지만 복사는 전체 주소 — 토큰을 새로 받으면 loadRemote가 새 주소로 바꿔 둔다
-  let remoteFull: string | null = null;
+  // 주소 복사: 화면엔 토큰을 가리지만 복사는 전체 주소 — 토큰을 바꾸는 동안엔 잠그고, 새 주소를 받으면 그 주소를 복사
   const copy = document.createElement('button');
   copy.type = 'button';
   copy.textContent = '주소 복사';
@@ -77,19 +108,22 @@ export function buildSettings(initial: { codexAutoApprove: boolean }): { el: HTM
   copyStatus.className = 'copy-status';
   copyStatus.setAttribute('role', 'status');
   let clearStatus: ReturnType<typeof setTimeout> | null = null;
-  copy.addEventListener('click', async () => {
-    copyStatus.textContent = await copyRemoteUrl(remoteFull, navigator.clipboard);
+  const showStatus = (text: string) => {
+    copyStatus.textContent = text;
     if (clearStatus) clearTimeout(clearStatus);
     clearStatus = setTimeout(() => (copyStatus.textContent = ''), 4000);
-  });
+  };
+  const remoteInfo = remoteState({ qr: remoteQr, url: remoteUrl, actions: remoteActions, copy }, async () => (await (await fetch('/api/remote-info')).json()) as RemoteInfo);
+  copy.addEventListener('click', async () => showStatus(await copyRemoteUrl(remoteInfo.full, navigator.clipboard)));
   const rotate = document.createElement('button');
   rotate.type = 'button';
   rotate.textContent = '토큰 새로 받기';
   rotate.addEventListener('click', async () => {
     if (!confirm('밖에서 보기 토큰을 새로 받을까요? 지금 밖에서 보던 화면은 끊기고, QR을 다시 찍어야 해요.')) return;
+    remoteInfo.invalidate();
     const r = await fetch('/api/admin/remote-token', { method: 'POST', headers: { 'x-so-admin': '1' } }).catch(() => null);
-    if (r?.ok) void loadRemote();
-    else remoteUrl.textContent = '새로 받지 못했어요';
+    await remoteInfo.load();
+    if (!r?.ok) showStatus('토큰을 새로 받지 못했어요');
   });
   remoteActions.append(copy, rotate);
   remote.append(remoteTitle, remoteHelp, remoteQr, remoteUrl, remoteActions, copyStatus);
@@ -151,23 +185,13 @@ export function buildSettings(initial: { codexAutoApprove: boolean }): { el: HTM
     }
   }
 
-  async function loadRemote() {
-    try {
-      const info = (await (await fetch('/api/remote-info')).json()) as RemoteInfo;
-      remoteFull = showRemote({ qr: remoteQr, url: remoteUrl, actions: remoteActions, copy }, info);
-    } catch {
-      remoteFull = null;
-      remoteUrl.textContent = '정보를 불러오지 못했어요';
-    }
-  }
-
   return {
     el,
     toggle() {
       el.hidden = !el.hidden;
       if (!el.hidden) {
         void load();
-        void loadRemote();
+        void remoteInfo.load();
       }
     },
   };
