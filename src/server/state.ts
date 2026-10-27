@@ -110,7 +110,13 @@ export class OfficeState {
 
   apply(e: OfficeEvent): boolean {
     const before = this.fingerprint();
-    const entry = this.entries.get(e.sessionId) ?? this.create(e);
+    const known = this.entries.get(e.sessionId);
+    // 미리 정리는 정리 중이 아니다 — 상태·자리·세션의 마지막 신호 시각을 그대로(등록부 보정 R6도 이 신호에 막히지 않게)
+    if (known && this.precompute(known, e)) {
+      this.lastHook = e.at;
+      return this.fingerprint() !== before;
+    }
+    const entry = known ?? this.create(e);
     const a = entry.agent;
     a.lastEventAt = e.at;
     if (e.type !== 'title') {
@@ -151,6 +157,16 @@ export class OfficeState {
   }
 
   /** 사건 뒤 자동 퇴근 표시 정리: 아직 gone이면(도구 끝 같은 낡은 신호) 숨은 채로 두고, 일하는 상태로 나왔으면 자동 퇴근을 푼다 */
+  /**
+   * 미리 정리(Claude Code 2.1.308 실측): 쉬는 동안·도구를 돌리는 동안 다음 정리본을 뒤에서 미리 만들며 자동 PreCompact만 보낸다
+   * (PostCompact는 다음에 실제로 바꿔 낄 때, 차례 안에서). 진짜 자동 정리는 차례 도중 도구가 다 끝난 뒤에만 일어나므로
+   * 차례가 끝났거나·일하는 중이 아니거나(쉼·기다림·퇴근)·메인 도구가 열려 있으면 미리 정리로 본다
+   */
+  private precompute(entry: Entry, e: OfficeEvent): boolean {
+    if (e.type !== 'compact-start' || e.trigger !== 'auto' || e.subagentId) return false;
+    return entry.turnEnded || groupOf(entry.agent.status) !== 'working' || entry.openTools.size > 0;
+  }
+
   private settleAutoGone(entry: Entry, hiddenAuto: boolean): void {
     if (entry.agent.status !== 'gone') {
       entry.autoGone = false;

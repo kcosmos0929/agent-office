@@ -456,6 +456,60 @@ test('🧹도 15분 무신호면 응답 없음', () => {
   assert.equal(one(st).status, 'stalled');
 });
 
+// 미리 정리(Claude Code 2.1.308 실측): 쉬는 동안·도구를 돌리는 동안 다음 정리본을 뒤에서 미리 만들며 자동 PreCompact만 보낸다.
+// PostCompact는 다음에 실제로 바꿔 낄 때(차례 안) 온다
+test('미리 정리: 차례가 끝난 뒤 온 자동 정리 시작은 ✅ 그대로, 20분 지나도 응답 없음 아님 → 다음 차례에 바꿔 끼우면 💭', () => {
+  const st = make();
+  st.apply(ev.prompt('s1', 0));
+  st.apply(ev.stop('s1', 1));
+  st.apply(ev.compactStart('s1', 2 * M, 'auto'));
+  assert.equal(one(st).status, 'done');
+  st.tick(20 * M);
+  assert.equal(one(st).status, 'done');
+  st.apply(ev.prompt('s1', 21 * M));
+  st.apply(ev.compactEnd('s1', 22 * M, 'auto'));
+  assert.equal(one(st).status, 'thinking');
+});
+
+test('미리 정리: ❓ 기다림 중에 온 자동 정리 시작은 ❓ 그대로', () => {
+  const st = make();
+  st.apply(ev.prompt('s1', 0));
+  st.apply(ev.question('s1', 1));
+  st.apply(ev.compactStart('s1', 2, 'auto'));
+  assert.equal(one(st).status, 'question');
+});
+
+test('미리 정리: 도구를 돌리는 중에 온 자동 정리 시작은 ▶ 그대로, 20분 돌아도 응답 없음 아님', () => {
+  const st = make();
+  st.apply(ev.prompt('s1', 0));
+  st.apply(ev.tool('s1', 1, 't1'));
+  st.apply(ev.compactStart('s1', 2, 'auto'));
+  assert.equal(one(st).status, 'running');
+  st.tick(20 * M);
+  assert.equal(one(st).status, 'running');
+});
+
+test('미리 정리: 자동 퇴근해 숨은 세션은 다시 나타나지 않음', () => {
+  const st = make();
+  st.apply(ev.prompt('s1', 0));
+  st.apply(ev.stop('s1', 1));
+  st.tick(31 * M); // 😴
+  st.tick(140 * M); // 👋 퇴근이 늦게 걸려 바로 숨김
+  assert.deepEqual(st.snapshot(140 * M).agents, []);
+  st.apply(ev.compactStart('s1', 141 * M, 'auto'));
+  assert.deepEqual(st.snapshot(141 * M).agents, []);
+});
+
+test('미리 정리: 서버를 다시 켠 뒤 등록부로만 아는 쉬는 세션(실측 B 세션)도 그대로, 응답 없음 아님', () => {
+  const st = make();
+  st.applyRegistry(read(reg('s1', 'idle', 5)), 6);
+  const before = [one(st).status, one(st).hookless];
+  st.apply(ev.compactStart('s1', 7, 'auto'));
+  assert.deepEqual([one(st).status, one(st).hookless], before);
+  st.tick(30 * M);
+  assert.notEqual(one(st).status, 'stalled');
+});
+
 test('한도: ⏳(쉼 묶음), 1시간 지나도 ⏳, resume → 💭', () => {
   const st = make();
   st.apply(ev.prompt('s1', 0));
