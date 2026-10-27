@@ -284,6 +284,37 @@ test('POST /api/codex/hook: 토큰 없으면 401, 있으면 204 후 스냅샷에
   ws.close();
 });
 
+test('POST /api/codex/hook: 기록 파일 없는 일회용 세션(transcript_path null)은 204지만 보드에 안 뜸', { timeout: 5000 }, async () => {
+  const { url } = await boot();
+  const post = (o: object) => fetch(url + '/api/codex/hook', { method: 'POST', headers: { authorization: `Bearer ${TOKEN}` }, body: JSON.stringify({ cwd: '/Users/seop/.codex/memories', ...o }) });
+  for (const hook_event_name of ['SessionStart', 'UserPromptSubmit', 'Stop', 'SessionEnd']) {
+    assert.equal((await post({ session_id: 'eph1', hook_event_name, transcript_path: null })).status, 204);
+  }
+  assert.equal((await post({ session_id: 'real1', hook_event_name: 'UserPromptSubmit', transcript_path: '/x/rollout-real1.jsonl' })).status, 204);
+  const ws = new WebSocket(url.replace('http', 'ws') + '/ws');
+  const snap = await nextSnapshot(ws, (s) => s.agents.some((a) => a.sessionId === 'real1'));
+  assert.deepEqual(snap.agents.filter((a) => a.kind === 'codex').map((a) => a.sessionId), ['real1']);
+  ws.close();
+});
+
+test('POST /api/codex/hook: 떠 있는 세션 id로 null 사건(도우미 시작·끝·세션 종료)이 섞여도 상태가 안 바뀌고, 뒤의 보통 사건은 그대로 (리뷰 제안)', { timeout: 5000 }, async () => {
+  const { url } = await boot();
+  const post = (o: object) => fetch(url + '/api/codex/hook', { method: 'POST', headers: { authorization: `Bearer ${TOKEN}` }, body: JSON.stringify({ session_id: 'mix1', cwd: '/x', ...o }) });
+  const real = { transcript_path: '/x/rollout-mix1.jsonl' };
+  await post({ hook_event_name: 'UserPromptSubmit', ...real });
+  for (const o of [{ hook_event_name: 'SubagentStart', agent_id: 'h1', agent_type: 'worker' }, { hook_event_name: 'Stop' }, { hook_event_name: 'SessionEnd' }]) {
+    assert.equal((await post({ ...o, transcript_path: null })).status, 204);
+  }
+  const ws = new WebSocket(url.replace('http', 'ws') + '/ws');
+  const mid = await nextSnapshot(ws, (s) => s.agents.some((a) => a.sessionId === 'mix1'));
+  const a = mid.agents.find((x) => x.sessionId === 'mix1')!;
+  assert.deepEqual([a.status, a.subagents.length], ['thinking', 0]);
+  const done = nextSnapshot(ws, (s) => s.agents.some((x) => x.sessionId === 'mix1' && x.status === 'done'));
+  await post({ hook_event_name: 'Stop', ...real });
+  await done;
+  ws.close();
+});
+
 test('훅이 만진 경로로 프로젝트 이름표가 바뀜(Claude 파일 경로·Codex 상대 경로 패치)', { timeout: 5000 }, async () => {
   const { url, state } = await bootWithWork((p, cwd) => (p.includes('lst_ss') || cwd.includes('lst_ss') && p.startsWith('src') ? '성수 LST' : null));
   const ws = new WebSocket(url.replace('http', 'ws') + '/ws');

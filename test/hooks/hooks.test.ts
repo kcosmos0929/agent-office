@@ -243,3 +243,14 @@ test('statusline: 사용량 없으면 모델 이름, 서버 없어도 출력', a
   assert.equal(r.code, 0);
   assert.equal(r.stdout, 'Opus 5.5');
 });
+
+test('codex: 일회용 세션의 transcript_path null도 그대로 보냄(서버가 일회용을 가려냄), 프롬프트는 안 보냄', async () => {
+  const home = tempHome();
+  const fake = await fakeServer();
+  writeEndpoint(home, fake.port);
+  await run(HOOK, home, JSON.stringify({ session_id: 'e1', hook_event_name: 'UserPromptSubmit', cwd: '/x', transcript_path: null, prompt: '비밀' }), ['codex']);
+  const body = JSON.parse(fake.got[0].body) as Record<string, unknown>;
+  assert.ok('transcript_path' in body);
+  assert.equal(body.transcript_path, null);
+  assert.ok(!fake.got[0].body.includes('비밀'));
+});

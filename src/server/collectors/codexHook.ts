@@ -43,6 +43,9 @@ export const CODEX_TOOLS: ToolDialect = {
 export function codexHookToEvents(payload: unknown, now: number): OfficeEvent[] {
   if (payload === null || typeof payload !== 'object' || Array.isArray(payload)) return [];
   const p = payload as Json;
+  // 기록 파일이 없는 일회용 세션(Codex 앱이 뒤에서 돌리는 기억 정리 등)은 사람 세션이 아니라 보드에 안 띄운다.
+  // 2026-10-27 실측: 일회용(--ephemeral)은 모든 사건에서 transcript_path가 null, 보통 세션은 파일 경로. 안 보내면(옛 버전) 그대로
+  if (p.transcript_path === null) return [];
   // 중단(Interrupt)은 차례가 끝난 것으로 — Claude엔 없는 사건. 표시를 남겨 상태가 도우미까지 거둔다
   const events = p.hook_event_name === 'Interrupt'
     ? hookToEvents({ ...p, hook_event_name: 'Stop' }, now, CODEX_TOOLS).map((e) => (e.type === 'stop' ? { ...e, interrupted: true } : e))
