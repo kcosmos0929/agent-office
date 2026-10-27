@@ -4,11 +4,12 @@ import fs from 'node:fs';
 import path from 'node:path';
 import type { Status } from '../../src/shared/types.ts';
 import {
-  ANCHOR, CELL, DIRS, DOT, FACES, LAYERS, LOOKS, PACE_FPS, STEP, UPRIGHT,
-  SEATED_ANCHOR, dirFor, faceFor, headTop, lookFor, partPath, planeOffset, planeSize, seatedDir, walkSpeed,
+  ANCHOR, CELL, DIRS, DOT, FACES, LAYERS, LOOKS, OUTFIT_VERSION, PACE_FPS, PART_BASE, STEP, UPRIGHT,
+  SEATED_ANCHOR, dirFor, faceFor, headTop, lookFor, partFiles, partPath, planeOffset, planeSize, seatedDir, walkSpeed,
 } from '../../web/src/office/sprites/look.ts';
 
-const PARTS = path.resolve(import.meta.dirname, '../../web/public/characters/v15');
+const CHARACTERS = path.resolve(import.meta.dirname, '../../web/public/characters');
+const PARTS = path.join(CHARACTERS, 'v15');
 
 test('모습: 모자 0~7은 모두 다르고, 앞 6개는 정리된 6종(catalog 프리셋)의 머리·옷', () => {
   const keys = Array.from({ length: 8 }, (_, i) => `${lookFor(i).hair}|${lookFor(i).outfit}`);
@@ -18,13 +19,43 @@ test('모습: 모자 0~7은 모두 다르고, 앞 6개는 정리된 6종(catalog
   assert.deepEqual(lookFor(8), lookFor(0));
 });
 
-test('부품 파일: 모든 모습×표정×방향×레이어가 실제로 있다', () => {
+test('부품 파일: 모든 모습×표정×방향×레이어가 실제로 있다(새 버전 옷도, 되돌릴 v15도)', () => {
   let n = 0;
   for (const look of LOOKS) for (const face of FACES) for (const dir of DIRS) for (const layer of LAYERS) {
-    assert.ok(fs.existsSync(path.join(PARTS, partPath(layer, look, face, dir))), partPath(layer, look, face, dir));
+    const files = partFiles(layer, look, face, dir);
+    assert.equal(files.at(-1), `${PART_BASE}/${partPath(layer, look, face, dir)}`);
+    for (const f of files) assert.ok(fs.existsSync(path.join(CHARACTERS, f)), f);
     n++;
   }
   assert.equal(n, 8 * 4 * 4 * 10);
+});
+
+test('부품 버전: JP01 옷(jp-classic)만 v18 먼저, 머리·얼굴·다른 옷은 v15만', () => {
+  const jp01 = LOOKS[0];
+  assert.deepEqual(partFiles('torso', jp01, 'neutral', 'SE'), ['v18/parts/outfit/jp-classic/torso/SE.png', 'v15/parts/outfit/jp-classic/torso/SE.png']);
+  assert.deepEqual(partFiles('head', jp01, 'neutral', 'SE'), ['v15/parts/hair/bun/head/SE.png']);
+  assert.deepEqual(partFiles('face', jp01, 'happy', 'NW'), ['v15/parts/face/bun/happy/NW.png']);
+  for (const look of LOOKS.filter((l) => l.outfit !== 'jp-classic')) {
+    assert.deepEqual(partFiles('bottom', look, 'neutral', 'NE'), [`v15/parts/outfit/${look.outfit}/bottom/NE.png`]);
+  }
+  assert.deepEqual(Object.keys(OUTFIT_VERSION), ['jp-classic']);
+});
+
+test('v18 옷 부품은 v15와 같은 규격(576×96 RGBA PNG)이고 폴더에 그 옷만 있다', () => {
+  const header = (f: string) => {
+    const b = fs.readFileSync(f);
+    return [b.readUInt32BE(16), b.readUInt32BE(20), b[24], b[25]]; // IHDR 폭·높이·비트 깊이·색 형식(6 = RGBA)
+  };
+  const v18 = path.join(CHARACTERS, 'v18/parts/outfit');
+  assert.deepEqual(fs.readdirSync(v18), ['jp-classic']);
+  let n = 0;
+  for (const layer of fs.readdirSync(path.join(v18, 'jp-classic'))) for (const dir of DIRS) {
+    const rel = `parts/outfit/jp-classic/${layer}/${dir}.png`;
+    assert.deepEqual(header(path.join(CHARACTERS, 'v18', rel)), [576, 96, 8, 6], rel);
+    assert.deepEqual(header(path.join(CHARACTERS, 'v18', rel)).slice(0, 2), header(path.join(PARTS, rel)).slice(0, 2), rel);
+    n++;
+  }
+  assert.equal(n, 7 * 4);
 });
 
 test('부품 배치 계약이 v15 layout.json과 같다', () => {
