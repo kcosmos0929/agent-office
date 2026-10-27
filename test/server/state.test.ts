@@ -531,6 +531,32 @@ test('미리 정리: 차례 끝 뒤 도우미만 일하는 중이면 메인 자�
   assert.equal(one(st).status, before);
 });
 
+test('미리 정리: 도우미가 다 끝났는데 메인이 안 이어 가면, 🧹로 보였어도 늦게 읽은 등록부 쉼(R6)이 바로잡음 (Codex 재검토 P2)', () => {
+  const st = make();
+  st.apply(ev.prompt('s1', 0));
+  st.apply(ev.subStart('s1', 1_000, 'h1'));
+  st.apply(ev.stop('s1', 2_000));
+  st.apply(ev.subStop('s1', 3_000, 'h1')); // 💭로 잠정
+  st.apply(ev.compactStart('s1', 5_000, 'auto')); // 쉬는 동안의 미리 정리지만 구별 못 해 🧹
+  assert.equal(one(st).status, 'compacting');
+  st.applyRegistry(read(reg('s1', 'idle', 4_000)), 6_000);
+  assert.equal(one(st).status, 'done');
+});
+
+test('미리 정리: 차례 끝 뒤 도우미가 남아 있으면 메인이 이어 갔는지 몰라 자동 정리 시작은 👥 그대로 → 정리 끝 신호면 💭 (Codex 재검토 P2, 남긴 판정)', () => {
+  const st = make();
+  st.apply(ev.prompt('s1', 0));
+  st.apply(ev.subStart('s1', 1, 'h1'));
+  st.apply(ev.subStart('s1', 2, 'h2'));
+  st.apply(ev.stop('s1', 3));
+  st.apply(ev.subStop('s1', 4, 'h1'));
+  const before = one(st).status;
+  st.apply(ev.compactStart('s1', 5, 'auto'));
+  assert.equal(one(st).status, before);
+  st.apply(ev.compactEnd('s1', 6, 'auto'));
+  assert.equal(one(st).status, 'thinking');
+});
+
 test('미리 정리: 처음 보는 세션의 자동 정리 시작만으로는 보드에 안 올림 → 뒤에 온 등록부 쉼에도 응답 없음 아님 (Codex 리뷰 P2)', () => {
   const st = make();
   st.apply(ev.compactStart('s1', 20_000, 'auto'));

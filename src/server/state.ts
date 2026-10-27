@@ -121,7 +121,9 @@ export class OfficeState {
     a.lastEventAt = e.at;
     if (e.type !== 'title') {
       entry.hookSeen = true;
-      entry.lastHookAt = e.at;
+      // 자동 정리 시작은 미리 정리일 수도 있어(쉬는지 구별 못 하는 경우) 등록부 보정(R6 등)의 기준 시각으로 삼지 않는다.
+      // 진짜 정리면 차례 도중이라 등록부가 일하는 중이어서 보정이 걸리지 않는다
+      if (!(e.type === 'compact-start' && e.trigger === 'auto')) entry.lastHookAt = e.at;
       this.lastHook = e.at;
       if (a.kind === 'codex') this.lastCodexHook = e.at;
       a.hookless = false;
