@@ -1,4 +1,46 @@
 // 설정 패널(이 맥에서 열었을 때만): 폰 연결 QR · 밖에서 보기 QR · 서버 다시 켜기/끄기 · Codex 자동 승인
+
+export const COPY_OK = '복사했어요 — 비밀번호처럼 다뤄 주세요';
+export const COPY_FAIL = '복사하지 못했어요';
+
+/** 화면에 보일 주소: 토큰 부분은 가린다 */
+export function maskToken(u: string): string {
+  return u.replace(/token=.*/, 'token=…');
+}
+
+type RemoteInfo = { url: string | null; qrSvg: string | null; problem?: string };
+/** 「밖에서 보기」 칸의 조각들 */
+export type RemoteView = { qr: HTMLImageElement; url: HTMLElement; actions: HTMLElement; copy: HTMLButtonElement };
+
+/** /api/remote-info 결과를 칸에 그린다. 복사할 전체 주소(토큰 포함)를 돌려준다 — 꺼져 있거나 문을 못 열었으면 null(복사 버튼 숨김) */
+export function showRemote(v: RemoteView, info: RemoteInfo): string | null {
+  const on = Boolean(info.url && info.qrSvg);
+  v.qr.hidden = !on;
+  v.actions.hidden = !on;
+  v.copy.hidden = !on;
+  if (info.url && info.qrSvg) {
+    v.qr.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(info.qrSvg)}`;
+    v.url.textContent = maskToken(info.url);
+    return info.url;
+  }
+  v.qr.removeAttribute('src');
+  v.url.textContent = info.problem === 'door-failed'
+    ? '밖에서 보기 문을 열지 못했어요 — 포트(remotePort)가 쓰이고 있는지 보고 다시 켜 보세요'
+    : '꺼져 있어요 — config.json의 remotePublicHost를 넣고 다시 켜세요';
+  return null;
+}
+
+/** 전체 주소(토큰 포함)를 클립보드에 — 집 PC처럼 QR을 못 찍는 기기로 넘길 때. 화면에 띄울 짧은 결과 문구를 돌려준다 */
+export async function copyRemoteUrl(full: string | null, clipboard: Pick<Clipboard, 'writeText'> | undefined): Promise<string> {
+  if (!full || !clipboard) return COPY_FAIL;
+  try {
+    await clipboard.writeText(full);
+    return COPY_OK;
+  } catch {
+    return COPY_FAIL;
+  }
+}
+
 export function buildSettings(initial: { codexAutoApprove: boolean }): { el: HTMLElement; toggle(): void } {
   const el = document.createElement('div');
   el.className = 'settings';
@@ -26,6 +68,20 @@ export function buildSettings(initial: { codexAutoApprove: boolean }): { el: HTM
   remoteUrl.className = 'lan-url';
   const remoteActions = document.createElement('div');
   remoteActions.className = 'actions';
+  // 주소 복사: 화면엔 토큰을 가리지만 복사는 전체 주소 — 토큰을 새로 받으면 loadRemote가 새 주소로 바꿔 둔다
+  let remoteFull: string | null = null;
+  const copy = document.createElement('button');
+  copy.type = 'button';
+  copy.textContent = '주소 복사';
+  const copyStatus = document.createElement('div');
+  copyStatus.className = 'copy-status';
+  copyStatus.setAttribute('role', 'status');
+  let clearStatus: ReturnType<typeof setTimeout> | null = null;
+  copy.addEventListener('click', async () => {
+    copyStatus.textContent = await copyRemoteUrl(remoteFull, navigator.clipboard);
+    if (clearStatus) clearTimeout(clearStatus);
+    clearStatus = setTimeout(() => (copyStatus.textContent = ''), 4000);
+  });
   const rotate = document.createElement('button');
   rotate.type = 'button';
   rotate.textContent = '토큰 새로 받기';
@@ -35,8 +91,8 @@ export function buildSettings(initial: { codexAutoApprove: boolean }): { el: HTM
     if (r?.ok) void loadRemote();
     else remoteUrl.textContent = '새로 받지 못했어요';
   });
-  remoteActions.append(rotate);
-  remote.append(remoteTitle, remoteHelp, remoteQr, remoteUrl, remoteActions);
+  remoteActions.append(copy, rotate);
+  remote.append(remoteTitle, remoteHelp, remoteQr, remoteUrl, remoteActions, copyStatus);
 
   const actions = document.createElement('div');
   actions.className = 'actions';
@@ -85,7 +141,7 @@ export function buildSettings(initial: { codexAutoApprove: boolean }): { el: HTM
       const info = (await (await fetch('/api/lan-info')).json()) as { url: string | null; qrSvg: string | null };
       if (info.url && info.qrSvg) {
         qr.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(info.qrSvg)}`;
-        url.textContent = info.url.replace(/token=.*/, 'token=…');
+        url.textContent = maskToken(info.url);
       } else {
         qr.removeAttribute('src');
         url.textContent = '와이파이 주소를 찾지 못했어요';
@@ -97,20 +153,10 @@ export function buildSettings(initial: { codexAutoApprove: boolean }): { el: HTM
 
   async function loadRemote() {
     try {
-      const info = (await (await fetch('/api/remote-info')).json()) as { url: string | null; qrSvg: string | null; problem?: string };
-      const on = Boolean(info.url && info.qrSvg);
-      remoteQr.hidden = !on;
-      remoteActions.hidden = !on;
-      if (info.url && info.qrSvg) {
-        remoteQr.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(info.qrSvg)}`;
-        remoteUrl.textContent = info.url.replace(/token=.*/, 'token=…');
-      } else {
-        remoteQr.removeAttribute('src');
-        remoteUrl.textContent = info.problem === 'door-failed'
-          ? '밖에서 보기 문을 열지 못했어요 — 포트(remotePort)가 쓰이고 있는지 보고 다시 켜 보세요'
-          : '꺼져 있어요 — config.json의 remotePublicHost를 넣고 다시 켜세요';
-      }
+      const info = (await (await fetch('/api/remote-info')).json()) as RemoteInfo;
+      remoteFull = showRemote({ qr: remoteQr, url: remoteUrl, actions: remoteActions, copy }, info);
     } catch {
+      remoteFull = null;
       remoteUrl.textContent = '정보를 불러오지 못했어요';
     }
   }
