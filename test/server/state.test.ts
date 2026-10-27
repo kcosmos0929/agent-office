@@ -510,6 +510,46 @@ test('미리 정리: 서버를 다시 켠 뒤 등록부로만 아는 쉬는 세�
   assert.notEqual(one(st).status, 'stalled');
 });
 
+test('미리 정리: 차례 끝 뒤 도우미가 다 끝나 메인이 이어 일하면 자동 정리는 진짜 🧹 (Codex 리뷰 P2)', () => {
+  const st = make();
+  st.apply(ev.prompt('s1', 0));
+  st.apply(ev.subStart('s1', 1, 'h1'));
+  st.apply(ev.stop('s1', 2));
+  st.apply(ev.subStop('s1', 3, 'h1'));
+  assert.equal(one(st).status, 'thinking');
+  st.apply(ev.compactStart('s1', 4, 'auto'));
+  assert.deepEqual([one(st).status, one(st).detail], ['compacting', '자동 정리']);
+});
+
+test('미리 정리: 차례 끝 뒤 도우미만 일하는 중이면 메인 자동 정리 시작은 그대로', () => {
+  const st = make();
+  st.apply(ev.prompt('s1', 0));
+  st.apply(ev.subStart('s1', 1, 'h1'));
+  st.apply(ev.stop('s1', 2));
+  const before = one(st).status;
+  st.apply(ev.compactStart('s1', 3, 'auto'));
+  assert.equal(one(st).status, before);
+});
+
+test('미리 정리: 처음 보는 세션의 자동 정리 시작만으로는 보드에 안 올림 → 뒤에 온 등록부 쉼에도 응답 없음 아님 (Codex 리뷰 P2)', () => {
+  const st = make();
+  st.apply(ev.compactStart('s1', 20_000, 'auto'));
+  assert.deepEqual(st.snapshot(20_000).agents, []);
+  st.applyRegistry(read(reg('s1', 'idle', 10_000)), 21_000);
+  st.tick(16 * M);
+  assert.notEqual(one(st, 16 * M)?.status, 'stalled');
+  assert.notEqual(one(st, 16 * M)?.status, 'compacting');
+});
+
+test('도우미의 자동 정리 시작은 메인의 보정 기준 시각을 안 바꿔 R6가 그대로 걸림 (Codex 리뷰 P2)', () => {
+  const st = make();
+  st.apply(ev.prompt('s1', 0));
+  st.apply(ev.tool('s1', 1_000, 't1'));
+  st.apply({ ...ev.compactStart('s1', 3_000, 'auto'), subagentId: 'h1' });
+  st.applyRegistry(read(reg('s1', 'idle', 2_000)), 4_000);
+  assert.equal(one(st).status, 'done');
+});
+
 test('한도: ⏳(쉼 묶음), 1시간 지나도 ⏳, resume → 💭', () => {
   const st = make();
   st.apply(ev.prompt('s1', 0));
