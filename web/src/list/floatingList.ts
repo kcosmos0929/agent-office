@@ -43,6 +43,24 @@ export function cardAnchor(rowRect: { left: number; top: number }, officeRect: {
   return { x: rowRect.left - officeRect.left - CARD_W - 32, y: rowRect.top - officeRect.top + 40 };
 }
 
+/**
+ * 카드 요청 맡아 두기: open이 false(사무실을 불러오는 중·다시 연결 직후라 스냅샷이 아직 없음)면 맡아 두었다가
+ * flush 때 다시 해 본다. 새 요청이 옛 요청을 대신한다(마지막에 누른 줄만)
+ */
+export function deferredCard<T>(open: (req: T) => boolean): { request(req: T): void; flush(): void } {
+  let pending: T | null = null;
+  const tryOpen = () => {
+    if (pending !== null && open(pending)) pending = null;
+  };
+  return {
+    request(req) {
+      pending = req;
+      tryOpen();
+    },
+    flush: tryOpen,
+  };
+}
+
 export type FloatView = { root: HTMLElement; summary: HTMLElement; caret: HTMLElement; rows: HTMLElement };
 
 /** 스냅샷 → 작은 목록. 접혀 있으면 줄은 그리지 않는다 */

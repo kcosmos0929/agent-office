@@ -43,7 +43,7 @@ html, body { margin: 0; height: 100%; background: var(--bg); }
 .view-list .toolbar { position: static; padding: 10px 12px 0; }
 
 /* ---------- 연결 띠 (끊겨도 화면은 그대로, 오른쪽 위에 상태만) ---------- */
-.office-strip { position: fixed; top: 10px; right: 12px; z-index: 20; }
+.office-strip { position: fixed; top: 10px; right: 12px; z-index: 24; } /* 작은 목록(22) 위 — 펼친 연결 정보가 가려지지 않게 */
 .office-strip[hidden] { display: none; }
 .strip { position: relative; font-size: 11px; font-weight: 700; }
 .strip summary { list-style: none; cursor: pointer; padding: 5px 9px; border-radius: 9px; background: #fff; border: 1px solid #e2d8cb; white-space: nowrap; }

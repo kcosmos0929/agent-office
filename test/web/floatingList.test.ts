@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { cardAnchor, floatSummary, initialFloatOpen, isNarrow, renderFloat, type FloatView } from '../../web/src/list/floatingList.ts';
+import { cardAnchor, deferredCard, floatSummary, initialFloatOpen, isNarrow, renderFloat, type FloatView } from '../../web/src/list/floatingList.ts';
 import type { Agent, Health, Snapshot, Status } from '../../src/shared/types.ts';
 import { FakeElement, fakeDocument } from './fakeDom.ts';
 import { M } from '../helpers.ts';
@@ -78,4 +78,25 @@ test('줄을 누르면 여는 카드 자리: 작은 목록 왼쪽(카드 폭만�
   // 사무실 화면이 (0,0)에서 시작, 줄이 x 1120·y 90 → 카드 왼쪽이 줄보다 16px 왼쪽에 끝나게
   assert.deepEqual(cardAnchor({ left: 1120, top: 90 }, { left: 0, top: 0 }), { x: 1120 - 264 - 32, y: 130 });
   assert.deepEqual(cardAnchor({ left: 1120, top: 90 }, { left: 20, top: 10 }), { x: 1100 - 264 - 32, y: 120 });
+});
+
+test('카드 요청 맡아 두기: 준비 전(불러오는 중·다시 연결 직후)엔 맡아 두고, 준비되면 한 번 연다 — 새 요청이 옛 요청을 대신함 (리뷰 P2)', () => {
+  let ready = false;
+  const opened: string[] = [];
+  const card = deferredCard<string>((id) => {
+    if (!ready) return false;
+    opened.push(id);
+    return true;
+  });
+  card.request('a');
+  card.flush();
+  assert.deepEqual(opened, []);
+  card.request('b');
+  ready = true;
+  card.flush();
+  assert.deepEqual(opened, ['b']);
+  card.flush();
+  assert.deepEqual(opened, ['b'], '한 번만');
+  card.request('c');
+  assert.deepEqual(opened, ['b', 'c'], '준비돼 있으면 바로');
 });

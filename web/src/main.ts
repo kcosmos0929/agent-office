@@ -1,7 +1,7 @@
 import './style.css';
 import type { Snapshot } from '../../src/shared/types.ts';
 import { connect } from './connection.ts';
-import { buildFloatingList, cardAnchor, FLOAT_OPEN_KEY, initialFloatOpen, isNarrow } from './list/floatingList.ts';
+import { buildFloatingList, cardAnchor, deferredCard, FLOAT_OPEN_KEY, initialFloatOpen, isNarrow } from './list/floatingList.ts';
 import { renderList } from './list/listBoard.ts';
 import { buildSettings } from './settings.ts';
 import { SoundPlayer, shouldRestoreSound, soundEvents } from './sound.ts';
@@ -176,11 +176,18 @@ function lazyOffice(container: HTMLElement): OfficeHost {
   let view: OfficeHost | null = null;
   let last: Snapshot | null = null;
   let disposed = false;
+  // 사무실을 불러오는 중에 작은 목록에서 고른 카드 — 다 불러온 뒤 연다(사무실은 스냅샷이 오면 연다)
+  const card = deferredCard<{ agentId: string; at: { x: number; y: number } }>(({ agentId, at }) => {
+    if (!view) return false;
+    view.openCard?.(agentId, at);
+    return true;
+  });
   // 픽셀 글꼴을 먼저 받아야 TV(캔버스) 글자가 그 글꼴로 그려진다
   const fonts = ['16px Galmuri11', '16px GalmuriMono11', '16px Galmuri14'].map((f) => document.fonts.load(f));
   void Promise.all(fonts).catch(() => null).then(() => import('./office/officeView.ts')).then(({ OfficeView }) => {
     if (disposed) return;
     view = new OfficeView(container);
+    card.flush(); // 스냅샷보다 먼저 넘겨도 사무실이 맡아 두었다가 update 때 연다
     if (last) view.update(last);
   });
   return {
@@ -193,7 +200,7 @@ function lazyOffice(container: HTMLElement): OfficeHost {
       view?.rebase?.();
     },
     openCard(agentId, at) {
-      view?.openCard?.(agentId, at);
+      card.request({ agentId, at });
     },
     dispose() {
       disposed = true;
