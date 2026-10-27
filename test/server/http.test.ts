@@ -284,6 +284,19 @@ test('POST /api/codex/hook: 토큰 없으면 401, 있으면 204 후 스냅샷에
   ws.close();
 });
 
+test('POST /api/codex/hook: 기록 파일 없는 일회용 세션(transcript_path null)은 204지만 보드에 안 뜸', { timeout: 5000 }, async () => {
+  const { url } = await boot();
+  const post = (o: object) => fetch(url + '/api/codex/hook', { method: 'POST', headers: { authorization: `Bearer ${TOKEN}` }, body: JSON.stringify({ cwd: '/Users/seop/.codex/memories', ...o }) });
+  for (const hook_event_name of ['SessionStart', 'UserPromptSubmit', 'Stop', 'SessionEnd']) {
+    assert.equal((await post({ session_id: 'eph1', hook_event_name, transcript_path: null })).status, 204);
+  }
+  assert.equal((await post({ session_id: 'real1', hook_event_name: 'UserPromptSubmit', transcript_path: '/x/rollout-real1.jsonl' })).status, 204);
+  const ws = new WebSocket(url.replace('http', 'ws') + '/ws');
+  const snap = await nextSnapshot(ws, (s) => s.agents.some((a) => a.sessionId === 'real1'));
+  assert.deepEqual(snap.agents.filter((a) => a.kind === 'codex').map((a) => a.sessionId), ['real1']);
+  ws.close();
+});
+
 test('훅이 만진 경로로 프로젝트 이름표가 바뀜(Claude 파일 경로·Codex 상대 경로 패치)', { timeout: 5000 }, async () => {
   const { url, state } = await bootWithWork((p, cwd) => (p.includes('lst_ss') || cwd.includes('lst_ss') && p.startsWith('src') ? '성수 LST' : null));
   const ws = new WebSocket(url.replace('http', 'ws') + '/ws');

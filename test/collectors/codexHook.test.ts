@@ -61,3 +61,14 @@ test('모델 이름이 모든 Codex 사건에 실림(없으면 안 실림)', () 
   const { model, ...noModel } = BASE;
   assert.equal(codexHookToEvents({ ...noModel, hook_event_name: 'Stop' }, 5)[0].model, undefined);
 });
+
+test('기록 파일이 없는 일회용 세션(transcript_path null — Codex 기억 정리 등)은 모든 사건을 버림, 경로를 안 보내면(옛 버전) 그대로', () => {
+  // 2026-10-27 실측: codex exec --ephemeral은 SessionStart·UserPromptSubmit·Stop·SessionEnd 모두 transcript_path null, 보통 세션은 파일 경로
+  for (const hook_event_name of ['SessionStart', 'UserPromptSubmit', 'Stop', 'SessionEnd', 'Interrupt', 'PermissionRequest']) {
+    assert.deepEqual(codexHookToEvents(ev({ hook_event_name, transcript_path: null }), 5), [], hook_event_name);
+  }
+  assert.deepEqual(codexHookToEvents(ev({ hook_event_name: 'PreToolUse', tool_name: 'Bash', tool_use_id: 'u1', tool_input: { command: 'ls' }, transcript_path: null }), 5), []);
+  assert.equal(kinds(ev({ hook_event_name: 'UserPromptSubmit' }))[0]?.type, 'prompt');
+  const { transcript_path: _omit, ...noPath } = BASE;
+  assert.equal(kinds({ ...noPath, hook_event_name: 'UserPromptSubmit' })[0]?.type, 'prompt');
+});
