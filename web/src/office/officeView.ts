@@ -6,6 +6,7 @@ import type { OfficeHost } from '../main.ts';
 import { targetFps } from './fps.ts';
 import type { Pose } from './pose.ts';
 import { showCard } from './card.ts';
+import { deferredCard } from '../list/floatingList.ts';
 import { Cast } from './cast.ts';
 import { applyDaylight, clockOverride, lightLevel } from './daylight.ts';
 import { PALETTE, officeLights } from './backdrop.ts';
@@ -50,6 +51,14 @@ export class OfficeView implements OfficeHost {
   /** 스냅샷을 받은 때(브라우저 시각) — 서버 시각을 이어 세려고 */
   private receivedAt = 0;
   private closeCard: (() => void) | null = null;
+  /** 작은 목록에서 고른 카드 — 스냅샷이 아직 없으면(다시 연결 직후) 맡아 두었다가 다음 스냅샷 때 연다 */
+  private readonly cardRequest = deferredCard<{ agentId: string; at: { x: number; y: number } }>(({ agentId, at }) => {
+    if (!this.snap) return false;
+    const agent = this.snap.agents.find((a) => a.id === agentId);
+    this.closeCard?.();
+    this.closeCard = agent ? showCard(this.container, agent, this.snap.now, at) : null;
+    return true;
+  });
   private readonly pass = new PixelPass(PALETTE.bg);
   private readonly px: number;
   private dprQuery: MediaQueryList | null = null;
@@ -145,6 +154,7 @@ export class OfficeView implements OfficeHost {
     this.cast.sync(s);
     this.poses = this.cast.poses();
     this.invalidate();
+    this.cardRequest.flush();
   }
 
   /** 다시 연결된 뒤 첫 스냅샷은 효과 없이 기준만 */
@@ -161,6 +171,11 @@ export class OfficeView implements OfficeHost {
     applyDaylight(this.lights, level);
     this.office.backdrop.setDaylight(level);
     this.invalidate();
+  }
+
+  /** 작은 목록(floatingList)에서 고른 세션의 카드 — 캐릭터를 누른 것과 같은 카드. at은 이 화면 기준 좌표 */
+  openCard(agentId: string, at: { x: number; y: number }): void {
+    this.cardRequest.request({ agentId, at });
   }
 
   private onPointer(e: PointerEvent): void {
