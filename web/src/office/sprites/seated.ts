@@ -70,10 +70,12 @@ export function seatedCell(index: number): { col: number; row: number } {
   return { col: index % SEATED_ATLAS.cols, row: Math.floor(index / SEATED_ATLAS.cols) };
 }
 
-/** `?seated` 미리 보기: 없으면 off(늘 서 있음), `?seated=still`이면 첫 칸(정지 v21과 같은 그림)에 멈춤, 그 밖엔 움직임 */
+/**
+ * 앉기: 기본으로 켜짐(움직임, 2026-10-28 — 여덟 모습 앉은 그림과 개발실·회의실 자리가 생겨서).
+ * `?seated=off`면 늘 서 있고(예전 화면), `?seated=still`이면 첫 칸(정지 v21과 같은 그림)에 멈춘다.
+ */
 export type SeatedPreview = 'off' | 'still' | 'motion';
 export function seatedPreview(search: string): SeatedPreview {
-  const q = new URLSearchParams(search);
-  if (!q.has('seated')) return 'off';
-  return q.get('seated') === 'still' ? 'still' : 'motion';
+  const v = new URLSearchParams(search).get('seated');
+  return v === 'off' ? 'off' : v === 'still' ? 'still' : 'motion';
 }

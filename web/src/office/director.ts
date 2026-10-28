@@ -110,7 +110,7 @@ function meetingSit(i: number, hat: number): Plan['sit'] {
 
 /**
  * 에이전트(주어진 순서)마다 계획을 짠다. 키는 agent.id, 도우미는 `${agent.id}/${sub.id}`.
- * 로비 자리·회의실 자리는 종류와 상관없이 순서대로 이어서 센다. seated(`?seated` 미리 보기)면 책상에서 앉는다.
+ * 로비 자리·회의실 자리는 종류와 상관없이 순서대로 이어서 센다. seated(앱 기본 켜짐, `?seated=off`면 끔)면 책상·회의실 의자에 앉는다.
  */
 export function direct(agents: Agent[], now: number, seated = false): Map<string, Plan> {
   const plans = new Map<string, Plan>();

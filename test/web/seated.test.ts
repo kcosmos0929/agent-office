@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { existsSync, readFileSync } from 'node:fs';
 import type { Status } from '../../src/shared/types.ts';
 import { LOOKS } from '../../web/src/office/sprites/look.ts';
-import { SEATED_ATLAS, SEATED_CYCLE_MS, SEATED_PARTS, canSit, seatedCell, seatedFiles, seatedFrame, seatedIndex, seatedLookId, seatedMode } from '../../web/src/office/sprites/seated.ts';
+import { SEATED_ATLAS, SEATED_CYCLE_MS, SEATED_PARTS, canSit, seatedCell, seatedFiles, seatedFrame, seatedIndex, seatedLookId, seatedMode, seatedPreview } from '../../web/src/office/sprites/seated.ts';
 
 const CHARACTERS = new URL('../../web/public/characters/', import.meta.url);
 
@@ -69,4 +69,12 @@ test('seatedMode: 실행·고침은 타이핑, 읽기·생각류는 손 멈춤, 
 test('canSit: 여덟 모습 모두 앉는다(LOOKS에 없는 조합은 아니다)', () => {
   assert.deepEqual(LOOKS.map(canSit), [true, true, true, true, true, true, true, true]);
   assert.equal(canSit({ hair: 'bob', outfit: 'jp-classic' }), false);
+});
+
+test('seatedPreview: 앉기는 기본으로 켜짐(움직임), ?seated=off면 끔, ?seated=still이면 첫 칸에 멈춤', () => {
+  assert.equal(seatedPreview(''), 'motion');
+  assert.equal(seatedPreview('?view=office'), 'motion');
+  assert.equal(seatedPreview('?view=office&seated'), 'motion');
+  assert.equal(seatedPreview('?seated=still'), 'still');
+  assert.equal(seatedPreview('?view=office&seated=off'), 'off');
 });
