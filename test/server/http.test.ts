@@ -125,11 +125,14 @@ test('정적 파일 경로 탈출 막기', async () => {
 
 test('client-config와 healthz, lan-info는 루프백만', async () => {
   const local = await boot();
-  assert.deepEqual(await (await fetch(local.url + '/api/client-config')).json(), { softSound: true, loopback: true, codexAutoApprove: true, tvFoot: 'quote', build: null });
+  const { tvFootRev, ...localCfg } = await (await fetch(local.url + '/api/client-config')).json();
+  assert.equal(typeof tvFootRev, 'number');
+  assert.deepEqual(localCfg, { softSound: true, loopback: true, codexAutoApprove: true, tvFoot: 'quote', build: null });
   assert.equal(await (await fetch(local.url + '/healthz')).text(), 'ok');
   const remote = await boot({ isLoopback: () => false });
   const cookie = { cookie: 'so_token=' + TOKEN };
-  assert.deepEqual(await (await fetch(remote.url + '/api/client-config', { headers: cookie })).json(), { softSound: true, loopback: false, codexAutoApprove: true, tvFoot: 'quote', build: null });
+  const { tvFootRev: _r, ...remoteCfg } = await (await fetch(remote.url + '/api/client-config', { headers: cookie })).json();
+  assert.deepEqual(remoteCfg, { softSound: true, loopback: false, codexAutoApprove: true, tvFoot: 'quote', build: null });
   assert.equal((await fetch(remote.url + '/healthz', { headers: cookie })).status, 404);
   assert.equal((await fetch(remote.url + '/api/lan-info', { headers: cookie })).status, 404);
 });
@@ -382,27 +385,35 @@ test('admin codex-auto-approve: 저장에 실패하면(false·예외) 500이고 
 });
 
 // 사무실 TV 아랫줄(시계일 때): 맥 설정 창에서 고르면 서버 config에 저장되고 모든 화면(폰·밖에서 보기 포함)이 스냅샷으로 같이 바뀐다
-test('admin tv-foot: 루프백+헤더만, quote·sun·none이면 저장·반영하고 스냅샷·client-config에 실음, 아니면 400, 저장 실패면 500', { timeout: 5000 }, async () => {
+// 판(rev): 바뀔 때마다 커지는 번호 — 화면은 더 큰 판만 믿어, 늦게 온 응답·스냅샷이 더 새 값을 덮지 않는다(Codex 재검토 P2).
+// 서버를 다시 켜도 앞 판보다 크게 켠 시각에서 시작
+test('admin tv-foot: 루프백+헤더만, quote·sun·none이면 저장·반영하고 판(rev)을 올려 응답·스냅샷·client-config에 실음, 아니면 400, 저장 실패면 500', { timeout: 5000 }, async () => {
   const saved: unknown[] = [];
   let ok = true;
-  const { url } = await boot({ saveConfig: (patch) => { saved.push(patch); return ok; } });
+  let clock = 1_000_000;
+  const { url } = await boot({ saveConfig: (patch) => { saved.push(patch); return ok; }, now: () => clock });
   const post = (body: string, headers: Record<string, string> = { 'x-so-admin': '1' }) => fetch(url + '/api/admin/tv-foot', { method: 'POST', headers, body });
   const cfg = async () => (await (await fetch(url + '/api/client-config')).json()).tvFoot;
   const ws = new WebSocket(url.replace('http', 'ws') + '/ws');
   const first = (await nextSnapshot(ws, () => true)) as Snapshot;
-  assert.equal(first.tvFoot, 'quote');
+  assert.deepEqual([first.tvFoot, first.tvFootRev], ['quote', 1_000_000]); // 처음 판 = 켠 시각
   assert.equal((await post('{"foot":"sun"}', {})).status, 403);
   assert.equal((await post('{"foot":"moon"}')).status, 400);
   assert.equal((await post('깨진')).status, 400);
   assert.deepEqual(saved, []);
   const changed = nextSnapshot(ws, (s) => s.tvFoot === 'sun');
-  assert.equal((await post('{"foot":"sun"}')).status, 204);
+  const r1 = await post('{"foot":"sun"}');
+  assert.equal(r1.status, 200);
+  assert.deepEqual(await r1.json(), { rev: 1_000_001 }); // 시계가 그대로여도 1씩은 커짐
   assert.deepEqual(saved, [{ tvFoot: 'sun' }]);
   assert.equal(await cfg(), 'sun');
-  await changed;
+  assert.equal((await changed).tvFootRev, 1_000_001);
+  clock = 2_000_000;
+  assert.deepEqual(await (await post('{"foot":"quote"}')).json(), { rev: 2_000_000 }); // 시계가 앞서면 시계로
   ok = false;
   assert.equal((await post('{"foot":"none"}')).status, 500);
-  assert.equal(await cfg(), 'sun');
+  assert.equal(await cfg(), 'quote');
+  assert.equal((await (await fetch(url + '/api/client-config')).json()).tvFootRev, 2_000_000); // 실패하면 판도 그대로
   ws.close();
 });
 

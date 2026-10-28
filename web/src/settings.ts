@@ -99,53 +99,53 @@ export const TV_FOOT_CHOICES: readonly (readonly [TvFoot, string])[] = [
 ];
 
 /**
- * TV 아랫줄 고르기 상태: 서버 값(스냅샷·저장 성공)이 기준이다. 저장은 한 번에 하나씩 보내고(서버가 역순으로 처리하지 않게),
- * 그사이 고른 것은 마지막 것만 이어서 보낸다. 저장이 다 끝나면 서버 값을 다시 읽어(read) 라디오를 맞춘다 — 늦게 온 저장 응답이
- * 그사이 다른 창이 바꾼 더 새 값을 덮지 않게, 저장이 실패했으면 서버 값으로 되돌리게.
- * 다른 창에서 바꾼 값은 스냅샷으로 오는데, 저장 중이면 고르는 중인 라디오를 덮지 않고 서버 값만 기억한다 (Codex 리뷰 P2 세 건)
+ * TV 아랫줄 고르기 상태. 서버는 바뀔 때마다 판(rev)을 올려 저장 응답·스냅샷에 싣고, 여기서는 더 큰 판의 값만 믿는다 —
+ * 늦게 온 저장 응답이나 낡은 스냅샷이 다른 창이 바꾼 더 새 값을 덮지 않게(Codex 재검토 P2). 저장은 한 번에 하나씩 보내고
+ * (서버가 역순으로 처리하지 않게) 그사이 고른 것은 마지막 것만 이어서 보낸다. 저장이 다 끝나면 지금 믿는 서버 값을 라디오에 보인다
+ * (실패면 되돌림). 저장 중에 온 스냅샷은 고르는 중인 라디오를 덮지 않고 기억만 한다 (Codex 리뷰 P2 두 건)
  */
-export function tvFootControl(initial: TvFoot, post: (foot: TvFoot) => Promise<boolean>, show: (foot: TvFoot) => void, read: () => Promise<TvFoot | null>) {
+export function tvFootControl(initial: { foot: TvFoot; rev: number }, post: (foot: TvFoot) => Promise<number | null>, show: (foot: TvFoot) => void) {
   let server = initial;
   let want: TvFoot | null = null;
   let busy = false;
+  const take = (foot: TvFoot, rev: number) => {
+    if (rev > server.rev) server = { foot, rev };
+  };
   async function flush(): Promise<void> {
     if (busy) return;
     busy = true;
-    for (;;) {
-      while (want !== null) {
-        const foot = want;
-        want = null;
-        try {
-          if (await post(foot)) server = foot;
-        } catch {
-          // 못 보냄 — 아래에서 서버 값을 다시 읽어 맞춘다
-        }
+    while (want !== null) {
+      const foot = want;
+      want = null;
+      try {
+        const rev = await post(foot);
+        if (rev !== null) take(foot, rev);
+      } catch {
+        // 못 보냄(응답만 끊겼으면 서버가 알리는 스냅샷이 곧 바로잡는다)
       }
-      const fresh = await read().catch(() => null);
-      if (fresh) server = fresh;
-      if (want === null) break; // 다시 읽는 사이 또 골랐으면 이어서 보낸다
     }
     busy = false;
-    show(server);
+    show(server.foot);
   }
   return {
     get server(): TvFoot {
-      return server;
+      return server.foot;
     },
     /** 라디오에서 고름 */
     choose(foot: TvFoot): void {
       want = foot;
       void flush();
     },
-    /** 스냅샷의 서버 값(다른 창에서 바꾼 것 포함) */
-    sync(foot: TvFoot): void {
-      server = foot;
-      if (!busy && want === null) show(foot);
+    /** 스냅샷의 서버 값과 판(다른 창에서 바꾼 것 포함) */
+    sync(foot: TvFoot, rev: number): void {
+      const before = server;
+      take(foot, rev);
+      if (!busy && want === null && server !== before) show(server.foot);
     },
   };
 }
 
-export function buildSettings(initial: { codexAutoApprove: boolean; tvFoot: TvFoot }): { el: HTMLElement; toggle(): void; syncTvFoot(foot: TvFoot): void } {
+export function buildSettings(initial: { codexAutoApprove: boolean; tvFoot: TvFoot; tvFootRev: number }): { el: HTMLElement; toggle(): void; syncTvFoot(foot: TvFoot, rev: number): void } {
   const el = document.createElement('div');
   el.className = 'settings';
   el.hidden = true;
@@ -257,14 +257,13 @@ export function buildSettings(initial: { codexAutoApprove: boolean; tvFoot: TvFo
     return { row, input, value };
   });
   const tvFoot = tvFootControl(
-    initial.tvFoot,
-    async (foot) => (await fetch('/api/admin/tv-foot', { method: 'POST', headers: { 'x-so-admin': '1', 'content-type': 'application/json' }, body: JSON.stringify({ foot }) })).ok,
-    (foot) => { for (const r of tvRows) r.input.checked = r.value === foot; },
-    async () => {
-      const r = await fetch('/api/client-config');
-      const foot = r.ok ? ((await r.json()) as { tvFoot?: unknown }).tvFoot : null;
-      return TV_FOOT_CHOICES.some(([v]) => v === foot) ? (foot as TvFoot) : null;
+    { foot: initial.tvFoot, rev: initial.tvFootRev },
+    async (foot) => {
+      const r = await fetch('/api/admin/tv-foot', { method: 'POST', headers: { 'x-so-admin': '1', 'content-type': 'application/json' }, body: JSON.stringify({ foot }) });
+      const rev = r.ok ? ((await r.json()) as { rev?: unknown }).rev : null;
+      return typeof rev === 'number' ? rev : null;
     },
+    (foot) => { for (const r of tvRows) r.input.checked = r.value === foot; },
   );
   for (const { input, value } of tvRows) input.addEventListener('change', () => { if (input.checked) tvFoot.choose(value); });
   tv.append(tvTitle, tvHelp, ...tvRows.map((r) => r.row));
@@ -296,8 +295,8 @@ export function buildSettings(initial: { codexAutoApprove: boolean; tvFoot: TvFo
       }
     },
     /** 스냅샷마다: 다른 창에서 바꾼 TV 아랫줄도 라디오에 맞춘다 */
-    syncTvFoot(foot: TvFoot) {
-      tvFoot.sync(foot);
+    syncTvFoot(foot: TvFoot, rev: number) {
+      tvFoot.sync(foot, rev);
     },
   };
 }

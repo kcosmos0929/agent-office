@@ -174,35 +174,34 @@ test('maskToken: token= 뒤를 가림, 토큰 없는 주소는 그대로', () =>
   assert.equal(maskToken('http://127.0.0.1:4310/'), 'http://127.0.0.1:4310/');
 });
 
-// 사무실 TV 아랫줄 고르기: 서버 값(스냅샷)이 기준, 저장은 한 번에 하나씩, 그사이 고른 것은 마지막 것만 이어서 (Codex 리뷰 P2 두 건)
-function tvHarness(initial: TvFoot = 'quote') {
-  const posts: Array<{ foot: TvFoot; resolve: (ok: boolean) => void; reject: () => void }> = [];
+// 사무실 TV 아랫줄 고르기: 서버가 바뀔 때마다 판(rev)을 올리고, 화면은 저장 응답·스냅샷 중 더 큰 판의 값만 믿는다.
+// 저장은 한 번에 하나씩, 그사이 고른 것은 마지막 것만 이어서 (Codex 리뷰 P2 두 건 + 재검토 P2 두 건 — 늦은 응답·스냅샷이 더 새 값을 덮던 문제)
+function tvHarness(initial: TvFoot = 'quote', rev = 10) {
+  const posts: Array<{ foot: TvFoot; resolve: (rev: number | null) => void; reject: () => void }> = [];
   const shown: TvFoot[] = [];
-  /** 저장이 다 끝난 뒤 다시 읽는 서버 값(null = 못 읽음) */
-  const read: { value: TvFoot | null } = { value: null };
   const ctl = tvFootControl(
-    initial,
-    (foot) => new Promise<boolean>((resolve, reject) => posts.push({ foot, resolve, reject: () => reject(new Error('끊김')) })),
+    { foot: initial, rev },
+    (foot) => new Promise<number | null>((resolve, reject) => posts.push({ foot, resolve, reject: () => reject(new Error('끊김')) })),
     (f) => shown.push(f),
-    async () => read.value,
   );
   const tick = () => new Promise((r) => setTimeout(r, 0));
-  return { ctl, posts, shown, tick, read };
+  return { ctl, posts, shown, tick };
 }
 
-test('TV 아랫줄: 빠르게 sun → none을 고르면 저장은 하나씩, 그사이 고른 것은 마지막 것만 이어서 보낸다', async () => {
-  const { ctl, posts, tick } = tvHarness();
+test('TV 아랫줄: 빠르게 sun → none → quote를 고르면 저장은 하나씩, 그사이 고른 것은 마지막 것만 이어서 보낸다', async () => {
+  const { ctl, posts, shown, tick } = tvHarness();
   ctl.choose('sun');
   ctl.choose('none');
   ctl.choose('quote');
   await tick();
   assert.deepEqual(posts.map((p) => p.foot), ['sun']); // 첫 저장이 끝나기 전엔 다음을 보내지 않음(서버가 역순으로 처리하지 않게)
-  posts[0].resolve(true);
+  posts[0].resolve(11);
   await tick();
   assert.deepEqual(posts.map((p) => p.foot), ['sun', 'quote']);
-  posts[1].resolve(true);
+  posts[1].resolve(12);
   await tick();
   assert.equal(ctl.server, 'quote');
+  assert.deepEqual(shown, ['quote']);
 });
 
 test('TV 아랫줄: 앞 저장은 됐는데 마지막 저장이 실패하면 라디오는 처음 값이 아니라 서버가 가진 값(앞 저장)으로', async () => {
@@ -210,21 +209,21 @@ test('TV 아랫줄: 앞 저장은 됐는데 마지막 저장이 실패하면 라
   ctl.choose('sun');
   ctl.choose('none');
   await tick();
-  posts[0].resolve(true);
+  posts[0].resolve(11);
   await tick();
-  posts[1].resolve(false);
+  posts[1].resolve(null);
   await tick();
   assert.equal(ctl.server, 'sun');
   assert.deepEqual(shown, ['sun']);
 });
 
-test('TV 아랫줄: 다른 창에서 바꾼 값(스냅샷)은 저장 중이 아니면 바로 라디오에, 저장 중이면 끝난 뒤 실패했을 때 그 값으로', async () => {
+test('TV 아랫줄: 다른 창에서 바꾼 값(스냅샷)은 저장 중이 아니면 바로 라디오에, 저장 중이면 끝난 뒤 그 값으로', async () => {
   const { ctl, posts, shown, tick } = tvHarness('quote');
-  ctl.sync('sun');
+  ctl.sync('sun', 11);
   assert.deepEqual(shown, ['sun']);
   ctl.choose('none');
   await tick();
-  ctl.sync('quote'); // 저장 중에 온 스냅샷(다른 창이 quote로) — 고르는 중인 라디오를 덮지 않음
+  ctl.sync('quote', 12); // 저장 중에 온 스냅샷(다른 창이 quote로) — 고르는 중인 라디오를 덮지 않음
   assert.deepEqual(shown, ['sun']);
   posts[0].reject(); // 응답이 끊김
   await tick();
@@ -235,14 +234,26 @@ test('TV 아랫줄: 다른 창에서 바꾼 값(스냅샷)은 저장 중이 아�
   assert.equal(posts.at(-1)!.foot, 'quote');
 });
 
-test('TV 아랫줄: 다른 창의 더 새 값(스냅샷)이 온 뒤에 이 창의 옛 저장 성공이 늦게 와도, 다 끝나면 서버 값을 다시 읽어 맞춘다 (Codex 재검토 P2)', async () => {
-  const { ctl, posts, shown, tick, read } = tvHarness('quote');
+test('TV 아랫줄: 다른 창의 더 새 값(큰 판)이 먼저 오고 이 창의 옛 저장 성공(작은 판)이 늦게 와도 새 값을 지킨다', async () => {
+  const { ctl, posts, shown, tick } = tvHarness('quote', 10);
   ctl.choose('sun');
   await tick();
-  ctl.sync('none'); // B창이 뒤에 none으로 저장 — 스냅샷이 이 창의 sun 응답보다 먼저 옴
-  read.value = 'none';
-  posts[0].resolve(true); // 늦게 온 sun 성공
+  ctl.sync('none', 12); // B창이 뒤에 none으로 저장(판 12) — 스냅샷이 이 창의 sun 응답보다 먼저 옴
+  posts[0].resolve(11); // 늦게 온 sun 성공(판 11)
   await tick();
   assert.equal(ctl.server, 'none');
-  assert.equal(shown.at(-1), 'none');
+  assert.deepEqual(shown, ['none']);
+});
+
+test('TV 아랫줄: 낡은 스냅샷(작은 판)이 이 창의 저장 성공 뒤에 늦게 와도 무시', async () => {
+  const { ctl, posts, shown, tick } = tvHarness('quote', 10);
+  ctl.choose('sun');
+  await tick();
+  posts[0].resolve(11);
+  await tick();
+  ctl.sync('quote', 10);
+  assert.equal(ctl.server, 'sun');
+  assert.deepEqual(shown, ['sun']);
+  ctl.sync('none', 13); // 그 뒤 더 새 값은 바로
+  assert.deepEqual(shown, ['sun', 'none']);
 });

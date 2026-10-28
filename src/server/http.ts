@@ -182,9 +182,11 @@ export function startServer(opts: ServerOptions): Promise<RunningServer> {
   };
   /** 전용 문이 실제로 열렸나(설정했어도 포트가 사용 중이면 false) */
   let doorOpen = false;
+  /** TV 아랫줄 판: 바뀔 때마다 커진다. 켠 시각에서 시작해 다시 켜도 앞 판보다 크다 — 화면은 더 큰 판만 믿어 늦은 응답·스냅샷이 새 값을 덮지 않게 */
+  let tvFootRev = now();
 
   const send = (ws: WebSocket) => {
-    if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'snapshot', build: opts.build ?? null, ...state.snapshot(now()), tvFoot: config.tvFoot }));
+    if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'snapshot', build: opts.build ?? null, ...state.snapshot(now()), tvFoot: config.tvFoot, tvFootRev }));
   };
   const notify = () => {
     if (timer) return;
@@ -236,7 +238,7 @@ export function startServer(opts: ServerOptions): Promise<RunningServer> {
         return text(res, 204);
       }
       if (action === 'tv-foot') {
-        // 설정 창 TV 아랫줄: {foot: 'quote'|'sun'|'none'} → 저장된 뒤에만 반영하고, 모든 화면에 스냅샷으로 알린다
+        // 설정 창 TV 아랫줄: {foot: 'quote'|'sun'|'none'} → 저장된 뒤에만 반영하고 판을 올려 {rev}로 답하고, 모든 화면에 스냅샷으로 알린다
         const raw = await readBody(req);
         let foot: unknown;
         try {
@@ -253,8 +255,9 @@ export function startServer(opts: ServerOptions): Promise<RunningServer> {
         }
         if (!saved) return text(res, 500);
         config.tvFoot = foot as TvFoot;
+        tvFootRev = Math.max(tvFootRev + 1, now());
         notify();
-        return text(res, 204);
+        return json(res, { rev: tvFootRev });
       }
       if (action === 'remote-token') {
         // 밖에서 보기 토큰 새로 받기 → 옛 토큰으로 열려 있던 바깥 화면은 바로 끊는다
@@ -358,7 +361,7 @@ export function startServer(opts: ServerOptions): Promise<RunningServer> {
       case '/api/health':
         return json(res, state.snapshot(now()).health);
       case '/api/client-config':
-        return json(res, { softSound: config.softSound, loopback: local, codexAutoApprove: config.codexAutoApprove, tvFoot: config.tvFoot, build: opts.build ?? null });
+        return json(res, { softSound: config.softSound, loopback: local, codexAutoApprove: config.codexAutoApprove, tvFoot: config.tvFoot, tvFootRev, build: opts.build ?? null });
       case '/api/lan-info': {
         if (!local) return text(res, 404);
         const ip = lanAddress();
