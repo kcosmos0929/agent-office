@@ -1,16 +1,18 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { OfficeState } from '../../src/server/state.ts';
+import { DESKS_BY_KIND, OfficeState } from '../../src/server/state.ts';
+import { DESKS, DEV_DESKS } from '../../web/src/office/layout.ts';
 import type { OfficeEvent } from '../../src/shared/types.ts';
 import type { RegistryEntry, RegistryRead } from '../../src/server/collectors/sessionRegistry.ts';
 import { M } from '../helpers.ts';
 
 const CWD = '/Users/seop/developer/street-centrality-bus';
 
-function make(o: { startedAt?: number; rule?: boolean; rest?: number; leave?: number } = {}) {
+// 자리·모습은 빈 것 중 무작위 — 테스트는 늘 첫 빈 번호(0)를 고르게 고정해 번호를 그대로 확인한다
+function make(o: { startedAt?: number; rule?: boolean; rest?: number; leave?: number; random?: () => number } = {}) {
   return new OfficeState({
     restMs: o.rest ?? 30 * M, leaveMs: o.leave ?? 120 * M, goneMs: 10 * M, stalledMs: 15 * M, forgetMs: 12 * 60 * M, resolveProject: (cwd) => (cwd === CWD ? '가로망 중심성' : 'x'),
-    startedAt: o.startedAt ?? 0, registryWaitRule: o.rule ?? false,
+    startedAt: o.startedAt ?? 0, registryWaitRule: o.rule ?? false, random: o.random ?? (() => 0),
   });
 }
 
@@ -1619,4 +1621,38 @@ test('숨은 자동 퇴근 세션에 SessionEnd가 오면 10분 뒤 지움(옛 �
   st.tick(151 * M);
   st.apply(ev.prompt('s1', 152 * M));
   assert.equal(one(st).title, null, '지워졌다가 새로 시작');
+});
+
+// 자리·모습 무작위(사용자 결정 2026-10-28): 가장 작은 빈 번호를 주면 늘 0번 책상(등이 보이는 쪽)·JP01부터 차서
+test('자리·모습: 비어 있는 것 중에서 무작위로 고른다(이미 쓴 번호는 건너뜀)', () => {
+  const st = make({ random: () => 0.5 });
+  st.apply(ev.prompt('c1', 0));
+  st.apply(ev.prompt('c2', 100));
+  const get = (id: string) => st.snapshot(200).agents.find((a) => a.sessionId === id)!;
+  assert.deepEqual([get('c1').hat, get('c1').seat], [4, 4]);
+  assert.deepEqual([get('c2').hat, get('c2').seat], [3, 3]);
+});
+
+test('Codex 자리: 개발실 책상 3개 안에서만 고르고, 다 차면 지금처럼 3번부터(로비에서 기다림)', () => {
+  const st = make({ random: () => 0.99 });
+  const ids = ['x1', 'x2', 'x3', 'x4'];
+  ids.forEach((id, i) => st.apply({ ...ev.prompt(id, i * 100), kind: 'codex' }));
+  const seat = (id: string) => st.snapshot(1000).agents.find((a) => a.sessionId === id)!.seat;
+  assert.deepEqual(ids.map(seat), [2, 1, 0, 3]);
+});
+
+test('자리·모습: 무작위 함수를 안 주면 Math.random — 8명이면 자리·모습이 0~7 한 번씩', () => {
+  const st = new OfficeState({
+    restMs: 30 * M, leaveMs: 120 * M, goneMs: 10 * M, stalledMs: 15 * M, forgetMs: 12 * 60 * M, startedAt: 0, registryWaitRule: false, resolveProject: () => 'x',
+  });
+  for (let i = 0; i < 8; i++) st.apply(ev.prompt(`c${i}`, i * 100));
+  const agents = st.snapshot(1000).agents;
+  const sorted = (xs: number[]) => [...xs].sort((p, q) => p - q);
+  assert.deepEqual(sorted(agents.map((a) => a.hat)), [0, 1, 2, 3, 4, 5, 6, 7]);
+  assert.deepEqual(sorted(agents.map((a) => a.seat)), [0, 1, 2, 3, 4, 5, 6, 7]);
+});
+
+test('종류별 책상 수 = 화면 배치(사무실 DESKS·개발실 DEV_DESKS) — 무작위로 고를 범위', () => {
+  assert.equal(DESKS_BY_KIND.claude, DESKS.length);
+  assert.equal(DESKS_BY_KIND.codex, DEV_DESKS.length);
 });
