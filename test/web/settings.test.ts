@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { COPY_FAIL, COPY_OK, copyRemoteUrl, maskToken, remoteState, showRemote, type RemoteView } from '../../web/src/settings.ts';
+import { COPY_FAIL, COPY_OK, copyRemoteUrl, maskToken, remoteState, showRemote, tvFootControl, type RemoteView } from '../../web/src/settings.ts';
+import type { TvFoot } from '../../src/shared/types.ts';
 import { fakeDocument } from './fakeDom.ts';
 
 const URL_ON = 'https://152-67-1-2.sslip.io:8443/?token=v1ewT0ken_abc';
@@ -171,4 +172,58 @@ test('정보를 못 받으면 복사할 주소를 비우고 안내', async () =>
 test('maskToken: token= 뒤를 가림, 토큰 없는 주소는 그대로', () => {
   assert.equal(maskToken('http://192.168.0.5:4310/?token=abc'), 'http://192.168.0.5:4310/?token=…');
   assert.equal(maskToken('http://127.0.0.1:4310/'), 'http://127.0.0.1:4310/');
+});
+
+// 사무실 TV 아랫줄 고르기: 서버 값(스냅샷)이 기준, 저장은 한 번에 하나씩, 그사이 고른 것은 마지막 것만 이어서 (Codex 리뷰 P2 두 건)
+function tvHarness(initial: TvFoot = 'quote') {
+  const posts: Array<{ foot: TvFoot; resolve: (ok: boolean) => void; reject: () => void }> = [];
+  const shown: TvFoot[] = [];
+  const ctl = tvFootControl(initial, (foot) => new Promise<boolean>((resolve, reject) => posts.push({ foot, resolve, reject: () => reject(new Error('끊김')) })), (f) => shown.push(f));
+  const tick = () => new Promise((r) => setTimeout(r, 0));
+  return { ctl, posts, shown, tick };
+}
+
+test('TV 아랫줄: 빠르게 sun → none을 고르면 저장은 하나씩, 그사이 고른 것은 마지막 것만 이어서 보낸다', async () => {
+  const { ctl, posts, tick } = tvHarness();
+  ctl.choose('sun');
+  ctl.choose('none');
+  ctl.choose('quote');
+  await tick();
+  assert.deepEqual(posts.map((p) => p.foot), ['sun']); // 첫 저장이 끝나기 전엔 다음을 보내지 않음(서버가 역순으로 처리하지 않게)
+  posts[0].resolve(true);
+  await tick();
+  assert.deepEqual(posts.map((p) => p.foot), ['sun', 'quote']);
+  posts[1].resolve(true);
+  await tick();
+  assert.equal(ctl.server, 'quote');
+});
+
+test('TV 아랫줄: 앞 저장은 됐는데 마지막 저장이 실패하면 라디오는 처음 값이 아니라 서버가 가진 값(앞 저장)으로', async () => {
+  const { ctl, posts, shown, tick } = tvHarness('quote');
+  ctl.choose('sun');
+  ctl.choose('none');
+  await tick();
+  posts[0].resolve(true);
+  await tick();
+  posts[1].resolve(false);
+  await tick();
+  assert.equal(ctl.server, 'sun');
+  assert.deepEqual(shown, ['sun']);
+});
+
+test('TV 아랫줄: 다른 창에서 바꾼 값(스냅샷)은 저장 중이 아니면 바로 라디오에, 저장 중이면 끝난 뒤 실패했을 때 그 값으로', async () => {
+  const { ctl, posts, shown, tick } = tvHarness('quote');
+  ctl.sync('sun');
+  assert.deepEqual(shown, ['sun']);
+  ctl.choose('none');
+  await tick();
+  ctl.sync('quote'); // 저장 중에 온 스냅샷(다른 창이 quote로) — 고르는 중인 라디오를 덮지 않음
+  assert.deepEqual(shown, ['sun']);
+  posts[0].reject(); // 응답이 끊김
+  await tick();
+  assert.equal(ctl.server, 'quote');
+  assert.deepEqual(shown, ['sun', 'quote']);
+  ctl.choose('quote'); // 이미 그 값이어도 고르면 보낸다(지금 서버 값과 같아도 해가 없음)
+  await tick();
+  assert.equal(posts.at(-1)!.foot, 'quote');
 });

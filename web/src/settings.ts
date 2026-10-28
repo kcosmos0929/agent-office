@@ -98,7 +98,50 @@ export const TV_FOOT_CHOICES: readonly (readonly [TvFoot, string])[] = [
   ['none', '비움 — 시계와 날짜만'],
 ];
 
-export function buildSettings(initial: { codexAutoApprove: boolean; tvFoot: TvFoot }): { el: HTMLElement; toggle(): void } {
+/**
+ * TV 아랫줄 고르기 상태: 서버 값(스냅샷·저장 성공)이 기준이다. 저장은 한 번에 하나씩 보내고(서버가 역순으로 처리하지 않게),
+ * 그사이 고른 것은 마지막 것만 이어서 보낸다. 마지막 저장이 실패하면 라디오를 서버 값으로 되돌린다.
+ * 다른 창에서 바꾼 값은 스냅샷으로 오는데, 저장 중이면 고르는 중인 라디오를 덮지 않고 서버 값만 기억한다 (Codex 리뷰 P2 두 건)
+ */
+export function tvFootControl(initial: TvFoot, post: (foot: TvFoot) => Promise<boolean>, show: (foot: TvFoot) => void) {
+  let server = initial;
+  let want: TvFoot | null = null;
+  let busy = false;
+  async function flush(): Promise<void> {
+    if (busy) return;
+    busy = true;
+    while (want !== null) {
+      const foot = want;
+      want = null;
+      let ok = false;
+      try {
+        ok = await post(foot);
+      } catch {
+        ok = false;
+      }
+      if (ok) server = foot;
+      else if (want === null) show(server);
+    }
+    busy = false;
+  }
+  return {
+    get server(): TvFoot {
+      return server;
+    },
+    /** 라디오에서 고름 */
+    choose(foot: TvFoot): void {
+      want = foot;
+      void flush();
+    },
+    /** 스냅샷의 서버 값(다른 창에서 바꾼 것 포함) */
+    sync(foot: TvFoot): void {
+      server = foot;
+      if (!busy && want === null) show(foot);
+    },
+  };
+}
+
+export function buildSettings(initial: { codexAutoApprove: boolean; tvFoot: TvFoot }): { el: HTMLElement; toggle(): void; syncTvFoot(foot: TvFoot): void } {
   const el = document.createElement('div');
   el.className = 'settings';
   el.hidden = true;
@@ -191,15 +234,13 @@ export function buildSettings(initial: { codexAutoApprove: boolean; tvFoot: TvFo
   });
   codex.append(codexTitle, row, codexHelp);
 
-  // 사무실 TV 아랫줄: 서버 config에 저장돼 모든 화면(폰·밖에서 보기 포함)이 다음 스냅샷으로 같이 바뀐다. 저장 못 하면 고른 것을 되돌림
+  // 사무실 TV 아랫줄: 서버 config에 저장돼 모든 화면(폰·밖에서 보기 포함)이 다음 스냅샷으로 같이 바뀐다(라디오도 스냅샷으로 맞춤)
   const tv = document.createElement('div');
   tv.className = 'settings-section';
   const tvTitle = document.createElement('h3');
   tvTitle.textContent = '사무실 TV';
   const tvHelp = document.createElement('div');
   tvHelp.textContent = '사용량이 안 잡혀 시계가 뜰 때 아랫줄에 보여 줄 것이에요. 폰 · 밖에서 보기 화면도 같이 바뀌어요.';
-  let tvSaved = initial.tvFoot;
-  let tvSeq = 0;
   const tvRows = TV_FOOT_CHOICES.map(([value, label]) => {
     const row = document.createElement('label');
     row.className = 'toggle-row';
@@ -207,26 +248,16 @@ export function buildSettings(initial: { codexAutoApprove: boolean; tvFoot: TvFo
     input.type = 'radio';
     input.name = 'so-tv-foot';
     input.value = value;
-    input.checked = value === tvSaved;
+    input.checked = value === initial.tvFoot;
     row.append(input, document.createTextNode(` ${label}`));
     return { row, input, value };
   });
-  for (const { input, value } of tvRows) {
-    input.addEventListener('change', async () => {
-      if (!input.checked) return;
-      const mine = ++tvSeq;
-      let ok = false;
-      try {
-        const r = await fetch('/api/admin/tv-foot', { method: 'POST', headers: { 'x-so-admin': '1', 'content-type': 'application/json' }, body: JSON.stringify({ foot: value }) });
-        ok = r.ok;
-      } catch {
-        ok = false;
-      }
-      if (mine !== tvSeq) return; // 그사이 다른 것을 골랐으면 그 결과를 따른다
-      if (ok) tvSaved = value;
-      else for (const r of tvRows) r.input.checked = r.value === tvSaved;
-    });
-  }
+  const tvFoot = tvFootControl(
+    initial.tvFoot,
+    async (foot) => (await fetch('/api/admin/tv-foot', { method: 'POST', headers: { 'x-so-admin': '1', 'content-type': 'application/json' }, body: JSON.stringify({ foot }) })).ok,
+    (foot) => { for (const r of tvRows) r.input.checked = r.value === foot; },
+  );
+  for (const { input, value } of tvRows) input.addEventListener('change', () => { if (input.checked) tvFoot.choose(value); });
   tv.append(tvTitle, tvHelp, ...tvRows.map((r) => r.row));
 
   el.append(title, help, qr, url, actions, remote, tv, codex);
@@ -254,6 +285,10 @@ export function buildSettings(initial: { codexAutoApprove: boolean; tvFoot: TvFo
         void load();
         void remoteInfo.load();
       }
+    },
+    /** 스냅샷마다: 다른 창에서 바꾼 TV 아랫줄도 라디오에 맞춘다 */
+    syncTvFoot(foot: TvFoot) {
+      tvFoot.sync(foot);
     },
   };
 }

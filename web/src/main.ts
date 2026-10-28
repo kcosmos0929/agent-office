@@ -154,6 +154,7 @@ export async function start(makeOffice: OfficeFactory | null): Promise<void> {
       if (reloadOnce(config.build ?? null, build, () => { if (player.enabled) storedSet(SOUND_KEY, '1'); })) return;
       for (const kind of soundEvents(prev, s)) player.play(kind);
       awaitFresh = false;
+      if (s.tvFoot) settings.syncTvFoot(s.tvFoot);
       prev = s;
       snap = s;
       receivedAt = Date.now();
