@@ -100,29 +100,33 @@ export const TV_FOOT_CHOICES: readonly (readonly [TvFoot, string])[] = [
 
 /**
  * TV 아랫줄 고르기 상태: 서버 값(스냅샷·저장 성공)이 기준이다. 저장은 한 번에 하나씩 보내고(서버가 역순으로 처리하지 않게),
- * 그사이 고른 것은 마지막 것만 이어서 보낸다. 마지막 저장이 실패하면 라디오를 서버 값으로 되돌린다.
- * 다른 창에서 바꾼 값은 스냅샷으로 오는데, 저장 중이면 고르는 중인 라디오를 덮지 않고 서버 값만 기억한다 (Codex 리뷰 P2 두 건)
+ * 그사이 고른 것은 마지막 것만 이어서 보낸다. 저장이 다 끝나면 서버 값을 다시 읽어(read) 라디오를 맞춘다 — 늦게 온 저장 응답이
+ * 그사이 다른 창이 바꾼 더 새 값을 덮지 않게, 저장이 실패했으면 서버 값으로 되돌리게.
+ * 다른 창에서 바꾼 값은 스냅샷으로 오는데, 저장 중이면 고르는 중인 라디오를 덮지 않고 서버 값만 기억한다 (Codex 리뷰 P2 세 건)
  */
-export function tvFootControl(initial: TvFoot, post: (foot: TvFoot) => Promise<boolean>, show: (foot: TvFoot) => void) {
+export function tvFootControl(initial: TvFoot, post: (foot: TvFoot) => Promise<boolean>, show: (foot: TvFoot) => void, read: () => Promise<TvFoot | null>) {
   let server = initial;
   let want: TvFoot | null = null;
   let busy = false;
   async function flush(): Promise<void> {
     if (busy) return;
     busy = true;
-    while (want !== null) {
-      const foot = want;
-      want = null;
-      let ok = false;
-      try {
-        ok = await post(foot);
-      } catch {
-        ok = false;
+    for (;;) {
+      while (want !== null) {
+        const foot = want;
+        want = null;
+        try {
+          if (await post(foot)) server = foot;
+        } catch {
+          // 못 보냄 — 아래에서 서버 값을 다시 읽어 맞춘다
+        }
       }
-      if (ok) server = foot;
-      else if (want === null) show(server);
+      const fresh = await read().catch(() => null);
+      if (fresh) server = fresh;
+      if (want === null) break; // 다시 읽는 사이 또 골랐으면 이어서 보낸다
     }
     busy = false;
+    show(server);
   }
   return {
     get server(): TvFoot {
@@ -256,6 +260,11 @@ export function buildSettings(initial: { codexAutoApprove: boolean; tvFoot: TvFo
     initial.tvFoot,
     async (foot) => (await fetch('/api/admin/tv-foot', { method: 'POST', headers: { 'x-so-admin': '1', 'content-type': 'application/json' }, body: JSON.stringify({ foot }) })).ok,
     (foot) => { for (const r of tvRows) r.input.checked = r.value === foot; },
+    async () => {
+      const r = await fetch('/api/client-config');
+      const foot = r.ok ? ((await r.json()) as { tvFoot?: unknown }).tvFoot : null;
+      return TV_FOOT_CHOICES.some(([v]) => v === foot) ? (foot as TvFoot) : null;
+    },
   );
   for (const { input, value } of tvRows) input.addEventListener('change', () => { if (input.checked) tvFoot.choose(value); });
   tv.append(tvTitle, tvHelp, ...tvRows.map((r) => r.row));

@@ -178,9 +178,16 @@ test('maskToken: token= 뒤를 가림, 토큰 없는 주소는 그대로', () =>
 function tvHarness(initial: TvFoot = 'quote') {
   const posts: Array<{ foot: TvFoot; resolve: (ok: boolean) => void; reject: () => void }> = [];
   const shown: TvFoot[] = [];
-  const ctl = tvFootControl(initial, (foot) => new Promise<boolean>((resolve, reject) => posts.push({ foot, resolve, reject: () => reject(new Error('끊김')) })), (f) => shown.push(f));
+  /** 저장이 다 끝난 뒤 다시 읽는 서버 값(null = 못 읽음) */
+  const read: { value: TvFoot | null } = { value: null };
+  const ctl = tvFootControl(
+    initial,
+    (foot) => new Promise<boolean>((resolve, reject) => posts.push({ foot, resolve, reject: () => reject(new Error('끊김')) })),
+    (f) => shown.push(f),
+    async () => read.value,
+  );
   const tick = () => new Promise((r) => setTimeout(r, 0));
-  return { ctl, posts, shown, tick };
+  return { ctl, posts, shown, tick, read };
 }
 
 test('TV 아랫줄: 빠르게 sun → none을 고르면 저장은 하나씩, 그사이 고른 것은 마지막 것만 이어서 보낸다', async () => {
@@ -226,4 +233,16 @@ test('TV 아랫줄: 다른 창에서 바꾼 값(스냅샷)은 저장 중이 아�
   ctl.choose('quote'); // 이미 그 값이어도 고르면 보낸다(지금 서버 값과 같아도 해가 없음)
   await tick();
   assert.equal(posts.at(-1)!.foot, 'quote');
+});
+
+test('TV 아랫줄: 다른 창의 더 새 값(스냅샷)이 온 뒤에 이 창의 옛 저장 성공이 늦게 와도, 다 끝나면 서버 값을 다시 읽어 맞춘다 (Codex 재검토 P2)', async () => {
+  const { ctl, posts, shown, tick, read } = tvHarness('quote');
+  ctl.choose('sun');
+  await tick();
+  ctl.sync('none'); // B창이 뒤에 none으로 저장 — 스냅샷이 이 창의 sun 응답보다 먼저 옴
+  read.value = 'none';
+  posts[0].resolve(true); // 늦게 온 sun 성공
+  await tick();
+  assert.equal(ctl.server, 'none');
+  assert.equal(shown.at(-1), 'none');
 });
