@@ -154,7 +154,7 @@ export class OfficeView implements OfficeHost {
   update(s: Snapshot): void {
     this.snap = s;
     this.receivedAt = Date.now();
-    this.tv.update(s.usage, s.now);
+    this.tv.update(s.usage, s.now, s.tvFoot);
     this.cast.sync(s);
     this.poses = this.cast.poses();
     this.invalidate();
@@ -170,7 +170,7 @@ export class OfficeView implements OfficeHost {
   private tickTv = (): void => {
     if (this.disposed) return;
     const now = this.now();
-    if (this.tv.update(this.snap?.usage ?? null, now)) this.invalidate();
+    if (this.tv.update(this.snap?.usage ?? null, now, this.snap?.tvFoot)) this.invalidate();
     this.tvTimer = setTimeout(this.tickTv, 1000 - (now % 1000) + 20);
   };
 

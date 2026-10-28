@@ -1,4 +1,5 @@
-// 설정 패널(이 맥에서 열었을 때만): 폰 연결 QR · 밖에서 보기 QR · 서버 다시 켜기/끄기 · Codex 자동 승인
+// 설정 패널(이 맥에서 열었을 때만): 폰 연결 QR · 밖에서 보기 QR · 서버 다시 켜기/끄기 · 사무실 TV 아랫줄 · Codex 자동 승인
+import type { TvFoot } from '../../src/shared/types.ts';
 
 export const COPY_OK = '복사했어요 — 비밀번호처럼 다뤄 주세요';
 export const COPY_FAIL = '복사하지 못했어요';
@@ -90,7 +91,71 @@ export async function copyRemoteUrl(full: string | null, clipboard: Pick<Clipboa
   }
 }
 
-export function buildSettings(initial: { codexAutoApprove: boolean }): { el: HTMLElement; toggle(): void } {
+/** 사무실 TV 아랫줄 고르기(값, 설정 창 글) */
+export const TV_FOOT_CHOICES: readonly (readonly [TvFoot, string])[] = [
+  ['quote', '문구 — 5분마다 바뀌는 한 줄'],
+  ['sun', '해 막대 — 해 뜸부터 해 짐까지'],
+  ['none', '비움 — 시계와 날짜만'],
+];
+
+/** TV 아랫줄 판: 서버를 켤 때마다 새 이름(inst), 그 안에서 바뀔 때마다 1씩 오르는 번호(rev) */
+export type TvFootVer = { rev: number; inst: string };
+
+/**
+ * TV 아랫줄 고르기 상태. 서버는 바뀔 때마다 판을 올려 저장 응답·스냅샷에 싣고, 여기서는 같은 이름 안에서 더 큰 번호의 값만 믿는다 —
+ * 늦게 온 저장 응답이나 낡은 스냅샷이 다른 창이 바꾼 더 새 값을 덮지 않게. 이름이 다르면(서버를 다시 켬) 지금 연결의 스냅샷을 따르고
+ * 다른 이름의 저장 응답은 버린다(저장 뒤엔 늘 스냅샷이 오니 그걸로 맞음) — 시계와 상관없게 (Codex 재검토 P2 세 건). 저장은 한 번에 하나씩 보내고
+ * (서버가 역순으로 처리하지 않게) 그사이 고른 것은 마지막 것만 이어서 보낸다. 저장이 다 끝나면 지금 믿는 서버 값을 라디오에 보인다
+ * (실패면 되돌림). 저장 중에 온 스냅샷은 고르는 중인 라디오를 덮지 않고 기억만 한다 (Codex 리뷰 P2 두 건)
+ */
+export function tvFootControl(initial: { foot: TvFoot } & TvFootVer, post: (foot: TvFoot) => Promise<TvFootVer | null>, show: (foot: TvFoot) => void) {
+  let server = initial;
+  let want: TvFoot | null = null;
+  let busy = false;
+  /** 다른 이름(다시 켠 서버)이 저장했다고 답함 — 그 서버의 스냅샷이 와서 확정할 때까지 라디오를 옛 값으로 되돌리지 않는다(Codex 재검토 P2) */
+  let unsure = false;
+  /** live = 지금 연결의 스냅샷(이름이 바뀌었으면 그대로 따름), 아니면 저장 응답(같은 이름일 때만) */
+  const take = (foot: TvFoot, v: TvFootVer, live: boolean) => {
+    if (v.inst === server.inst ? v.rev > server.rev : live) server = { foot, ...v };
+  };
+  async function flush(): Promise<void> {
+    if (busy) return;
+    busy = true;
+    while (want !== null) {
+      const foot = want;
+      want = null;
+      try {
+        const v = await post(foot);
+        unsure = !!v && v.inst !== server.inst;
+        if (v) take(foot, v, false);
+      } catch {
+        // 못 보냄(응답만 끊겼으면 서버가 알리는 스냅샷이 곧 바로잡는다)
+      }
+    }
+    busy = false;
+    if (!unsure) show(server.foot);
+  }
+  return {
+    get server(): TvFoot {
+      return server.foot;
+    },
+    /** 라디오에서 고름 */
+    choose(foot: TvFoot): void {
+      want = foot;
+      void flush();
+    },
+    /** 스냅샷의 서버 값과 판(다른 창에서 바꾼 것 포함) */
+    sync(foot: TvFoot, v: TvFootVer): void {
+      const before = server;
+      take(foot, v, true);
+      if (busy || want !== null || server === before) return; // 바뀐 게 없거나(옛 이름의 스냅샷 포함) 고르는 중
+      unsure = false;
+      show(server.foot);
+    },
+  };
+}
+
+export function buildSettings(initial: { codexAutoApprove: boolean; tvFoot: TvFoot } & { tvFootVer: TvFootVer }): { el: HTMLElement; toggle(): void; syncTvFoot(foot: TvFoot, v: TvFootVer): void } {
   const el = document.createElement('div');
   el.className = 'settings';
   el.hidden = true;
@@ -183,7 +248,37 @@ export function buildSettings(initial: { codexAutoApprove: boolean }): { el: HTM
   });
   codex.append(codexTitle, row, codexHelp);
 
-  el.append(title, help, qr, url, actions, remote, codex);
+  // 사무실 TV 아랫줄: 서버 config에 저장돼 모든 화면(폰·밖에서 보기 포함)이 다음 스냅샷으로 같이 바뀐다(라디오도 스냅샷으로 맞춤)
+  const tv = document.createElement('div');
+  tv.className = 'settings-section';
+  const tvTitle = document.createElement('h3');
+  tvTitle.textContent = '사무실 TV';
+  const tvHelp = document.createElement('div');
+  tvHelp.textContent = '사용량이 안 잡혀 시계가 뜰 때 아랫줄에 보여 줄 것이에요. 폰 · 밖에서 보기 화면도 같이 바뀌어요.';
+  const tvRows = TV_FOOT_CHOICES.map(([value, label]) => {
+    const row = document.createElement('label');
+    row.className = 'toggle-row';
+    const input = document.createElement('input');
+    input.type = 'radio';
+    input.name = 'so-tv-foot';
+    input.value = value;
+    input.checked = value === initial.tvFoot;
+    row.append(input, document.createTextNode(` ${label}`));
+    return { row, input, value };
+  });
+  const tvFoot = tvFootControl(
+    { foot: initial.tvFoot, ...initial.tvFootVer },
+    async (foot) => {
+      const r = await fetch('/api/admin/tv-foot', { method: 'POST', headers: { 'x-so-admin': '1', 'content-type': 'application/json' }, body: JSON.stringify({ foot }) });
+      const v = r.ok ? ((await r.json()) as { rev?: unknown; inst?: unknown }) : null;
+      return v && typeof v.rev === 'number' && typeof v.inst === 'string' ? { rev: v.rev, inst: v.inst } : null;
+    },
+    (foot) => { for (const r of tvRows) r.input.checked = r.value === foot; },
+  );
+  for (const { input, value } of tvRows) input.addEventListener('change', () => { if (input.checked) tvFoot.choose(value); });
+  tv.append(tvTitle, tvHelp, ...tvRows.map((r) => r.row));
+
+  el.append(title, help, qr, url, actions, remote, tv, codex);
 
   async function load() {
     try {
@@ -208,6 +303,10 @@ export function buildSettings(initial: { codexAutoApprove: boolean }): { el: HTM
         void load();
         void remoteInfo.load();
       }
+    },
+    /** 스냅샷마다: 다른 창에서 바꾼 TV 아랫줄도 라디오에 맞춘다 */
+    syncTvFoot(foot: TvFoot, v: TvFootVer) {
+      tvFoot.sync(foot, v);
     },
   };
 }
