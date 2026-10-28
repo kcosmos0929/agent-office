@@ -56,6 +56,8 @@ type Actor = {
   rest: Dir;
   leaving: boolean;
   agent: Agent | null;
+  /** 지금 그림의 모자 번호(모습) */
+  hat: number;
   isSub: boolean;
   pose: Pose;
   /** 머무를 때의 자세(계획) */
@@ -184,7 +186,7 @@ export class Cast {
       if (!actor) {
         if (plan.leave) continue;
         actor = this.create(id, plan);
-      }
+      } else if (lookFor(actor.hat) !== lookFor(plan.hat)) this.reshape(actor, plan);
       actor.leaving = plan.leave;
       actor.rest = plan.facing;
       actor.restPose = plan.pose;
@@ -200,6 +202,16 @@ export class Cast {
       actor.effects = [];
       if (actor.target.x !== DOOR.x || actor.target.y !== DOOR.y) this.redirect(actor, DOOR, 'free');
     }
+  }
+
+  /** 남아 있던 배우가 다른 모습을 받음(숨겼다 돌아온 세션은 빈 모습 중 무작위로 다시 받는데, 나가던 배우가 아직 남아 있으면 그대로 쓰인다) — 그림만 새 모습으로 바꿔 끼운다. 자세는 다음 프레임이 다시 맞춘다 */
+  private reshape(actor: Actor, plan: Plan): void {
+    const figure = new Figure(lookFor(plan.hat), plan.agent ? faceFor(plan.agent.status) : 'focused', actor.isSub ? SUB_SCALE : 1, this.onChange);
+    actor.group.remove(actor.figure.root);
+    actor.figure.dispose();
+    actor.group.add(figure.root);
+    actor.figure = figure;
+    actor.hat = plan.hat;
   }
 
   /** 가려는 곳을 바꿈: 멈춰 있으면 거기서 새 길, 걷는 중이면 출발 자리로 되짚어 새 길로 이음(격자 방향 유지) */
@@ -347,7 +359,7 @@ export class Cast {
     const route = this.first ? [dest] : pathTo(dest);
     const actor: Actor = {
       group, figure, label, plate, bubble, ring, burstRing, burstAt: null, prev: undefined, sparkles: new Map(), zzz, effects: plan.effects, route, target: dest, path: [route[0]], at: route[0], sit: plan.sit, pace: plan.pace,
-      clock: 0, steps: 0, phase: 0, dir: 'SE', rest: plan.facing, leaving: false, agent: null, isSub, pose: 'stand', restPose: plan.pose,
+      clock: 0, steps: 0, phase: 0, dir: 'SE', rest: plan.facing, leaving: false, agent: null, hat, isSub, pose: 'stand', restPose: plan.pose,
     };
     this.actors.set(id, actor);
     this.place(actor, route[0]);
