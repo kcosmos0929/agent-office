@@ -38,7 +38,8 @@ export class Figure {
   /** 앉은 방향(그림을 불러 둔 방향)과 칸 번호. 서 있으면 null */
   private seated: { dir: 'SE' | 'NW'; index: number } | null = null;
   private seatedLoaded: 'SE' | 'NW' | null = null;
-  private readonly look: Look;
+  /** 이 그림의 모습 — 모습이 바뀌면 배우가 그림을 새로 만들어 바꿔 끼운다(cast.ts reshape) */
+  readonly look: Look;
   private readonly scale: number;
   private readonly onReady: () => void;
   private face: Face | null = null;
