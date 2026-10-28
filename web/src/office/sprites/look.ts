@@ -36,21 +36,26 @@ export function partPath(layer: Layer, look: Look, face: Face, dir: Dir): string
   return `parts/outfit/${look.outfit}/${layer}/${dir}.png`;
 }
 
-/** 부품 묶음 폴더: 기본은 v15. 다시 그린 옷만 새 버전 폴더에서 읽는다(되돌리려면 이 표에서 지운다) */
+/** 부품 묶음 폴더: 기본은 v15. 다시 그린 옷·머리만 새 버전 폴더에서 읽는다(되돌리려면 이 표에서 지운다) */
 export const PART_BASE = 'v15';
+/**
+ * v18 = 외곽선·신발·다리·치마 몸매 디테일(JP01 2026-10-27, 나머지 다섯 옷 10-28).
+ * v19 = 그 위에 뒷모습(NE·NW)만 새로: 이미지 생성 뒷모습을 옷 색으로 옮기고 등 솔기 규칙을 맞춤(2026-10-28). 앞모습(SE·SW)은 v18과 같다.
+ */
 export const OUTFIT_VERSION: Partial<Record<Outfit, string>> = {
-  'jp-classic': 'v18', // JP01 옷 디테일·외곽선 다시 그림(2026-10-27)
-  // 나머지 다섯 옷: Codex v17 옷선 정리본 위에 JP01과 같은 외곽선·신발·다리·치마 몸매(2026-10-28)
-  'jp-vest': 'v18',
-  'jp-suit': 'v18',
-  'kr-blazer': 'v18',
-  'kr-cardigan': 'v18',
-  'kr-shirt': 'v18',
+  'jp-classic': 'v19',
+  'jp-vest': 'v19',
+  'jp-suit': 'v19',
+  'kr-blazer': 'v19',
+  'kr-cardigan': 'v19',
+  'kr-shirt': 'v19',
 };
-/** 부품 파일 후보(characters/ 기준, 앞부터 읽는다): 새 버전 옷이면 그것, 못 읽으면 v15 */
+/** 머리·얼굴 v19 = 뒷모습(NE·NW) 머리를 이미지 생성 그림으로: 뒤에서는 머리가 몸 위라 모두 head 층, hairBack NE·NW는 빔(2026-10-28) */
+export const HAIR_VERSION: Partial<Record<Hair, string>> = { bun: 'v19', bob: 'v19', pony: 'v19', longbob: 'v19' };
+/** 부품 파일 후보(characters/ 기준, 앞부터 읽는다): 새 버전 옷·머리면 그것, 못 읽으면 v15 */
 export function partFiles(layer: Layer, look: Look, face: Face, dir: Dir): string[] {
   const rel = partPath(layer, look, face, dir);
-  const version = rel.startsWith('parts/outfit/') ? OUTFIT_VERSION[look.outfit] : undefined;
+  const version = rel.startsWith('parts/outfit/') ? OUTFIT_VERSION[look.outfit] : HAIR_VERSION[look.hair];
   return version ? [`${version}/${rel}`, `${PART_BASE}/${rel}`] : [`${PART_BASE}/${rel}`];
 }
 

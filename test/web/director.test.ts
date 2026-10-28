@@ -150,7 +150,7 @@ test('restAssignments: 25명이어도 모두 다른 자리, 휴게실·탕비실
   });
 });
 
-test('앉기(?seated): 사무실 책상의 JP01만, 실행·고침은 타이핑·읽기·생각류는 손 멈춤, 나머지는 서기', () => {
+test('앉기(?seated): 사무실 책상의 여덟 모습, 실행·고침은 타이핑·읽기·생각류는 손 멈춤, 나머지는 서기', () => {
   const sitOf = (a: Agent, seated = true) => direct([a], 1_000_000, seated).get(a.id)!.sit;
   for (let seat = 0; seat < 8; seat++) {
     const p = direct([agent('a', 'running', { hat: 0, seat })], 1_000_000, true).get('a')!;
@@ -161,7 +161,7 @@ test('앉기(?seated): 사무실 책상의 JP01만, 실행·고침은 타이핑�
   for (const s of ['reading', 'thinking', 'approving', 'delegating', 'compacting'] as const) assert.equal(sitOf(agent('a', s, { hat: 0 }))?.mode, 'upper', s);
   for (const s of ['permission', 'question', 'done', 'stalled', 'quota', 'idle', 'gone'] as const) assert.equal(sitOf(agent('a', s, { hat: 0 })), null, s);
   assert.equal(sitOf(agent('a', 'running', { hat: 0 }), false), null, '미리 보기가 꺼져 있으면 서 있는다');
-  assert.equal(sitOf(agent('a', 'running', { hat: 1 })), null, '앉은 그림이 없는 모습');
+  for (let hat = 0; hat < 8; hat++) assert.equal(sitOf(agent('a', 'running', { hat }))?.mode, 'work', `hat ${hat}: 여덟 모습 모두 앉은 그림이 있다`);
   assert.equal(sitOf(agent('a', 'running', { hat: 8 }))?.mode, 'work', 'hat 8 = JP01');
   assert.equal(sitOf(agent('a', 'running', { hat: 0, seat: 8 })), null, '책상 없는 자리(로비)');
   assert.equal(sitOf(agent('a', 'running', { hat: 0, kind: 'codex', seat: 0 })), null, '개발실 의자는 다른 대각선');

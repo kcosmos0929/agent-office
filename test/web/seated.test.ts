@@ -3,24 +3,28 @@ import assert from 'node:assert/strict';
 import { existsSync, readFileSync } from 'node:fs';
 import type { Status } from '../../src/shared/types.ts';
 import { LOOKS } from '../../web/src/office/sprites/look.ts';
-import { SEATED_ATLAS, SEATED_CYCLE_MS, SEATED_PARTS, canSit, seatedCell, seatedFiles, seatedFrame, seatedIndex, seatedMode } from '../../web/src/office/sprites/seated.ts';
+import { SEATED_ATLAS, SEATED_CYCLE_MS, SEATED_PARTS, canSit, seatedCell, seatedFiles, seatedFrame, seatedIndex, seatedLookId, seatedMode } from '../../web/src/office/sprites/seated.ts';
 
 const CHARACTERS = new URL('../../web/public/characters/', import.meta.url);
 
-test('앉은 그림 파일: v24 먼저, 못 읽으면 v23 — 두 폴더 모두 세 장 × SE·NW가 같은 규격(512×864 RGBA)', () => {
-  assert.deepEqual(seatedFiles('SE', 'body'), ['seated-v24/SE/body.png', 'seated-v23/SE/body.png']);
+test('앉은 그림 파일: 여덟 모습 seated-v25/<모습> — JP01만 v24·v23으로 물러섬, 모두 세 장 × SE·NW가 같은 규격(512×864 RGBA)', () => {
+  assert.deepEqual(seatedFiles(LOOKS[0], 'SE', 'body'), ['seated-v25/JP01/SE/body.png', 'seated-v24/SE/body.png', 'seated-v23/SE/body.png']);
+  assert.deepEqual(seatedFiles(LOOKS[3], 'NW', 'farArm'), ['seated-v25/KR01/NW/farArm.png']);
+  assert.deepEqual(LOOKS.map(seatedLookId), ['JP01', 'JP02', 'JP03', 'KR01', 'KR02', 'KR03', 'EX1', 'EX2']);
+  assert.deepEqual(seatedFiles({ hair: 'bob', outfit: 'jp-classic' }, 'SE', 'body'), []);
   const header = (rel: string) => {
     const b = readFileSync(new URL(rel, CHARACTERS));
     return [b.readUInt32BE(16), b.readUInt32BE(20), b[24], b[25]]; // IHDR 폭·높이·비트 깊이·색 형식(6 = RGBA)
   };
-  for (const dir of ['SE', 'NW'] as const) for (const part of SEATED_PARTS) {
-    const files = seatedFiles(dir, part);
-    assert.equal(files.at(-1), `seated-v23/${dir}/${part}.png`);
-    for (const f of files) {
+  let n = 0;
+  for (const look of LOOKS) for (const dir of ['SE', 'NW'] as const) for (const part of SEATED_PARTS) {
+    for (const f of seatedFiles(look, dir, part)) {
       assert.ok(existsSync(new URL(f, CHARACTERS)), f);
       assert.deepEqual(header(f), [512, 864, 8, 6], f);
+      n++;
     }
   }
+  assert.equal(n, 8 * 2 * 3 + 2 * 2 * 3);
 });
 
 // 원본 motion.json의 work·upper 시간표(칸 번호, 시작, 길이)를 그대로 옮긴 것
@@ -59,6 +63,7 @@ test('seatedMode: 실행·고침은 타이핑, 읽기·생각류는 손 멈춤, 
   for (const [s, m] of rows) assert.equal(seatedMode(s), m, s);
 });
 
-test('canSit: 앉은 그림은 JP01(번 머리 + 기본 일본형)만', () => {
-  assert.deepEqual(LOOKS.map(canSit), [true, false, false, false, false, false, false, false]);
+test('canSit: 여덟 모습 모두 앉는다(LOOKS에 없는 조합은 아니다)', () => {
+  assert.deepEqual(LOOKS.map(canSit), [true, true, true, true, true, true, true, true]);
+  assert.equal(canSit({ hair: 'bob', outfit: 'jp-classic' }), false);
 });
