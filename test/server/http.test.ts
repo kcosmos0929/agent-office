@@ -125,11 +125,11 @@ test('정적 파일 경로 탈출 막기', async () => {
 
 test('client-config와 healthz, lan-info는 루프백만', async () => {
   const local = await boot();
-  assert.deepEqual(await (await fetch(local.url + '/api/client-config')).json(), { softSound: true, loopback: true, codexAutoApprove: true, build: null });
+  assert.deepEqual(await (await fetch(local.url + '/api/client-config')).json(), { softSound: true, loopback: true, codexAutoApprove: true, tvFoot: 'quote', build: null });
   assert.equal(await (await fetch(local.url + '/healthz')).text(), 'ok');
   const remote = await boot({ isLoopback: () => false });
   const cookie = { cookie: 'so_token=' + TOKEN };
-  assert.deepEqual(await (await fetch(remote.url + '/api/client-config', { headers: cookie })).json(), { softSound: true, loopback: false, codexAutoApprove: true, build: null });
+  assert.deepEqual(await (await fetch(remote.url + '/api/client-config', { headers: cookie })).json(), { softSound: true, loopback: false, codexAutoApprove: true, tvFoot: 'quote', build: null });
   assert.equal((await fetch(remote.url + '/healthz', { headers: cookie })).status, 404);
   assert.equal((await fetch(remote.url + '/api/lan-info', { headers: cookie })).status, 404);
 });
@@ -379,6 +379,42 @@ test('admin codex-auto-approve: 저장에 실패하면(false·예외) 500이고 
   assert.equal((await post(true)).status, 204);
   await cleared;
   ws.close();
+});
+
+// 사무실 TV 아랫줄(시계일 때): 맥 설정 창에서 고르면 서버 config에 저장되고 모든 화면(폰·밖에서 보기 포함)이 스냅샷으로 같이 바뀐다
+test('admin tv-foot: 루프백+헤더만, quote·sun·none이면 저장·반영하고 스냅샷·client-config에 실음, 아니면 400, 저장 실패면 500', { timeout: 5000 }, async () => {
+  const saved: unknown[] = [];
+  let ok = true;
+  const { url } = await boot({ saveConfig: (patch) => { saved.push(patch); return ok; } });
+  const post = (body: string, headers: Record<string, string> = { 'x-so-admin': '1' }) => fetch(url + '/api/admin/tv-foot', { method: 'POST', headers, body });
+  const cfg = async () => (await (await fetch(url + '/api/client-config')).json()).tvFoot;
+  const ws = new WebSocket(url.replace('http', 'ws') + '/ws');
+  const first = (await nextSnapshot(ws, () => true)) as Snapshot;
+  assert.equal(first.tvFoot, 'quote');
+  assert.equal((await post('{"foot":"sun"}', {})).status, 403);
+  assert.equal((await post('{"foot":"moon"}')).status, 400);
+  assert.equal((await post('깨진')).status, 400);
+  assert.deepEqual(saved, []);
+  const changed = nextSnapshot(ws, (s) => s.tvFoot === 'sun');
+  assert.equal((await post('{"foot":"sun"}')).status, 204);
+  assert.deepEqual(saved, [{ tvFoot: 'sun' }]);
+  assert.equal(await cfg(), 'sun');
+  await changed;
+  ok = false;
+  assert.equal((await post('{"foot":"none"}')).status, 500);
+  assert.equal(await cfg(), 'sun');
+  ws.close();
+});
+
+test('config tvFoot: 없거나 모르는 값이면 quote, quote·sun·none은 그대로', () => {
+  const h = fs.mkdtempSync(path.join(os.tmpdir(), 'so-cfgtv-'));
+  assert.equal(loadConfig(h).tvFoot, 'quote');
+  fs.writeFileSync(path.join(h, 'config.json'), JSON.stringify({ tvFoot: 'moon' }));
+  assert.equal(loadConfig(h).tvFoot, 'quote');
+  for (const f of ['quote', 'sun', 'none'] as const) {
+    fs.writeFileSync(path.join(h, 'config.json'), JSON.stringify({ tvFoot: f }));
+    assert.equal(loadConfig(h).tvFoot, f);
+  }
 });
 
 test('saveConfigPatch: config.json의 다른 값·프로젝트 이름은 그대로 두고 그 키만 바꿈', () => {

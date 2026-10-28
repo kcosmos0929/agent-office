@@ -1,5 +1,5 @@
 import './style.css';
-import type { Snapshot } from '../../src/shared/types.ts';
+import type { Snapshot, TvFoot } from '../../src/shared/types.ts';
 import { connect } from './connection.ts';
 import { buildFloatingList, cardAnchor, deferredCard, FLOAT_OPEN_KEY, initialFloatOpen, isNarrow } from './list/floatingList.ts';
 import { renderList } from './list/listBoard.ts';
@@ -14,7 +14,7 @@ import { reloadOnce } from './reload.ts';
 export type OfficeHost = { update(s: Snapshot): void; rebase?(): void; dispose(): void; openCard?(agentId: string, at: { x: number; y: number }): void };
 export type OfficeFactory = (container: HTMLElement) => OfficeHost;
 
-type ClientConfig = { softSound: boolean; loopback: boolean; codexAutoApprove?: boolean; build?: string | null };
+type ClientConfig = { softSound: boolean; loopback: boolean; codexAutoApprove?: boolean; tvFoot?: TvFoot; build?: string | null };
 
 const SOUND_KEY = 'so-sound-on';
 
@@ -79,7 +79,7 @@ export async function start(makeOffice: OfficeFactory | null): Promise<void> {
     }
   }
   const minis = new Set<MiniTarget>();
-  const settings = buildSettings({ codexAutoApprove: config.codexAutoApprove ?? true });
+  const settings = buildSettings({ codexAutoApprove: config.codexAutoApprove ?? true, tvFoot: config.tvFoot ?? 'quote' });
   let office: OfficeHost | null = null;
   let snap: Snapshot | null = null;
   let prev: Snapshot | null = null;

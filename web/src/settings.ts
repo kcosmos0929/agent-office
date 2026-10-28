@@ -1,4 +1,5 @@
-// 설정 패널(이 맥에서 열었을 때만): 폰 연결 QR · 밖에서 보기 QR · 서버 다시 켜기/끄기 · Codex 자동 승인
+// 설정 패널(이 맥에서 열었을 때만): 폰 연결 QR · 밖에서 보기 QR · 서버 다시 켜기/끄기 · 사무실 TV 아랫줄 · Codex 자동 승인
+import type { TvFoot } from '../../src/shared/types.ts';
 
 export const COPY_OK = '복사했어요 — 비밀번호처럼 다뤄 주세요';
 export const COPY_FAIL = '복사하지 못했어요';
@@ -90,7 +91,14 @@ export async function copyRemoteUrl(full: string | null, clipboard: Pick<Clipboa
   }
 }
 
-export function buildSettings(initial: { codexAutoApprove: boolean }): { el: HTMLElement; toggle(): void } {
+/** 사무실 TV 아랫줄 고르기(값, 설정 창 글) */
+export const TV_FOOT_CHOICES: readonly (readonly [TvFoot, string])[] = [
+  ['quote', '문구 — 5분마다 바뀌는 한 줄'],
+  ['sun', '해 막대 — 해 뜸부터 해 짐까지'],
+  ['none', '비움 — 시계와 날짜만'],
+];
+
+export function buildSettings(initial: { codexAutoApprove: boolean; tvFoot: TvFoot }): { el: HTMLElement; toggle(): void } {
   const el = document.createElement('div');
   el.className = 'settings';
   el.hidden = true;
@@ -183,7 +191,45 @@ export function buildSettings(initial: { codexAutoApprove: boolean }): { el: HTM
   });
   codex.append(codexTitle, row, codexHelp);
 
-  el.append(title, help, qr, url, actions, remote, codex);
+  // 사무실 TV 아랫줄: 서버 config에 저장돼 모든 화면(폰·밖에서 보기 포함)이 다음 스냅샷으로 같이 바뀐다. 저장 못 하면 고른 것을 되돌림
+  const tv = document.createElement('div');
+  tv.className = 'settings-section';
+  const tvTitle = document.createElement('h3');
+  tvTitle.textContent = '사무실 TV';
+  const tvHelp = document.createElement('div');
+  tvHelp.textContent = '사용량이 안 잡혀 시계가 뜰 때 아랫줄에 보여 줄 것이에요. 폰 · 밖에서 보기 화면도 같이 바뀌어요.';
+  let tvSaved = initial.tvFoot;
+  let tvSeq = 0;
+  const tvRows = TV_FOOT_CHOICES.map(([value, label]) => {
+    const row = document.createElement('label');
+    row.className = 'toggle-row';
+    const input = document.createElement('input');
+    input.type = 'radio';
+    input.name = 'so-tv-foot';
+    input.value = value;
+    input.checked = value === tvSaved;
+    row.append(input, document.createTextNode(` ${label}`));
+    return { row, input, value };
+  });
+  for (const { input, value } of tvRows) {
+    input.addEventListener('change', async () => {
+      if (!input.checked) return;
+      const mine = ++tvSeq;
+      let ok = false;
+      try {
+        const r = await fetch('/api/admin/tv-foot', { method: 'POST', headers: { 'x-so-admin': '1', 'content-type': 'application/json' }, body: JSON.stringify({ foot: value }) });
+        ok = r.ok;
+      } catch {
+        ok = false;
+      }
+      if (mine !== tvSeq) return; // 그사이 다른 것을 골랐으면 그 결과를 따른다
+      if (ok) tvSaved = value;
+      else for (const r of tvRows) r.input.checked = r.value === tvSaved;
+    });
+  }
+  tv.append(tvTitle, tvHelp, ...tvRows.map((r) => r.row));
+
+  el.append(title, help, qr, url, actions, remote, tv, codex);
 
   async function load() {
     try {

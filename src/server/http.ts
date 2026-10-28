@@ -11,7 +11,8 @@ import path from 'node:path';
 import type { Duplex } from 'node:stream';
 import QRCode from 'qrcode';
 import { WebSocketServer, WebSocket } from 'ws';
-import type { Config } from './config.ts';
+import { TV_FOOTS, type Config } from './config.ts';
+import type { TvFoot } from '../shared/types.ts';
 import type { OfficeState } from './state.ts';
 import { tokenMatches } from './token.ts';
 import { hookPaths, hookToEvents } from './collectors/claudeHook.ts';
@@ -183,7 +184,7 @@ export function startServer(opts: ServerOptions): Promise<RunningServer> {
   let doorOpen = false;
 
   const send = (ws: WebSocket) => {
-    if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'snapshot', build: opts.build ?? null, ...state.snapshot(now()) }));
+    if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'snapshot', build: opts.build ?? null, ...state.snapshot(now()), tvFoot: config.tvFoot }));
   };
   const notify = () => {
     if (timer) return;
@@ -232,6 +233,27 @@ export function startServer(opts: ServerOptions): Promise<RunningServer> {
         config.codexAutoApprove = on;
         // 켜는 순간 이미 떠 있던 Codex 승인 대기(🛡️·❗)도 지운다
         if (on && !was && state.dropCodexApprovals(now())) notify();
+        return text(res, 204);
+      }
+      if (action === 'tv-foot') {
+        // 설정 창 TV 아랫줄: {foot: 'quote'|'sun'|'none'} → 저장된 뒤에만 반영하고, 모든 화면에 스냅샷으로 알린다
+        const raw = await readBody(req);
+        let foot: unknown;
+        try {
+          foot = raw === null ? undefined : (JSON.parse(raw) as { foot?: unknown }).foot;
+        } catch {
+          foot = undefined;
+        }
+        if (!TV_FOOTS.includes(foot as TvFoot)) return text(res, 400);
+        let saved: boolean;
+        try {
+          saved = opts.saveConfig ? opts.saveConfig({ tvFoot: foot as TvFoot }) : true;
+        } catch {
+          saved = false;
+        }
+        if (!saved) return text(res, 500);
+        config.tvFoot = foot as TvFoot;
+        notify();
         return text(res, 204);
       }
       if (action === 'remote-token') {
@@ -336,7 +358,7 @@ export function startServer(opts: ServerOptions): Promise<RunningServer> {
       case '/api/health':
         return json(res, state.snapshot(now()).health);
       case '/api/client-config':
-        return json(res, { softSound: config.softSound, loopback: local, codexAutoApprove: config.codexAutoApprove, build: opts.build ?? null });
+        return json(res, { softSound: config.softSound, loopback: local, codexAutoApprove: config.codexAutoApprove, tvFoot: config.tvFoot, build: opts.build ?? null });
       case '/api/lan-info': {
         if (!local) return text(res, 404);
         const ip = lanAddress();
