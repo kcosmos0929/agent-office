@@ -1,7 +1,7 @@
 // 앉은 그림(여덟 모습): 누가 앉는지·상태 번호·시계·아틀라스 칸. three.js 없는 순수 함수(테스트 대상).
 // 그림은 몸·가까운 팔·먼 팔 세 장(같은 칸 배치)이고, 칸 번호는 손·상체·눈 상태의 조합 번호다(0→71 차례 재생이 아니다).
 import type { Status } from '../../../../src/shared/types.ts';
-import { LOOKS, type Look } from './look.ts';
+import { LOOKS, SEATED_SOURCE, type Look, type SeatedDir } from './look.ts';
 
 /** 모습 이름(LOOKS 순서 = 모자 번호 0~7): 앉은 그림 폴더 이름. 6·7은 겹치지 않는 다른 조합(추가 1·2) */
 export const SEATED_LOOK_IDS = ['JP01', 'JP02', 'JP03', 'KR01', 'KR02', 'KR03', 'EX1', 'EX2'] as const;
@@ -26,9 +26,10 @@ export const SEATED_ATLAS = { cols: 8, rows: 9 } as const;
  */
 export const SEATED_BASE = 'seated-v25';
 export const SEATED_JP01_FALLBACK = ['seated-v24', 'seated-v23'] as const;
-export function seatedFiles(look: Look, dir: 'SE' | 'NW', part: SeatedPart): string[] {
+export function seatedFiles(look: Look, seatedDir: SeatedDir, part: SeatedPart): string[] {
   const id = seatedLookId(look);
   if (!id) return [];
+  const dir = SEATED_SOURCE[seatedDir].dir; // SW·NE는 SE·NW 그림을 뒤집어 쓴다
   const main = `${SEATED_BASE}/${id}/${dir}/${part}.png`;
   return id === 'JP01' ? [main, ...SEATED_JP01_FALLBACK.map((v) => `${v}/${dir}/${part}.png`)] : [main];
 }

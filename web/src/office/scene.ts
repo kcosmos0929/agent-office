@@ -5,7 +5,7 @@ import { buildBackdrop, SLAB_H, type Backdrop } from './backdrop.ts';
 import { armchair, beanBag, bigPlant, binders, bookshelf, boxStack, coatRack, copier, deskLamp, fileCabinet, fridge, FURN, lowCabinet, kitchenCounter, lowTable, officeChair, podDesk, podDivider, printer, receptionDesk, screenStand, shredder, smallPlant, sofa, stool, storageShelf, supplyCabinet, toilet, trashBin, vendingMachine, washbasin, waterCooler, whiteboard } from './furniture.ts';
 import { buildRacks } from './rack.ts';
 import { SCREEN } from './screens.ts';
-import { ARIA_DESK, ARIA_DESK_XS, ARIA_DESK_Y, DEV_DESK, DEV_DESKS, DESK_DEPTH, FLOOR_X, DESK_WIDTH, DESKS, MEETING_TABLE, POD_X0, POD_YS, ROOMS, chairPosition, meetingSpot } from './layout.ts';
+import { ARIA_DESK, ARIA_DESK_XS, ARIA_DESK_Y, DEV_DESK, DEV_DESKS, DESK_DEPTH, FLOOR_X, DESK_WIDTH, DESKS, MEETING_TABLE, POD_X0, POD_YS, ROOMS, MEETING_CHAIRS, chairPosition, devChairPosition, meetingChairPosition } from './layout.ts';
 
 export const WALL_H = 3.0;
 
@@ -112,7 +112,7 @@ export function buildOffice(): OfficeScene {
   // 개발실(Codex): 서버랙 + 큰 모니터 책상 3개
   const racks = buildRacks(g);
   const devScreens: THREE.Mesh[] = [];
-  for (const { x: x0, y: y0 } of DEV_DESKS) {
+  for (const [seat, { x: x0, y: y0 }] of DEV_DESKS.entries()) {
     const cx = x0 + DEV_DESK.w / 2;
     lowTable(g, x0, y0, DEV_DESK.w, DEV_DESK.d, 0.58);
     g.add(block(cx - 0.6, y0 + 0.08, 1.2, 0.12, 0.63, 0.7, FURN.monitor));
@@ -121,7 +121,8 @@ export function buildOffice(): OfficeScene {
     g.add(screen);
     devScreens.push(screen); // 빈 개발실은 꺼진 화면, Codex가 앉으면 cast가 칠한다
     g.add(block(cx - 0.25, y0 + 0.45, 0.5, 0.16, 0.63, 0.015, FURN.keyboard)); // 키보드(모니터와 의자 사이)
-    officeChair(g, cx, y0 + 1.2, 'pz');
+    const ch = devChairPosition(seat); // Codex가 앉는 자리(앉은 그림 기준점)와 같은 점
+    officeChair(g, ch.x, ch.y, 'pz');
   }
 
   // 비서실(ARIA): 스탠딩 책상 3개(높은 나무 상판 + 검은 다리 둘 + 모니터) + 큰 화분
@@ -140,10 +141,9 @@ export function buildOffice(): OfficeScene {
   // 회의실: 나무 테이블 + 검은 의자 6개(테이블 쪽으로 반쯤 밀어 넣음) + 안쪽 벽 앞 화면
   const t = MEETING_TABLE;
   lowTable(g, t.x0, t.y0, t.x1 - t.x0, t.y1 - t.y0, 0.55);
-  for (let i = 0; i < 6; i++) {
-    const s = meetingSpot(i);
-    if (i < 3) officeChair(g, s.x, s.y + 0.1, 'nz');
-    else officeChair(g, s.x, s.y - 0.1, 'pz');
+  for (let i = 0; i < MEETING_CHAIRS; i++) {
+    const c = meetingChairPosition(i);
+    officeChair(g, c.x, c.y, i < 3 ? 'nz' : 'pz');
   }
   screenStand(g, 10.45, 9.65, 1.9);
   bigPlant(g, 14.3, 14.3);

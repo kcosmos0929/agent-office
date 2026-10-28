@@ -62,7 +62,7 @@ export const DESKS: Desk[] = ([[1, 'px'], [0, 'px'], [1, 'nx'], [0, 'nx']] as co
   [0, 1].map((k) => ({ x0: facing === 'px' ? POD_X0 + DESK_DEPTH : POD_X0, y0: POD_YS[pod] + k * (DESK_WIDTH + DESK_GAP), facing })),
 );
 
-/** 개발실(Codex) 책상 3개: 한 줄, 큰 모니터가 앞(+y)을 보고 사람은 앞쪽 의자에. Codex 자리 연결은 3단계에서 */
+/** 개발실(Codex) 책상 3개: 한 줄, 큰 모니터가 앞(+y)을 보고 사람은 앞쪽 의자에(Codex 0~2번 자리, devChairPosition) */
 export const DEV_DESKS: readonly Point[] = [{ x: 7.9, y: 1.8 }, { x: 10.2, y: 1.8 }, { x: 12.5, y: 1.8 }];
 export const DEV_DESK = { w: 2.0, d: 0.9 };
 
@@ -114,6 +114,11 @@ export const EXTRA_REST_SPOTS: readonly Point[] = [
   { x: 11.6, y: 17.85 }, { x: 12.6, y: 17.85 }, { x: 13.6, y: 17.85 },
 ];
 
+/** 개발실 의자 가운데(바닥, 앉은 그림 기준점): 책상 앞(+y) 1.2. 앉으면 모니터(-y) 쪽을 봐서 등이 보인다(NE) */
+export function devChairPosition(seat: number): Point {
+  return { x: DEV_DESKS[seat].x + DEV_DESK.w / 2, y: DEV_DESKS[seat].y + 1.2 };
+}
+
 /** 개발실 책상 앞(의자 뒤 길) 서 있는 자리: 0~2, 그 밖 → 로비 첫 자리 */
 export function devSpot(seat: number): Point {
   if (seat < 0 || seat >= DEV_DESKS.length) return WAITING_SPOT;
@@ -141,7 +146,10 @@ export function seatPosition(seat: number): Point {
 /** 회의 테이블 */
 export const MEETING_TABLE = { x0: 9.4, y0: 11.6, x1: 13.4, y1: 12.9 };
 
-/** 0~5 회의실 의자, 그 이상은 테이블을 둘러섬 */
+/** 회의실 의자 수: 테이블 너머(북쪽) 0~2, 이쪽(남쪽) 3~5 */
+export const MEETING_CHAIRS = 6;
+
+/** 0~5 회의실 의자 앞 서는 자리, 그 이상은 테이블을 둘러섬 */
 export function meetingSpot(i: number): Point {
   const chairs: Point[] = [
     { x: 9.9, y: 11.2 }, { x: 11.4, y: 11.2 }, { x: 12.9, y: 11.2 },
@@ -150,6 +158,12 @@ export function meetingSpot(i: number): Point {
   if (i >= 0 && i < chairs.length) return chairs[i];
   const a = (i - chairs.length) * 0.9;
   return { x: 11.4 + Math.cos(a) * 2.5, y: 12.25 + Math.sin(a) * 1.6 };
+}
+
+/** 회의실 의자 0~5 가운데(바닥, 앉은 그림 기준점): 서는 자리(meetingSpot)에서 테이블 쪽으로 0.1(반쯤 밀어 넣은 의자). 0~2는 테이블 쪽(+y)을 봐 얼굴(SW), 3~5는 등(NE) */
+export function meetingChairPosition(i: number): Point {
+  const s = meetingSpot(i);
+  return { x: s.x, y: i < 3 ? s.y + 0.1 : s.y - 0.1 };
 }
 
 const inRoom = (p: Point, r: Room) => p.x > r.x0 && p.x < r.x1 && p.y > r.y0 && p.y < r.y1;

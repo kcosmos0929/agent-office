@@ -98,6 +98,17 @@ test('Figure.sit: 그림이 오기 전엔 서 있고 false, 오면 세 판을 �
     const mapOf = (x: Figure) => (planes(x).find((m) => m !== x.mesh)!.material as THREE.MeshBasicMaterial).map!;
     assert.notEqual(mapOf(f), mapOf(g));
     assert.ok(Math.abs(mapOf(f).offset.x - 7 / 8) < 1e-12);
+    // 개발실·회의실(SW·NE): SE·NW 그림을 좌우로 뒤집어 읽는다 — repeat.x 음수, offset은 칸 오른쪽 끝
+    const h = new Figure(lookFor(0), 'neutral', 1, () => {});
+    h.sit('NE', 39);
+    await new Promise((r) => setTimeout(r, 10));
+    assert.equal(h.sit('NE', 39), true);
+    const on = seatedPlaneOffset('NE');
+    for (const m of planes(h).filter((x) => x !== h.mesh)) {
+      const map = (m.material as THREE.MeshBasicMaterial).map!;
+      assert.ok(Math.abs(map.repeat.x + 1 / 8) < 1e-12 && Math.abs(map.offset.x - 8 / 8) < 1e-12);
+      assert.ok(Math.abs(m.position.x - on.x) < 1e-12 && Math.abs(m.position.y - on.y) < 1e-12);
+    }
     f.show('SE', 'idle');
     assert.deepEqual(f.pickables(), [f.mesh]);
     assert.equal(f.mesh.visible, true);

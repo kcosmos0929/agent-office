@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { CHAIR_PULLBACK, DESKS, DESK_DEPTH, IDLE_SPOTS, ROOMS, ROOM_DOORS, SPLIT_X, chairPosition, seatPosition, meetingSpot, waitingSpot, DOOR, pathTo, facingAt, forwardFrom, backwardFrom, segmentAt, type Point, BAND_LANE_Y, DEV_LANE_Y, REST_SPOTS, OVERFLOW_SPOTS, CORRIDOR, FLOOR_Z, devSpot, routeBetween, simplifyPath, EXTRA_REST_SPOTS } from '../../web/src/office/layout.ts';
+import { CHAIR_PULLBACK, DESKS, DESK_DEPTH, DEV_DESK, DEV_DESKS, IDLE_SPOTS, MEETING_CHAIRS, MEETING_TABLE, devChairPosition, meetingChairPosition, ROOMS, ROOM_DOORS, SPLIT_X, chairPosition, seatPosition, meetingSpot, waitingSpot, DOOR, pathTo, facingAt, forwardFrom, backwardFrom, segmentAt, type Point, BAND_LANE_Y, DEV_LANE_Y, REST_SPOTS, OVERFLOW_SPOTS, CORRIDOR, FLOOR_Z, devSpot, routeBetween, simplifyPath, EXTRA_REST_SPOTS } from '../../web/src/office/layout.ts';
 import { targetFps } from '../../web/src/office/fps.ts';
 
 const inside = (p: { x: number; y: number }, r: { x0: number; y0: number; x1: number; y1: number }) => p.x > r.x0 && p.x < r.x1 && p.y > r.y0 && p.y < r.y1;
@@ -238,4 +238,26 @@ test('넘침 너머 쉼 자리(EXTRA_REST_SPOTS)는 휴게실·탕비실 띠 안
     for (let j = 0; j < i; j++) assert.ok(Math.hypot(p.x - EXTRA_REST_SPOTS[j].x, p.y - EXTRA_REST_SPOTS[j].y) >= 0.3);
     assert.deepEqual(facingAt(p), { x: 1, y: 0 });
   });
+});
+
+test('개발실 의자: 개발실 안, 책상 앞 가장자리와 의자 뒤 길(devSpot) 사이 — Codex가 앉는 점', () => {
+  for (let i = 0; i < DEV_DESKS.length; i++) {
+    const c = devChairPosition(i);
+    assert.ok(inside(c, ROOMS.codex), `의자 ${i}`);
+    assert.equal(c.x, DEV_DESKS[i].x + DEV_DESK.w / 2);
+    assert.ok(c.y > DEV_DESKS[i].y + DEV_DESK.d && c.y < devSpot(i).y, `의자 ${i}는 책상과 서는 자리 사이`);
+  }
+});
+
+test('회의실 의자 여섯: 회의실 안·테이블 밖, 0~2는 테이블 너머(북)·3~5는 이쪽(남), 서는 자리보다 테이블 쪽', () => {
+  assert.equal(MEETING_CHAIRS, 6);
+  const t = MEETING_TABLE;
+  for (let i = 0; i < MEETING_CHAIRS; i++) {
+    const c = meetingChairPosition(i);
+    const s = meetingSpot(i);
+    assert.ok(inside(c, ROOMS.meeting), `의자 ${i}`);
+    assert.ok(i < 3 ? c.y < t.y0 : c.y > t.y1, `의자 ${i} 위치`);
+    assert.ok(i < 3 ? c.y > s.y : c.y < s.y, `의자 ${i}는 서는 자리보다 테이블 쪽`);
+    assert.equal(c.x, s.x);
+  }
 });

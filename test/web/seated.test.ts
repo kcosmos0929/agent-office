@@ -12,6 +12,9 @@ test('앉은 그림 파일: 여덟 모습 seated-v25/<모습> — JP01만 v24·v
   assert.deepEqual(seatedFiles(LOOKS[3], 'NW', 'farArm'), ['seated-v25/KR01/NW/farArm.png']);
   assert.deepEqual(LOOKS.map(seatedLookId), ['JP01', 'JP02', 'JP03', 'KR01', 'KR02', 'KR03', 'EX1', 'EX2']);
   assert.deepEqual(seatedFiles({ hair: 'bob', outfit: 'jp-classic' }, 'SE', 'body'), []);
+  // 개발실·회의실 방향(SW·NE)은 SE·NW 그림을 읽어 뒤집는다
+  assert.deepEqual(seatedFiles(LOOKS[3], 'NE', 'body'), ['seated-v25/KR01/NW/body.png']);
+  assert.deepEqual(seatedFiles(LOOKS[0], 'SW', 'nearArm'), ['seated-v25/JP01/SE/nearArm.png', 'seated-v24/SE/nearArm.png', 'seated-v23/SE/nearArm.png']);
   const header = (rel: string) => {
     const b = readFileSync(new URL(rel, CHARACTERS));
     return [b.readUInt32BE(16), b.readUInt32BE(20), b[24], b[25]]; // IHDR 폭·높이·비트 깊이·색 형식(6 = RGBA)

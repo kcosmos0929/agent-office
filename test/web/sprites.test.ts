@@ -5,7 +5,7 @@ import path from 'node:path';
 import type { Status } from '../../src/shared/types.ts';
 import {
   ANCHOR, CELL, DIRS, DOT, FACES, HAIR_VERSION, LAYERS, LOOKS, OUTFIT_VERSION, PACE_FPS, PART_BASE, STEP, UPRIGHT,
-  SEATED_ANCHOR, dirFor, faceFor, headTop, lookFor, partFiles, partPath, planeOffset, planeSize, seatedDir, walkSpeed,
+  SEATED_ANCHOR, SEATED_SOURCE, dirFor, faceFor, headTop, lookFor, partFiles, partPath, planeOffset, planeSize, seatedDir, walkSpeed,
 } from '../../web/src/office/sprites/look.ts';
 
 const CHARACTERS = path.resolve(import.meta.dirname, '../../web/public/characters');
@@ -131,5 +131,12 @@ test('판: 1440×900 창에서 도트 하나 = 0.75 CSS 점, 발 기준점이 �
 test('앉은 그림: 책상 바깥 자리 NW·창 쪽 SE, 기준점은 의자 가운데 바닥(v16 pose.json)', () => {
   assert.equal(seatedDir('px'), 'NW');
   assert.equal(seatedDir('nx'), 'SE');
-  assert.deepEqual(SEATED_ANCHOR, { SE: [34, 85], NW: [29, 85] });
+  assert.deepEqual(SEATED_ANCHOR, { SE: [34, 85], NW: [29, 85], SW: [29, 85], NE: [34, 85] });
+  // SW·NE는 SE·NW 그림 좌우 뒤집기 — 기준점 x도 칸 안에서 뒤집힌다(63 − x), 서기 ANCHOR(SE 34 ↔ SW 29)와 같은 규칙
+  for (const [d, src] of [['SW', 'SE'], ['NE', 'NW']] as const) {
+    assert.deepEqual(SEATED_SOURCE[d], { dir: src, mirror: true });
+    assert.equal(SEATED_ANCHOR[d][0], 63 - SEATED_ANCHOR[src][0]);
+    assert.equal(SEATED_ANCHOR[d][1], SEATED_ANCHOR[src][1]);
+  }
+  for (const d of ['SE', 'NW'] as const) assert.deepEqual(SEATED_SOURCE[d], { dir: d, mirror: false });
 });
