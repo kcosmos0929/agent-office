@@ -125,13 +125,13 @@ test('정적 파일 경로 탈출 막기', async () => {
 
 test('client-config와 healthz, lan-info는 루프백만', async () => {
   const local = await boot();
-  const { tvFootRev, ...localCfg } = await (await fetch(local.url + '/api/client-config')).json();
-  assert.equal(typeof tvFootRev, 'number');
+  const { tvFootRev, tvFootInst, ...localCfg } = await (await fetch(local.url + '/api/client-config')).json();
+  assert.deepEqual([tvFootRev, typeof tvFootInst], [0, 'string']);
   assert.deepEqual(localCfg, { softSound: true, loopback: true, codexAutoApprove: true, tvFoot: 'quote', build: null });
   assert.equal(await (await fetch(local.url + '/healthz')).text(), 'ok');
   const remote = await boot({ isLoopback: () => false });
   const cookie = { cookie: 'so_token=' + TOKEN };
-  const { tvFootRev: _r, ...remoteCfg } = await (await fetch(remote.url + '/api/client-config', { headers: cookie })).json();
+  const { tvFootRev: _r, tvFootInst: _i, ...remoteCfg } = await (await fetch(remote.url + '/api/client-config', { headers: cookie })).json();
   assert.deepEqual(remoteCfg, { softSound: true, loopback: false, codexAutoApprove: true, tvFoot: 'quote', build: null });
   assert.equal((await fetch(remote.url + '/healthz', { headers: cookie })).status, 404);
   assert.equal((await fetch(remote.url + '/api/lan-info', { headers: cookie })).status, 404);
@@ -385,18 +385,19 @@ test('admin codex-auto-approve: 저장에 실패하면(false·예외) 500이고 
 });
 
 // 사무실 TV 아랫줄(시계일 때): 맥 설정 창에서 고르면 서버 config에 저장되고 모든 화면(폰·밖에서 보기 포함)이 스냅샷으로 같이 바뀐다
-// 판(rev): 바뀔 때마다 커지는 번호 — 화면은 더 큰 판만 믿어, 늦게 온 응답·스냅샷이 더 새 값을 덮지 않는다(Codex 재검토 P2).
-// 서버를 다시 켜도 앞 판보다 크게 켠 시각에서 시작
-test('admin tv-foot: 루프백+헤더만, quote·sun·none이면 저장·반영하고 판(rev)을 올려 응답·스냅샷·client-config에 실음, 아니면 400, 저장 실패면 500', { timeout: 5000 }, async () => {
+// 판: 서버를 켤 때마다 새 이름(inst)을 짓고, 그 안에서 바뀔 때마다 1씩 오르는 번호(rev). 화면은 같은 이름 안에서 더 큰 번호만 믿고,
+// 이름이 바뀌면(다시 켬) 지금 연결의 스냅샷을 따른다 — 시계와 상관없이 늦은 응답·스냅샷이 더 새 값을 덮지 않게(Codex 재검토 P2 세 건)
+test('admin tv-foot: 루프백+헤더만, quote·sun·none이면 저장·반영하고 판을 올려 응답·스냅샷·client-config에 실음, 아니면 400, 저장 실패면 500', { timeout: 5000 }, async () => {
   const saved: unknown[] = [];
   let ok = true;
-  let clock = 1_000_000;
-  const { url } = await boot({ saveConfig: (patch) => { saved.push(patch); return ok; }, now: () => clock });
+  const { url } = await boot({ saveConfig: (patch) => { saved.push(patch); return ok; } });
   const post = (body: string, headers: Record<string, string> = { 'x-so-admin': '1' }) => fetch(url + '/api/admin/tv-foot', { method: 'POST', headers, body });
   const cfg = async () => (await (await fetch(url + '/api/client-config')).json()).tvFoot;
   const ws = new WebSocket(url.replace('http', 'ws') + '/ws');
   const first = (await nextSnapshot(ws, () => true)) as Snapshot;
-  assert.deepEqual([first.tvFoot, first.tvFootRev], ['quote', 1_000_000]); // 처음 판 = 켠 시각
+  assert.deepEqual([first.tvFoot, first.tvFootRev], ['quote', 0]);
+  const inst = first.tvFootInst!;
+  assert.equal(typeof inst, 'string');
   assert.equal((await post('{"foot":"sun"}', {})).status, 403);
   assert.equal((await post('{"foot":"moon"}')).status, 400);
   assert.equal((await post('깨진')).status, 400);
@@ -404,16 +405,18 @@ test('admin tv-foot: 루프백+헤더만, quote·sun·none이면 저장·반영�
   const changed = nextSnapshot(ws, (s) => s.tvFoot === 'sun');
   const r1 = await post('{"foot":"sun"}');
   assert.equal(r1.status, 200);
-  assert.deepEqual(await r1.json(), { rev: 1_000_001 }); // 시계가 그대로여도 1씩은 커짐
+  assert.deepEqual(await r1.json(), { rev: 1, inst });
   assert.deepEqual(saved, [{ tvFoot: 'sun' }]);
   assert.equal(await cfg(), 'sun');
-  assert.equal((await changed).tvFootRev, 1_000_001);
-  clock = 2_000_000;
-  assert.deepEqual(await (await post('{"foot":"quote"}')).json(), { rev: 2_000_000 }); // 시계가 앞서면 시계로
+  const snap = await changed;
+  assert.deepEqual([snap.tvFootRev, snap.tvFootInst], [1, inst]);
+  assert.deepEqual(await (await post('{"foot":"quote"}')).json(), { rev: 2, inst });
   ok = false;
   assert.equal((await post('{"foot":"none"}')).status, 500);
   assert.equal(await cfg(), 'quote');
-  assert.equal((await (await fetch(url + '/api/client-config')).json()).tvFootRev, 2_000_000); // 실패하면 판도 그대로
+  assert.equal((await (await fetch(url + '/api/client-config')).json()).tvFootRev, 2); // 실패하면 판도 그대로
+  const other = await boot();
+  assert.notEqual((await (await fetch(other.url + '/api/client-config')).json()).tvFootInst, inst); // 켤 때마다 새 이름
   ws.close();
 });
 

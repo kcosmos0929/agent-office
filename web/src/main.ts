@@ -14,7 +14,7 @@ import { reloadOnce } from './reload.ts';
 export type OfficeHost = { update(s: Snapshot): void; rebase?(): void; dispose(): void; openCard?(agentId: string, at: { x: number; y: number }): void };
 export type OfficeFactory = (container: HTMLElement) => OfficeHost;
 
-type ClientConfig = { softSound: boolean; loopback: boolean; codexAutoApprove?: boolean; tvFoot?: TvFoot; tvFootRev?: number; build?: string | null };
+type ClientConfig = { softSound: boolean; loopback: boolean; codexAutoApprove?: boolean; tvFoot?: TvFoot; tvFootRev?: number; tvFootInst?: string; build?: string | null };
 
 const SOUND_KEY = 'so-sound-on';
 
@@ -79,7 +79,7 @@ export async function start(makeOffice: OfficeFactory | null): Promise<void> {
     }
   }
   const minis = new Set<MiniTarget>();
-  const settings = buildSettings({ codexAutoApprove: config.codexAutoApprove ?? true, tvFoot: config.tvFoot ?? 'quote', tvFootRev: config.tvFootRev ?? 0 });
+  const settings = buildSettings({ codexAutoApprove: config.codexAutoApprove ?? true, tvFoot: config.tvFoot ?? 'quote', tvFootVer: { rev: config.tvFootRev ?? 0, inst: config.tvFootInst ?? '' } });
   let office: OfficeHost | null = null;
   let snap: Snapshot | null = null;
   let prev: Snapshot | null = null;
@@ -154,7 +154,7 @@ export async function start(makeOffice: OfficeFactory | null): Promise<void> {
       if (reloadOnce(config.build ?? null, build, () => { if (player.enabled) storedSet(SOUND_KEY, '1'); })) return;
       for (const kind of soundEvents(prev, s)) player.play(kind);
       awaitFresh = false;
-      if (s.tvFoot) settings.syncTvFoot(s.tvFoot, s.tvFootRev ?? 0);
+      if (s.tvFoot) settings.syncTvFoot(s.tvFoot, { rev: s.tvFootRev ?? 0, inst: s.tvFootInst ?? '' });
       prev = s;
       snap = s;
       receivedAt = Date.now();

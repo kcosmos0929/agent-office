@@ -98,18 +98,23 @@ export const TV_FOOT_CHOICES: readonly (readonly [TvFoot, string])[] = [
   ['none', '비움 — 시계와 날짜만'],
 ];
 
+/** TV 아랫줄 판: 서버를 켤 때마다 새 이름(inst), 그 안에서 바뀔 때마다 1씩 오르는 번호(rev) */
+export type TvFootVer = { rev: number; inst: string };
+
 /**
- * TV 아랫줄 고르기 상태. 서버는 바뀔 때마다 판(rev)을 올려 저장 응답·스냅샷에 싣고, 여기서는 더 큰 판의 값만 믿는다 —
- * 늦게 온 저장 응답이나 낡은 스냅샷이 다른 창이 바꾼 더 새 값을 덮지 않게(Codex 재검토 P2). 저장은 한 번에 하나씩 보내고
+ * TV 아랫줄 고르기 상태. 서버는 바뀔 때마다 판을 올려 저장 응답·스냅샷에 싣고, 여기서는 같은 이름 안에서 더 큰 번호의 값만 믿는다 —
+ * 늦게 온 저장 응답이나 낡은 스냅샷이 다른 창이 바꾼 더 새 값을 덮지 않게. 이름이 다르면(서버를 다시 켬) 지금 연결의 스냅샷을 따르고
+ * 다른 이름의 저장 응답은 버린다(저장 뒤엔 늘 스냅샷이 오니 그걸로 맞음) — 시계와 상관없게 (Codex 재검토 P2 세 건). 저장은 한 번에 하나씩 보내고
  * (서버가 역순으로 처리하지 않게) 그사이 고른 것은 마지막 것만 이어서 보낸다. 저장이 다 끝나면 지금 믿는 서버 값을 라디오에 보인다
  * (실패면 되돌림). 저장 중에 온 스냅샷은 고르는 중인 라디오를 덮지 않고 기억만 한다 (Codex 리뷰 P2 두 건)
  */
-export function tvFootControl(initial: { foot: TvFoot; rev: number }, post: (foot: TvFoot) => Promise<number | null>, show: (foot: TvFoot) => void) {
+export function tvFootControl(initial: { foot: TvFoot } & TvFootVer, post: (foot: TvFoot) => Promise<TvFootVer | null>, show: (foot: TvFoot) => void) {
   let server = initial;
   let want: TvFoot | null = null;
   let busy = false;
-  const take = (foot: TvFoot, rev: number) => {
-    if (rev > server.rev) server = { foot, rev };
+  /** live = 지금 연결의 스냅샷(이름이 바뀌었으면 그대로 따름), 아니면 저장 응답(같은 이름일 때만) */
+  const take = (foot: TvFoot, v: TvFootVer, live: boolean) => {
+    if (v.inst === server.inst ? v.rev > server.rev : live) server = { foot, ...v };
   };
   async function flush(): Promise<void> {
     if (busy) return;
@@ -118,8 +123,8 @@ export function tvFootControl(initial: { foot: TvFoot; rev: number }, post: (foo
       const foot = want;
       want = null;
       try {
-        const rev = await post(foot);
-        if (rev !== null) take(foot, rev);
+        const v = await post(foot);
+        if (v) take(foot, v, false);
       } catch {
         // 못 보냄(응답만 끊겼으면 서버가 알리는 스냅샷이 곧 바로잡는다)
       }
@@ -137,15 +142,15 @@ export function tvFootControl(initial: { foot: TvFoot; rev: number }, post: (foo
       void flush();
     },
     /** 스냅샷의 서버 값과 판(다른 창에서 바꾼 것 포함) */
-    sync(foot: TvFoot, rev: number): void {
+    sync(foot: TvFoot, v: TvFootVer): void {
       const before = server;
-      take(foot, rev);
+      take(foot, v, true);
       if (!busy && want === null && server !== before) show(server.foot);
     },
   };
 }
 
-export function buildSettings(initial: { codexAutoApprove: boolean; tvFoot: TvFoot; tvFootRev: number }): { el: HTMLElement; toggle(): void; syncTvFoot(foot: TvFoot, rev: number): void } {
+export function buildSettings(initial: { codexAutoApprove: boolean; tvFoot: TvFoot } & { tvFootVer: TvFootVer }): { el: HTMLElement; toggle(): void; syncTvFoot(foot: TvFoot, v: TvFootVer): void } {
   const el = document.createElement('div');
   el.className = 'settings';
   el.hidden = true;
@@ -257,11 +262,11 @@ export function buildSettings(initial: { codexAutoApprove: boolean; tvFoot: TvFo
     return { row, input, value };
   });
   const tvFoot = tvFootControl(
-    { foot: initial.tvFoot, rev: initial.tvFootRev },
+    { foot: initial.tvFoot, ...initial.tvFootVer },
     async (foot) => {
       const r = await fetch('/api/admin/tv-foot', { method: 'POST', headers: { 'x-so-admin': '1', 'content-type': 'application/json' }, body: JSON.stringify({ foot }) });
-      const rev = r.ok ? ((await r.json()) as { rev?: unknown }).rev : null;
-      return typeof rev === 'number' ? rev : null;
+      const v = r.ok ? ((await r.json()) as { rev?: unknown; inst?: unknown }) : null;
+      return v && typeof v.rev === 'number' && typeof v.inst === 'string' ? { rev: v.rev, inst: v.inst } : null;
     },
     (foot) => { for (const r of tvRows) r.input.checked = r.value === foot; },
   );
@@ -295,8 +300,8 @@ export function buildSettings(initial: { codexAutoApprove: boolean; tvFoot: TvFo
       }
     },
     /** 스냅샷마다: 다른 창에서 바꾼 TV 아랫줄도 라디오에 맞춘다 */
-    syncTvFoot(foot: TvFoot, rev: number) {
-      tvFoot.sync(foot, rev);
+    syncTvFoot(foot: TvFoot, v: TvFootVer) {
+      tvFoot.sync(foot, v);
     },
   };
 }
