@@ -278,3 +278,17 @@ test('TV 아랫줄: 서버를 다시 켜면(새 이름, 판 0부터) 지금 연�
   ctl.sync('none', { rev: 2, inst: 'B' });
   assert.equal(ctl.server, 'none');
 });
+
+test('TV 아랫줄: 다시 켠 서버가 저장했다고 답했는데 그 서버의 스냅샷이 아직 안 왔으면, 라디오를 옛 값으로 되돌리지 않고 기다린다 (Codex 재검토 P2)', async () => {
+  const { ctl, posts, shown, tick } = tvHarness('quote', 5, 'A');
+  ctl.choose('sun'); // 서버를 다시 켜느라 연결이 끊긴 사이에 고름 — 저장은 새 서버(B)가 받음
+  await tick();
+  posts[0].resolve({ rev: 1, inst: 'B' });
+  await tick();
+  assert.deepEqual(shown, []); // 옛 값(quote)으로 되돌리지 않음 — 라디오는 고른 sun 그대로
+  ctl.sync('quote', { rev: 5, inst: 'A' }); // 옛 서버 이름의 스냅샷이 더 와도 그대로
+  assert.deepEqual(shown, []);
+  ctl.sync('sun', { rev: 1, inst: 'B' }); // 새 서버의 스냅샷이 오면 확정
+  assert.equal(ctl.server, 'sun');
+  assert.deepEqual(shown, ['sun']);
+});

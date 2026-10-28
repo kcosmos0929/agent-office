@@ -112,6 +112,8 @@ export function tvFootControl(initial: { foot: TvFoot } & TvFootVer, post: (foot
   let server = initial;
   let want: TvFoot | null = null;
   let busy = false;
+  /** 다른 이름(다시 켠 서버)이 저장했다고 답함 — 그 서버의 스냅샷이 와서 확정할 때까지 라디오를 옛 값으로 되돌리지 않는다(Codex 재검토 P2) */
+  let unsure = false;
   /** live = 지금 연결의 스냅샷(이름이 바뀌었으면 그대로 따름), 아니면 저장 응답(같은 이름일 때만) */
   const take = (foot: TvFoot, v: TvFootVer, live: boolean) => {
     if (v.inst === server.inst ? v.rev > server.rev : live) server = { foot, ...v };
@@ -124,13 +126,14 @@ export function tvFootControl(initial: { foot: TvFoot } & TvFootVer, post: (foot
       want = null;
       try {
         const v = await post(foot);
+        unsure = !!v && v.inst !== server.inst;
         if (v) take(foot, v, false);
       } catch {
         // 못 보냄(응답만 끊겼으면 서버가 알리는 스냅샷이 곧 바로잡는다)
       }
     }
     busy = false;
-    show(server.foot);
+    if (!unsure) show(server.foot);
   }
   return {
     get server(): TvFoot {
@@ -145,7 +148,9 @@ export function tvFootControl(initial: { foot: TvFoot } & TvFootVer, post: (foot
     sync(foot: TvFoot, v: TvFootVer): void {
       const before = server;
       take(foot, v, true);
-      if (!busy && want === null && server !== before) show(server.foot);
+      if (busy || want !== null || server === before) return; // 바뀐 게 없거나(옛 이름의 스냅샷 포함) 고르는 중
+      unsure = false;
+      show(server.foot);
     },
   };
 }
