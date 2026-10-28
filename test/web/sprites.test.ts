@@ -30,32 +30,30 @@ test('부품 파일: 모든 모습×표정×방향×레이어가 실제로 있�
   assert.equal(n, 8 * 4 * 4 * 10);
 });
 
-test('부품 버전: JP01 옷(jp-classic)만 v18 먼저, 머리·얼굴·다른 옷은 v15만', () => {
-  const jp01 = LOOKS[0];
-  assert.deepEqual(partFiles('torso', jp01, 'neutral', 'SE'), ['v18/parts/outfit/jp-classic/torso/SE.png', 'v15/parts/outfit/jp-classic/torso/SE.png']);
-  assert.deepEqual(partFiles('head', jp01, 'neutral', 'SE'), ['v15/parts/hair/bun/head/SE.png']);
-  assert.deepEqual(partFiles('face', jp01, 'happy', 'NW'), ['v15/parts/face/bun/happy/NW.png']);
-  for (const look of LOOKS.filter((l) => l.outfit !== 'jp-classic')) {
-    assert.deepEqual(partFiles('bottom', look, 'neutral', 'NE'), [`v15/parts/outfit/${look.outfit}/bottom/NE.png`]);
+test('부품 버전: 옷 여섯 벌 모두 v18 먼저, 머리·얼굴은 v15만', () => {
+  for (const look of LOOKS) {
+    assert.deepEqual(partFiles('torso', look, 'neutral', 'SE'), [`v18/parts/outfit/${look.outfit}/torso/SE.png`, `v15/parts/outfit/${look.outfit}/torso/SE.png`]);
+    assert.deepEqual(partFiles('head', look, 'neutral', 'SE'), [`v15/parts/hair/${look.hair}/head/SE.png`]);
+    assert.deepEqual(partFiles('face', look, 'happy', 'NW'), [`v15/parts/face/${look.hair}/happy/NW.png`]);
   }
-  assert.deepEqual(Object.keys(OUTFIT_VERSION), ['jp-classic']);
+  assert.deepEqual(Object.keys(OUTFIT_VERSION).sort(), ['jp-classic', 'jp-suit', 'jp-vest', 'kr-blazer', 'kr-cardigan', 'kr-shirt']);
 });
 
-test('v18 옷 부품은 v15와 같은 규격(576×96 RGBA PNG)이고 폴더에 그 옷만 있다', () => {
+test('v18 옷 부품은 v15와 같은 규격(576×96 RGBA PNG)이고 옷 여섯 벌 × 7장 × 4방향이 다 있다', () => {
   const header = (f: string) => {
     const b = fs.readFileSync(f);
     return [b.readUInt32BE(16), b.readUInt32BE(20), b[24], b[25]]; // IHDR 폭·높이·비트 깊이·색 형식(6 = RGBA)
   };
   const v18 = path.join(CHARACTERS, 'v18/parts/outfit');
-  assert.deepEqual(fs.readdirSync(v18), ['jp-classic']);
+  assert.deepEqual(fs.readdirSync(v18).sort(), Object.keys(OUTFIT_VERSION).sort());
   let n = 0;
-  for (const layer of fs.readdirSync(path.join(v18, 'jp-classic'))) for (const dir of DIRS) {
-    const rel = `parts/outfit/jp-classic/${layer}/${dir}.png`;
+  for (const outfit of fs.readdirSync(v18)) for (const layer of fs.readdirSync(path.join(v18, outfit))) for (const dir of DIRS) {
+    const rel = `parts/outfit/${outfit}/${layer}/${dir}.png`;
     assert.deepEqual(header(path.join(CHARACTERS, 'v18', rel)), [576, 96, 8, 6], rel);
     assert.deepEqual(header(path.join(CHARACTERS, 'v18', rel)).slice(0, 2), header(path.join(PARTS, rel)).slice(0, 2), rel);
     n++;
   }
-  assert.equal(n, 7 * 4);
+  assert.equal(n, 6 * 7 * 4);
 });
 
 test('부품 배치 계약이 v15 layout.json과 같다', () => {

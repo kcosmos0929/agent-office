@@ -40,6 +40,12 @@ export function partPath(layer: Layer, look: Look, face: Face, dir: Dir): string
 export const PART_BASE = 'v15';
 export const OUTFIT_VERSION: Partial<Record<Outfit, string>> = {
   'jp-classic': 'v18', // JP01 옷 디테일·외곽선 다시 그림(2026-10-27)
+  // 나머지 다섯 옷: Codex v17 옷선 정리본 위에 JP01과 같은 외곽선·신발·다리·치마 몸매(2026-10-28)
+  'jp-vest': 'v18',
+  'jp-suit': 'v18',
+  'kr-blazer': 'v18',
+  'kr-cardigan': 'v18',
+  'kr-shirt': 'v18',
 };
 /** 부품 파일 후보(characters/ 기준, 앞부터 읽는다): 새 버전 옷이면 그것, 못 읽으면 v15 */
 export function partFiles(layer: Layer, look: Look, face: Face, dir: Dir): string[] {
