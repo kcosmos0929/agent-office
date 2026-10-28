@@ -67,6 +67,8 @@ export class OfficeView implements OfficeHost {
   /** 지금 낮밤 단계(바뀔 때만 다시 그림) */
   private daylight = -1;
   private daylightTimer: ReturnType<typeof setInterval> | null = null;
+  /** TV 시계·리셋 남은 시간을 초마다 다시 재는 타이머 */
+  private tvTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor(container: HTMLElement) {
     this.container = container;
@@ -94,11 +96,12 @@ export class OfficeView implements OfficeHost {
     this.scene.add(this.office.group, this.tv.group);
     // 동작 줄이기 설정이면 폴짝을 끈다(한 번만 읽음)
     const reduced = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
-    this.cast = new Cast(this.scene, this.office, () => this.invalidate(), () => (this.snap ? this.snap.now + (Date.now() - this.receivedAt) : Date.now()), reduced, seatedPreview(location.search));
+    this.cast = new Cast(this.scene, this.office, () => this.invalidate(), () => this.now(), reduced, seatedPreview(location.search));
 
     // 서울 해에 맞춘 낮밤: 지금 한 번, 그 뒤 1분마다 확인(단계가 바뀔 때만 다시 그림)
     this.checkDaylight();
     this.daylightTimer = setInterval(() => this.checkDaylight(), 60_000);
+    this.tickTv();
 
     this.camera.position.copy(TARGET).addScaledVector(VIEW_DIR, 30);
     this.camera.lookAt(TARGET);
@@ -158,6 +161,19 @@ export class OfficeView implements OfficeHost {
     this.cardRequest.flush();
   }
 
+  /** 서버 시각을 이어 센 지금(스냅샷 전엔 브라우저 시각) */
+  private now(): number {
+    return this.snap ? this.snap.now + (Date.now() - this.receivedAt) : Date.now();
+  }
+
+  /** TV를 초마다 다시 재서 글줄이 바뀌었을 때만(시계 초, 리셋 남은 분, 리셋이 지나 시계로) 한 번 그린다. 다음 초 경계에 맞춰 깬다 */
+  private tickTv = (): void => {
+    if (this.disposed) return;
+    const now = this.now();
+    if (this.tv.update(this.snap?.usage ?? null, now)) this.invalidate();
+    this.tvTimer = setTimeout(this.tickTv, 1000 - (now % 1000) + 20);
+  };
+
   /** 다시 연결된 뒤 첫 스냅샷은 효과 없이 기준만 */
   rebase(): void {
     this.cast.rebase();
@@ -195,6 +211,7 @@ export class OfficeView implements OfficeHost {
     if (this.timer) clearTimeout(this.timer);
     cancelAnimationFrame(this.raf);
     if (this.daylightTimer) clearInterval(this.daylightTimer);
+    if (this.tvTimer) clearTimeout(this.tvTimer);
     this.resizeObserver.disconnect();
     document.removeEventListener('visibilitychange', this.onVisibility);
     this.dprQuery?.removeEventListener('change', this.onDpr);
