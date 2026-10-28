@@ -40,7 +40,7 @@ test('부품 버전: 옷 여섯 벌·머리 넷 모두 v19 먼저, 못 읽으면
   assert.deepEqual(Object.keys(HAIR_VERSION).sort(), ['bob', 'bun', 'longbob', 'pony']);
 });
 
-test('v19 부품: 옷 6벌 × 7장 · 머리 4 × 2장 · 얼굴 4 × 표정 4가 4방향 모두 v15와 같은 규격이고, 앞모습(SE·SW)과 다리는 v18·v15와 같은 파일', () => {
+test('v19 부품: 옷 6벌 × 7장 · 머리 4 × 2장 · 얼굴 4 × 표정 4가 4방향 모두 v15와 같은 규격이고, 앞모습(SE·SW)과 다리는 v18·v15와 같은 파일(바지 옷 둘의 다리만 새것)', () => {
   const header = (f: string) => {
     const b = fs.readFileSync(f);
     return [b.readUInt32BE(16), b.readUInt32BE(20), b[24], b[25]];
@@ -53,7 +53,9 @@ test('v19 부품: 옷 6벌 × 7장 · 머리 4 × 2장 · 얼굴 4 × 표정 4�
       const rel = `parts/${kind}/${a}/${b}/${dir}.png`;
       assert.deepEqual(header(path.join(v19, rel)), header(path.join(PARTS, rel)), rel);
       const same = kind === 'outfit' ? path.join(CHARACTERS, 'v18', rel) : path.join(PARTS, rel);
-      if (dir === 'SE' || dir === 'SW' || b === 'farLeg' || b === 'nearLeg') assert.ok(fs.readFileSync(path.join(v19, rel)).equals(fs.readFileSync(same)), rel);
+      const trouserLeg = kind === 'outfit' && (a === 'kr-blazer' || a === 'kr-cardigan') && (b === 'farLeg' || b === 'nearLeg');
+      if (!trouserLeg && (dir === 'SE' || dir === 'SW' || b === 'farLeg' || b === 'nearLeg')) assert.ok(fs.readFileSync(path.join(v19, rel)).equals(fs.readFileSync(same)), rel);
+      if (trouserLeg) assert.ok(!fs.readFileSync(path.join(v19, rel)).equals(fs.readFileSync(same)), `${rel}: 바지 다리는 새로 그린 것`);
       n++;
     }
   }
