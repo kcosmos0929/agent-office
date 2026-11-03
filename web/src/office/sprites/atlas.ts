@@ -2,7 +2,7 @@
 import * as THREE from 'three';
 import { composeLook } from './compose.ts';
 import type { Face, Look } from './look.ts';
-import type { SeatedPart } from './seated.ts';
+import { seatedFiles, type SeatedPart } from './seated.ts';
 
 const atlases = new Map<string, Promise<THREE.CanvasTexture>>();
 
@@ -25,24 +25,35 @@ export function atlasFor(look: Look, face: Face): Promise<THREE.CanvasTexture> {
 
 const seated = new Map<string, Promise<THREE.Texture>>();
 
+/** 후보를 앞부터 읽고, 못 읽으면 경고 후 다음(새 앉은 그림 → v23) */
+function loadSeatedImage(files: readonly string[]): Promise<HTMLImageElement> {
+  const [first, ...rest] = files;
+  const p = new Promise<HTMLImageElement>((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = () => reject(new Error(`앉은 그림을 못 읽음: ${first}`));
+    img.src = `${import.meta.env?.BASE_URL ?? '/'}characters/${first}`;
+  });
+  if (rest.length === 0) return p;
+  return p.catch((err: unknown) => {
+    console.warn('[synthetic-office]', err);
+    return loadSeatedImage(rest);
+  });
+}
+
 /** 앉은 그림 한 장(방향 × 몸·가까운 팔·먼 팔). 세 장이 픽셀을 나눠 가지니 칸 경계가 번지지 않게 줄일 때도 Nearest */
 export function seatedAtlasFor(dir: 'SE' | 'NW', part: SeatedPart): Promise<THREE.Texture> {
   const key = `${dir}/${part}`;
   let p = seated.get(key);
   if (!p) {
-    p = new Promise<THREE.Texture>((resolve, reject) => {
-      const img = new Image();
-      img.onload = () => {
-        const t = new THREE.Texture(img);
-        t.colorSpace = THREE.SRGBColorSpace;
-        t.magFilter = THREE.NearestFilter;
-        t.minFilter = THREE.NearestFilter;
-        t.generateMipmaps = false;
-        t.needsUpdate = true;
-        resolve(t);
-      };
-      img.onerror = () => reject(new Error(`앉은 그림을 못 읽음: ${key}`));
-      img.src = `${import.meta.env?.BASE_URL ?? '/'}characters/seated-v23/${key}.png`;
+    p = loadSeatedImage(seatedFiles(dir, part)).then((img) => {
+      const t = new THREE.Texture(img);
+      t.colorSpace = THREE.SRGBColorSpace;
+      t.magFilter = THREE.NearestFilter;
+      t.minFilter = THREE.NearestFilter;
+      t.generateMipmaps = false;
+      t.needsUpdate = true;
+      return t;
     });
     seated.set(key, p);
   }

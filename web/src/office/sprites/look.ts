@@ -36,6 +36,18 @@ export function partPath(layer: Layer, look: Look, face: Face, dir: Dir): string
   return `parts/outfit/${look.outfit}/${layer}/${dir}.png`;
 }
 
+/** 부품 묶음 폴더: 기본은 v15. 다시 그린 옷만 새 버전 폴더에서 읽는다(되돌리려면 이 표에서 지운다) */
+export const PART_BASE = 'v15';
+export const OUTFIT_VERSION: Partial<Record<Outfit, string>> = {
+  'jp-classic': 'v18', // JP01 옷 디테일·외곽선 다시 그림(2026-10-27)
+};
+/** 부품 파일 후보(characters/ 기준, 앞부터 읽는다): 새 버전 옷이면 그것, 못 읽으면 v15 */
+export function partFiles(layer: Layer, look: Look, face: Face, dir: Dir): string[] {
+  const rel = partPath(layer, look, face, dir);
+  const version = rel.startsWith('parts/outfit/') ? OUTFIT_VERSION[look.outfit] : undefined;
+  return version ? [`${version}/${rel}`, `${PART_BASE}/${rel}`] : [`${PART_BASE}/${rel}`];
+}
+
 /** 모자 번호(hat 0~7) → 모습: 0~5 = 정리된 6종(JP01~KR03)의 머리·옷, 6·7 = 겹치지 않는 다른 조합 */
 export const LOOKS: readonly Look[] = [
   { hair: 'bun', outfit: 'jp-classic' },
