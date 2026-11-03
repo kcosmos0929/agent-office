@@ -4,7 +4,7 @@
 import * as THREE from 'three';
 import { VIEW_DIR } from '../layout.ts';
 import { atlasFor, seatedAtlasFor } from './atlas.ts';
-import { cellOf, COLS, DIRS, DOT, UPRIGHT, IDLE_COL, planeOffset, planeSize, seatedPlaneOffset, type Dir, type Face, type Look } from './look.ts';
+import { cellOf, COLS, DIRS, DOT, UPRIGHT, IDLE_COL, planeOffset, planeSize, SEATED_SOURCE, seatedPlaneOffset, type Dir, type Face, type Look, type SeatedDir } from './look.ts';
 import { SEATED_ATLAS, SEATED_PARTS, seatedCell, type SeatedPart } from './seated.ts';
 
 export const FIGURE_LAYER = 1;
@@ -36,8 +36,8 @@ export class Figure {
   private readonly seatedRoot = new THREE.Group();
   private readonly seatedPlanes: SeatedPlane[];
   /** 앉은 방향(그림을 불러 둔 방향)과 칸 번호. 서 있으면 null */
-  private seated: { dir: 'SE' | 'NW'; index: number } | null = null;
-  private seatedLoaded: 'SE' | 'NW' | null = null;
+  private seated: { dir: SeatedDir; index: number } | null = null;
+  private seatedLoaded: SeatedDir | null = null;
   /** 이 그림의 모습 — 모습이 바뀌면 배우가 그림을 새로 만들어 바꿔 끼운다(cast.ts reshape) */
   readonly look: Look;
   private readonly scale: number;
@@ -112,8 +112,8 @@ export class Figure {
     this.apply();
   }
 
-  /** 앉은 그림: 방향(SE 얼굴·NW 등)과 칸 번호(seatedFrame). 그림을 다 불러오기 전엔 서 있는 그림 그대로이고 false */
-  sit(dir: 'SE' | 'NW', index: number): boolean {
+  /** 앉은 그림: 방향(SE·SW 얼굴, NW·NE 등 — SW·NE는 SE·NW 그림 좌우 뒤집기)과 칸 번호(seatedFrame). 그림을 다 불러오기 전엔 서 있는 그림 그대로이고 false */
+  sit(dir: SeatedDir, index: number): boolean {
     this.seated = { dir, index };
     if (this.seatedLoaded !== dir) this.loadSeated(dir);
     this.apply();
@@ -146,7 +146,7 @@ export class Figure {
   }
 
   /** 방향 하나의 세 장을 불러 사람마다 복제(같은 그림을 나눠 쓰고 칸 위치만 따로)해 붙인다 */
-  private loadSeated(dir: 'SE' | 'NW'): void {
+  private loadSeated(dir: SeatedDir): void {
     this.seatedLoaded = dir;
     for (const p of this.seatedPlanes) p.material.visible = false; // 다른 방향 그림이 남아 보이지 않게
     void Promise.all(SEATED_PARTS.map((part) => seatedAtlasFor(this.look, dir, part))).then(
@@ -155,7 +155,7 @@ export class Figure {
         atlases.forEach((atlas, i) => {
           const { material } = this.seatedPlanes[i];
           const t = atlas.clone();
-          t.repeat.set(1 / SEATED_ATLAS.cols, 1 / SEATED_ATLAS.rows);
+          t.repeat.set((SEATED_SOURCE[dir].mirror ? -1 : 1) / SEATED_ATLAS.cols, 1 / SEATED_ATLAS.rows); // SW·NE: 좌우 뒤집기
           material.map?.dispose();
           material.map = t;
           material.visible = true;
@@ -179,7 +179,8 @@ export class Figure {
       const { col, row } = seatedCell(s.index);
       for (const p of this.seatedPlanes) {
         p.mesh.position.set(o.x, o.y, 0);
-        p.material.map?.offset.set(col / SEATED_ATLAS.cols, 1 - (row + 1) / SEATED_ATLAS.rows); // 위 기준 행 → 아래 기준 UV
+        const u = SEATED_SOURCE[s.dir].mirror ? col + 1 : col; // 뒤집은 그림은 칸 오른쪽 끝에서 왼쪽으로 읽는다
+        p.material.map?.offset.set(u / SEATED_ATLAS.cols, 1 - (row + 1) / SEATED_ATLAS.rows); // 위 기준 행 → 아래 기준 UV
       }
       return;
     }

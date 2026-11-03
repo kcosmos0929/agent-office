@@ -1,9 +1,9 @@
 // 연출 감독: 에이전트들과 서버 시각만으로 캐릭터마다 자리·방향·자세·걸음·효과를 정하는 순수 계산(three.js·DOM 없음).
 // 같은 입력이면 같은 출력 → 화면끼리 같은 장면. cast.ts는 이 계획을 실행만 한다. (설계서 5-1~5-3)
 import type { Agent } from '../../../src/shared/types.ts';
-import { DESKS, DOOR, EXTRA_REST_SPOTS, OVERFLOW_SPOTS, REST_SPOTS, chairPosition, devSpot, facingAt, meetingSpot, seatPosition, waitingSpot, type Point, type RestSpot } from './layout.ts';
+import { DESKS, DOOR, EXTRA_REST_SPOTS, OVERFLOW_SPOTS, REST_SPOTS, MEETING_CHAIRS, chairPosition, devChairPosition, devSpot, facingAt, meetingChairPosition, meetingSpot, seatPosition, waitingSpot, type Point, type RestSpot } from './layout.ts';
 import { poseFor, type Pose } from './pose.ts';
-import { dirFor, lookFor, seatedDir, type Dir, type Pace } from './sprites/look.ts';
+import { dirFor, lookFor, seatedDir, type Dir, type Pace, type SeatedDir } from './sprites/look.ts';
 import { canSit, seatedMode, type SeatedMode } from './sprites/seated.ts';
 
 export type Effect = 'monitor' | 'zzz' | 'dots' | 'wave' | 'ring';
@@ -20,7 +20,7 @@ export type Plan = {
   hat: number;
   isSub: boolean;
   /** 자리에 닿으면 의자에 앉는다(의자 가운데 바닥점·방향·움직임). 서 있으면 null */
-  sit: { at: Point; dir: 'SE' | 'NW'; mode: SeatedMode } | null;
+  sit: { at: Point; dir: SeatedDir; mode: SeatedMode } | null;
 };
 
 /** FNV-1a 32비트(부호 없음) — 세션 id로 쉬는 시간·자리를 정하는 고정 해시 */
@@ -91,18 +91,26 @@ function deskEffects(status: Agent['status']): Effect[] {
 }
 
 /**
- * 사무실 책상(0~7)에서 앉는가: 의자가 SE/NW로 놓인 곳은 여기뿐이고(개발실·회의실 의자는 다른 대각선, 그림 없음),
- * 앉은 그림이 있는 모습(seated-v25: 여덟 모습 모두)이며 앉는 상태일 때만.
+ * 자기 책상에서 앉는가: 앉는 상태이고 앉은 그림이 있는 모습(seated-v25: 여덟 모습 모두)일 때.
+ * Claude 0~7 = 사무실 의자(SE·NW), Codex 0~2 = 개발실 의자(NE — 사무실과 다른 대각선이라 NW 그림을 뒤집어 쓴다).
  */
 function sitAt(a: Agent): Plan['sit'] {
   const mode = seatedMode(a.status);
-  if (a.kind !== 'claude' || a.seat < 0 || a.seat > 7 || !mode || !canSit(lookFor(a.hat))) return null;
+  if (!mode || !canSit(lookFor(a.hat))) return null;
+  if (a.kind === 'codex') return a.seat >= 0 && a.seat <= 2 ? { at: devChairPosition(a.seat), dir: 'NE', mode } : null;
+  if (a.kind !== 'claude' || a.seat < 0 || a.seat > 7) return null;
   return { at: chairPosition(a.seat), dir: seatedDir(DESKS[a.seat].facing), mode };
+}
+
+/** 회의실 도우미: 의자 0~5에 앉는다 — 테이블 너머는 얼굴(SW = SE 뒤집기), 이쪽은 등(NE = NW 뒤집기). 테이블에 키보드가 없어 손은 멈춤. 7번째부터는 둘러선다 */
+function meetingSit(i: number, hat: number): Plan['sit'] {
+  if (i >= MEETING_CHAIRS || !canSit(lookFor(hat))) return null;
+  return { at: meetingChairPosition(i), dir: i < 3 ? 'SW' : 'NE', mode: 'upper' };
 }
 
 /**
  * 에이전트(주어진 순서)마다 계획을 짠다. 키는 agent.id, 도우미는 `${agent.id}/${sub.id}`.
- * 로비 자리·회의실 자리는 종류와 상관없이 순서대로 이어서 센다. seated(`?seated` 미리 보기)면 책상에서 앉는다.
+ * 로비 자리·회의실 자리는 종류와 상관없이 순서대로 이어서 센다. seated(앱 기본 켜짐, `?seated=off`면 끔)면 책상·회의실 의자에 앉는다.
  */
 export function direct(agents: Agent[], now: number, seated = false): Map<string, Plan> {
   const plans = new Map<string, Plan>();
@@ -135,10 +143,12 @@ export function direct(agents: Agent[], now: number, seated = false): Map<string
     plans.set(a.id, plan);
 
     for (const sub of a.subagents) {
-      const spot = meetingSpot(meeting++);
+      const m = meeting++;
+      const spot = meetingSpot(m);
       const mf = facingAt(spot);
       plans.set(`${a.id}/${sub.id}`, {
-        spot, facing: dirFor(mf.x, mf.y), pose: 'type-fast', pace: 'work', effects: [], leave: false, agent: null, hat: a.hat, isSub: true, sit: null,
+        spot, facing: dirFor(mf.x, mf.y), pose: 'type-fast', pace: 'work', effects: [], leave: false, agent: null, hat: a.hat, isSub: true,
+        sit: seated ? meetingSit(m, a.hat) : null,
       });
     }
   }

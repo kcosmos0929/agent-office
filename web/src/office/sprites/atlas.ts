@@ -1,7 +1,7 @@
 // (모습, 표정) 아틀라스를 three.js 텍스처로. 그림 합치기는 compose.ts(목록형도 같이 씀).
 import * as THREE from 'three';
 import { composeLook } from './compose.ts';
-import type { Face, Look } from './look.ts';
+import type { Face, Look, SeatedDir } from './look.ts';
 import { seatedFiles, type SeatedPart } from './seated.ts';
 
 const atlases = new Map<string, Promise<THREE.CanvasTexture>>();
@@ -43,7 +43,7 @@ function loadSeatedImage(files: readonly string[]): Promise<HTMLImageElement> {
 }
 
 /** 앉은 그림 한 장(방향 × 몸·가까운 팔·먼 팔). 세 장이 픽셀을 나눠 가지니 칸 경계가 번지지 않게 줄일 때도 Nearest */
-export function seatedAtlasFor(look: Look, dir: 'SE' | 'NW', part: SeatedPart): Promise<THREE.Texture> {
+export function seatedAtlasFor(look: Look, dir: SeatedDir, part: SeatedPart): Promise<THREE.Texture> {
   const files = seatedFiles(look, dir, part);
   const key = files[0] ?? `${look.hair}+${look.outfit}/${dir}/${part}`;
   let p = seated.get(key);

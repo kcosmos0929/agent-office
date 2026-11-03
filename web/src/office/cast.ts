@@ -90,7 +90,7 @@ export class Cast {
   private devStatus: (Status | null)[] = [];
   /** 마지막으로 그린 시각 — sync가 animate 사이에 칠할 때 쓴다 */
   private screenT = 0;
-  /** `?seated` 미리 보기: 사무실 책상에서 앉는가(still = 첫 칸에 멈춤) */
+  /** 앉기(seatedPreview — 앱은 기본 켜짐, `?seated=off`면 끔, still = 첫 칸에 멈춤). 여기 기본값 off는 테스트용 */
   private readonly seated: SeatedPreview;
 
   constructor(scene: THREE.Scene, office: OfficeScene, onChange: () => void, clock: () => number = Date.now, reduced = false, seated: SeatedPreview = 'off') {

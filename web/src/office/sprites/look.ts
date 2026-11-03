@@ -19,7 +19,12 @@ export const COLS = 9;
 /** 발 기준점(칸 안 도트 좌표) — 그림 왼쪽 위가 아니라 이 점을 바닥 위치에 맞춘다 */
 export const ANCHOR: Record<Dir, readonly [number, number]> = { SE: [34, 88.5], NE: [34, 88.5], SW: [29, 88.5], NW: [29, 88.5] };
 /** 앉은 그림(v16~)의 기준점: 의자 가운데 바닥점(월드 y 0, 바닥판 윗면 0.04 아님). 좌판 높이는 그림에 들어 있다 */
-export const SEATED_ANCHOR: Record<'SE' | 'NW', readonly [number, number]> = { SE: [34, 85], NW: [29, 85] };
+export type SeatedDir = 'SE' | 'SW' | 'NE' | 'NW';
+export const SEATED_ANCHOR: Record<SeatedDir, readonly [number, number]> = { SE: [34, 85], NW: [29, 85], SW: [29, 85], NE: [34, 85] };
+/** 앉은 그림 파일이 있는 방향: SW = SE 좌우 뒤집기, NE = NW 좌우 뒤집기(서기 그림과 같은 규칙) — 개발실·회의실 의자는 사무실과 다른 대각선 */
+export const SEATED_SOURCE: Record<SeatedDir, { dir: 'SE' | 'NW'; mirror: boolean }> = {
+  SE: { dir: 'SE', mirror: false }, NW: { dir: 'NW', mirror: false }, SW: { dir: 'SE', mirror: true }, NE: { dir: 'NW', mirror: true },
+};
 /** 앉는 방향: 책상 바깥(px) 자리 = NW(등이 보임), 창 쪽(nx) 자리 = SE(얼굴이 보임) */
 export function seatedDir(facing: 'px' | 'nx'): 'SE' | 'NW' {
   return facing === 'px' ? 'NW' : 'SE';
@@ -127,7 +132,7 @@ export function planeOffset(dir: Dir, scale = 1): { x: number; y: number } {
   return { x: (CELL.w / 2 - ax) * DOT * scale, y: ((ay - CELL.h / 2) * DOT * scale) / UPRIGHT };
 }
 /** 앉은 그림: 기준점(의자 가운데 바닥)을 원점에 둘 때 판 가운데의 위치 */
-export function seatedPlaneOffset(dir: 'SE' | 'NW', scale = 1): { x: number; y: number } {
+export function seatedPlaneOffset(dir: SeatedDir, scale = 1): { x: number; y: number } {
   const [ax, ay] = SEATED_ANCHOR[dir];
   return { x: (CELL.w / 2 - ax) * DOT * scale, y: ((ay - CELL.h / 2) * DOT * scale) / UPRIGHT };
 }

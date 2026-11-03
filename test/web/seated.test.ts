@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { existsSync, readFileSync } from 'node:fs';
 import type { Status } from '../../src/shared/types.ts';
 import { LOOKS } from '../../web/src/office/sprites/look.ts';
-import { SEATED_ATLAS, SEATED_CYCLE_MS, SEATED_PARTS, canSit, seatedCell, seatedFiles, seatedFrame, seatedIndex, seatedLookId, seatedMode } from '../../web/src/office/sprites/seated.ts';
+import { SEATED_ATLAS, SEATED_CYCLE_MS, SEATED_PARTS, canSit, seatedCell, seatedFiles, seatedFrame, seatedIndex, seatedLookId, seatedMode, seatedPreview } from '../../web/src/office/sprites/seated.ts';
 
 const CHARACTERS = new URL('../../web/public/characters/', import.meta.url);
 
@@ -12,6 +12,9 @@ test('앉은 그림 파일: 여덟 모습 seated-v25/<모습> — JP01만 v24·v
   assert.deepEqual(seatedFiles(LOOKS[3], 'NW', 'farArm'), ['seated-v25/KR01/NW/farArm.png']);
   assert.deepEqual(LOOKS.map(seatedLookId), ['JP01', 'JP02', 'JP03', 'KR01', 'KR02', 'KR03', 'EX1', 'EX2']);
   assert.deepEqual(seatedFiles({ hair: 'bob', outfit: 'jp-classic' }, 'SE', 'body'), []);
+  // 개발실·회의실 방향(SW·NE)은 SE·NW 그림을 읽어 뒤집는다
+  assert.deepEqual(seatedFiles(LOOKS[3], 'NE', 'body'), ['seated-v25/KR01/NW/body.png']);
+  assert.deepEqual(seatedFiles(LOOKS[0], 'SW', 'nearArm'), ['seated-v25/JP01/SE/nearArm.png', 'seated-v24/SE/nearArm.png', 'seated-v23/SE/nearArm.png']);
   const header = (rel: string) => {
     const b = readFileSync(new URL(rel, CHARACTERS));
     return [b.readUInt32BE(16), b.readUInt32BE(20), b[24], b[25]]; // IHDR 폭·높이·비트 깊이·색 형식(6 = RGBA)
@@ -66,4 +69,12 @@ test('seatedMode: 실행·고침은 타이핑, 읽기·생각류는 손 멈춤, 
 test('canSit: 여덟 모습 모두 앉는다(LOOKS에 없는 조합은 아니다)', () => {
   assert.deepEqual(LOOKS.map(canSit), [true, true, true, true, true, true, true, true]);
   assert.equal(canSit({ hair: 'bob', outfit: 'jp-classic' }), false);
+});
+
+test('seatedPreview: 앉기는 기본으로 켜짐(움직임), ?seated=off면 끔, ?seated=still이면 첫 칸에 멈춤', () => {
+  assert.equal(seatedPreview(''), 'motion');
+  assert.equal(seatedPreview('?view=office'), 'motion');
+  assert.equal(seatedPreview('?view=office&seated'), 'motion');
+  assert.equal(seatedPreview('?seated=still'), 'still');
+  assert.equal(seatedPreview('?view=office&seated=off'), 'off');
 });
