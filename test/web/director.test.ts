@@ -150,7 +150,7 @@ test('restAssignments: 25명이어도 모두 다른 자리, 휴게실·탕비실
   });
 });
 
-test('앉기(?seated): 사무실 책상의 여덟 모습, 실행·고침은 타이핑·읽기·생각류는 손 멈춤, 나머지는 서기', () => {
+test('앉기(?seated): 사무실 책상의 여덟 모습, 실행·고침은 타이핑·읽기·생각류는 손 멈춤·끝남은 쉬기, 나머지는 서기', () => {
   const sitOf = (a: Agent, seated = true) => direct([a], 1_000_000, seated).get(a.id)!.sit;
   for (let seat = 0; seat < 8; seat++) {
     const p = direct([agent('a', 'running', { hat: 0, seat })], 1_000_000, true).get('a')!;
@@ -159,7 +159,8 @@ test('앉기(?seated): 사무실 책상의 여덟 모습, 실행·고침은 타�
   }
   assert.equal(sitOf(agent('a', 'editing', { hat: 0 }))?.mode, 'work');
   for (const s of ['reading', 'thinking', 'approving', 'delegating', 'compacting'] as const) assert.equal(sitOf(agent('a', s, { hat: 0 }))?.mode, 'upper', s);
-  for (const s of ['permission', 'question', 'done', 'stalled', 'quota', 'idle', 'gone'] as const) assert.equal(sitOf(agent('a', s, { hat: 0 })), null, s);
+  assert.deepEqual(sitOf(agent('a', 'done', { hat: 0, seat: 3 })), { at: chairPosition(3), dir: seatedDir(DESKS[3].facing), mode: 'rest' });
+  for (const s of ['permission', 'question', 'stalled', 'quota', 'idle', 'gone'] as const) assert.equal(sitOf(agent('a', s, { hat: 0 })), null, s);
   assert.equal(sitOf(agent('a', 'running', { hat: 0 }), false), null, '미리 보기가 꺼져 있으면 서 있는다');
   for (let hat = 0; hat < 8; hat++) assert.equal(sitOf(agent('a', 'running', { hat }))?.mode, 'work', `hat ${hat}: 여덟 모습 모두 앉은 그림이 있다`);
   assert.equal(sitOf(agent('a', 'running', { hat: 8 }))?.mode, 'work', 'hat 8 = JP01');
@@ -174,6 +175,7 @@ test('앉기(?seated) 개발실: Codex 0~2는 책상 의자에 등이 보이게(
     assert.deepEqual(p.spot, devSpot(seat), '걸어가는 곳은 그대로 의자 뒤 길');
   }
   assert.equal(sitOf(agent('c', 'reading', { kind: 'codex', seat: 1 }))?.mode, 'upper');
+  assert.deepEqual(sitOf(agent('c', 'done', { kind: 'codex', seat: 2 })), { at: devChairPosition(2), dir: 'NE', mode: 'rest' }, '끝남은 의자에서 쉬기');
   assert.equal(sitOf(agent('c', 'permission', { kind: 'codex', seat: 1 })), null, '손 흔드는 상태는 서 있다');
   assert.equal(sitOf(agent('c', 'running', { kind: 'codex', seat: 3 })), null, '개발실 책상은 셋뿐(그 밖은 로비)');
   assert.equal(sitOf(agent('c', 'running', { kind: 'codex', seat: 0 }), false), null, '미리 보기가 꺼져 있으면 서 있다');
