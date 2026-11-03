@@ -92,7 +92,7 @@ function deskEffects(status: Agent['status']): Effect[] {
 
 /**
  * 사무실 책상(0~7)에서 앉는가: 의자가 SE/NW로 놓인 곳은 여기뿐이고(개발실·회의실 의자는 다른 대각선, 그림 없음),
- * 앉은 그림이 있는 모습(JP01)이며 앉는 상태일 때만.
+ * 앉은 그림이 있는 모습(seated-v25: 여덟 모습 모두)이며 앉는 상태일 때만.
  */
 function sitAt(a: Agent): Plan['sit'] {
   const mode = seatedMode(a.status);

@@ -25,9 +25,10 @@ export function atlasFor(look: Look, face: Face): Promise<THREE.CanvasTexture> {
 
 const seated = new Map<string, Promise<THREE.Texture>>();
 
-/** 후보를 앞부터 읽고, 못 읽으면 경고 후 다음(새 앉은 그림 → v23) */
+/** 후보를 앞부터 읽고, 못 읽으면 경고 후 다음(JP01만 seated-v25 → v24 → v23) */
 function loadSeatedImage(files: readonly string[]): Promise<HTMLImageElement> {
   const [first, ...rest] = files;
+  if (first === undefined) return Promise.reject(new Error('앉은 그림이 없는 모습'));
   const p = new Promise<HTMLImageElement>((resolve, reject) => {
     const img = new Image();
     img.onload = () => resolve(img);
@@ -42,11 +43,12 @@ function loadSeatedImage(files: readonly string[]): Promise<HTMLImageElement> {
 }
 
 /** 앉은 그림 한 장(방향 × 몸·가까운 팔·먼 팔). 세 장이 픽셀을 나눠 가지니 칸 경계가 번지지 않게 줄일 때도 Nearest */
-export function seatedAtlasFor(dir: 'SE' | 'NW', part: SeatedPart): Promise<THREE.Texture> {
-  const key = `${dir}/${part}`;
+export function seatedAtlasFor(look: Look, dir: 'SE' | 'NW', part: SeatedPart): Promise<THREE.Texture> {
+  const files = seatedFiles(look, dir, part);
+  const key = files[0] ?? `${look.hair}+${look.outfit}/${dir}/${part}`;
   let p = seated.get(key);
   if (!p) {
-    p = loadSeatedImage(seatedFiles(dir, part)).then((img) => {
+    p = loadSeatedImage(files).then((img) => {
       const t = new THREE.Texture(img);
       t.colorSpace = THREE.SRGBColorSpace;
       t.magFilter = THREE.NearestFilter;

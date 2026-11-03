@@ -149,7 +149,7 @@ export class Figure {
   private loadSeated(dir: 'SE' | 'NW'): void {
     this.seatedLoaded = dir;
     for (const p of this.seatedPlanes) p.material.visible = false; // 다른 방향 그림이 남아 보이지 않게
-    void Promise.all(SEATED_PARTS.map((part) => seatedAtlasFor(dir, part))).then(
+    void Promise.all(SEATED_PARTS.map((part) => seatedAtlasFor(this.look, dir, part))).then(
       (atlases) => {
         if (this.disposed || this.seatedLoaded !== dir) return;
         atlases.forEach((atlas, i) => {

@@ -1,12 +1,18 @@
-// 앉은 그림(v23, JP01만): 누가 앉는지·상태 번호·시계·아틀라스 칸. three.js 없는 순수 함수(테스트 대상).
+// 앉은 그림(여덟 모습): 누가 앉는지·상태 번호·시계·아틀라스 칸. three.js 없는 순수 함수(테스트 대상).
 // 그림은 몸·가까운 팔·먼 팔 세 장(같은 칸 배치)이고, 칸 번호는 손·상체·눈 상태의 조합 번호다(0→71 차례 재생이 아니다).
 import type { Status } from '../../../../src/shared/types.ts';
-import type { Look } from './look.ts';
+import { LOOKS, type Look } from './look.ts';
 
-/** 앉은 그림이 있는 모습: 번 머리 + 기본 일본형 복장(JP01). 다른 모습은 그림이 올 때까지 서 있는다 */
-export const SEATED_LOOK: Look = { hair: 'bun', outfit: 'jp-classic' };
+/** 모습 이름(LOOKS 순서 = 모자 번호 0~7): 앉은 그림 폴더 이름. 6·7은 겹치지 않는 다른 조합(추가 1·2) */
+export const SEATED_LOOK_IDS = ['JP01', 'JP02', 'JP03', 'KR01', 'KR02', 'KR03', 'EX1', 'EX2'] as const;
+export type SeatedLookId = (typeof SEATED_LOOK_IDS)[number];
+export function seatedLookId(look: Look): SeatedLookId | null {
+  const i = LOOKS.findIndex((l) => l.hair === look.hair && l.outfit === look.outfit);
+  return i < 0 ? null : SEATED_LOOK_IDS[i];
+}
+/** 앉은 그림이 있는 모습: 여덟 모습 모두(seated-v25, 2026-10-28). JP01 그림을 본보기로 머리·옷을 옮기고 다리는 이미지 생성 */
 export function canSit(look: Look): boolean {
-  return look.hair === SEATED_LOOK.hair && look.outfit === SEATED_LOOK.outfit;
+  return seatedLookId(look) !== null;
 }
 
 /** 세 장 모두 같은 칸 배치. 어깨 둘레 소매(cap)는 body에 있고, 팔 두 장만 카메라 쪽으로 당긴다 */
@@ -14,10 +20,17 @@ export const SEATED_PARTS = ['body', 'nearArm', 'farArm'] as const;
 export type SeatedPart = (typeof SEATED_PARTS)[number];
 /** 아틀라스: 8열 × 9행(512×864), 칸 64×96 */
 export const SEATED_ATLAS = { cols: 8, rows: 9 } as const;
-/** 앉은 그림 폴더 후보(앞부터 읽는다): v24 = 서기 v18 옷·외곽선·펌프스를 맞춘 것, 못 읽으면 v23(되돌리려면 앞 항목을 지운다) */
-export const SEATED_VERSIONS = ['seated-v24', 'seated-v23'] as const;
-export function seatedFiles(dir: 'SE' | 'NW', part: SeatedPart): string[] {
-  return SEATED_VERSIONS.map((v) => `${v}/${dir}/${part}.png`);
+/**
+ * 앉은 그림 폴더 후보(앞부터 읽는다): seated-v25/<모습> = 여덟 모습(뒷모습 머리·등판·다리 새로).
+ * JP01만 옛 폴더로 물러설 수 있다: v24 = 서기 v18 옷·외곽선·펌프스를 맞춘 것, v23(되돌리려면 앞 항목을 지운다)
+ */
+export const SEATED_BASE = 'seated-v25';
+export const SEATED_JP01_FALLBACK = ['seated-v24', 'seated-v23'] as const;
+export function seatedFiles(look: Look, dir: 'SE' | 'NW', part: SeatedPart): string[] {
+  const id = seatedLookId(look);
+  if (!id) return [];
+  const main = `${SEATED_BASE}/${id}/${dir}/${part}.png`;
+  return id === 'JP01' ? [main, ...SEATED_JP01_FALLBACK.map((v) => `${v}/${dir}/${part}.png`)] : [main];
 }
 
 /** work = 손(타이핑)+상체+눈, upper = 손 멈춤+상체+눈(읽기·생각용 임시 대용 — 전용 자세 아님) */
