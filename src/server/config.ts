@@ -3,6 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { DEFAULT_PROJECT_NAMES } from './projects.ts';
 import { homeFiles } from './paths.ts';
+import type { TvFoot } from '../shared/types.ts';
 
 export type Config = {
   port: number;
@@ -23,8 +24,12 @@ export type Config = {
   remotePublicHost: string | null;
   /** 터널 전용 문이 듣는 맥 안 포트(127.0.0.1만) */
   remotePort: number;
+  /** 사무실 TV가 시계일 때 아랫줄(설정 창). 모르는 값이면 quote */
+  tvFoot: TvFoot;
   projectNames: Record<string, string>;
 };
+
+export const TV_FOOTS: readonly TvFoot[] = ['quote', 'sun', 'none'];
 
 function defaults(): Config {
   return {
@@ -39,6 +44,7 @@ function defaults(): Config {
     codexAutoApprove: true,
     remotePublicHost: null,
     remotePort: 4311,
+    tvFoot: 'quote',
     projectNames: { ...DEFAULT_PROJECT_NAMES },
   };
 }
@@ -62,7 +68,8 @@ export function peekConfig(home: string): Config {
   if (!fs.existsSync(file)) return base;
   try {
     const user = JSON.parse(fs.readFileSync(file, 'utf8')) as Partial<Config>;
-    return { ...base, ...user, projectNames: { ...base.projectNames, ...(user.projectNames ?? {}) } };
+    const tvFoot = TV_FOOTS.includes(user.tvFoot as TvFoot) ? (user.tvFoot as TvFoot) : base.tvFoot;
+    return { ...base, ...user, tvFoot, projectNames: { ...base.projectNames, ...(user.projectNames ?? {}) } };
   } catch {
     console.warn('[synthetic-office] config.json을 읽지 못해 기본값을 씁니다');
     return base;
