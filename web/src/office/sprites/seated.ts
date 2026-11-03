@@ -32,13 +32,17 @@ export function seatedFiles(look: Look, seatedDir: SeatedDir, part: SeatedPart):
   return [`${SEATED_BASE}/${id}/${dir}/${part}.png`];
 }
 
-/** work = 손(타이핑)+상체+눈, upper = 손 멈춤+상체+눈(읽기·생각용 임시 대용 — 전용 자세 아님), rest = 손을 무릎에 내린 쉬기+눈 */
+/** work = 손(타이핑)+상체+눈, upper = 손 멈춤+상체+눈(읽기·생각·질문용 임시 대용 — 전용 자세 아님), rest = 손을 무릎에 내린 쉬기+눈 */
 export type SeatedMode = 'work' | 'upper' | 'rest';
-/** 상태 → 앉는 방식. 실행·고침은 타이핑, 읽기·생각류는 손 멈춤, 끝남은 쉬기, 나머지(대기·멈춤·쉼)는 서 있는다(null) */
+/**
+ * 상태 → 앉는 방식. 실행·고침은 타이핑, 읽기·생각류와 질문·승인 필요는 손 멈춤(질문·승인은 의자에서 통통 — cast의 wave 효과),
+ * 끝남은 쉬기, 나머지(멈춤·한도·쉼·퇴근)는 서 있는다(null)
+ */
 export function seatedMode(status: Status): SeatedMode | null {
   switch (status) {
     case 'running': case 'editing': return 'work';
     case 'reading': case 'thinking': case 'approving': case 'delegating': case 'compacting': return 'upper';
+    case 'permission': case 'question': return 'upper';
     case 'done': return 'rest';
     default: return null;
   }

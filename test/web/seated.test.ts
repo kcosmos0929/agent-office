@@ -69,11 +69,11 @@ test('seatedIndex·seatedCell: 손×9+상체×3+눈, 8열 10행 칸(그림 위�
   assert.deepEqual(seatedCell(SEATED_REST + 2), { col: 2, row: SEATED_ATLAS.rows - 1 });
 });
 
-test('seatedMode: 실행·고침은 타이핑, 읽기·생각류는 손 멈춤, 끝남은 쉬기, 나머지는 서기', () => {
+test('seatedMode: 실행·고침은 타이핑, 읽기·생각류·질문·승인 필요는 손 멈춤, 끝남은 쉬기, 나머지는 서기', () => {
   const rows: [Status, string | null][] = [
     ['running', 'work'], ['editing', 'work'],
     ['reading', 'upper'], ['thinking', 'upper'], ['approving', 'upper'], ['delegating', 'upper'], ['compacting', 'upper'],
-    ['done', 'rest'], ['permission', null], ['question', null], ['stalled', null], ['quota', null], ['idle', null], ['gone', null],
+    ['permission', 'upper'], ['question', 'upper'], ['done', 'rest'], ['stalled', null], ['quota', null], ['idle', null], ['gone', null],
   ];
   for (const [s, m] of rows) assert.equal(seatedMode(s), m, s);
 });

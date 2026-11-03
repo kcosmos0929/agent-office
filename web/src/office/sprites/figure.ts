@@ -125,7 +125,7 @@ export class Figure {
     return this.seatedRoot.visible ? this.seatedPlanes.map((p) => p.mesh) : [this.mesh];
   }
 
-  /** 판만 도트 단위로 위로 띄운다(그림자는 땅에 그대로) */
+  /** 판만 도트 단위로 위로 띄운다(그림자는 땅에 그대로). 앉은 그림도 같이 — 의자에서 들썩(질문·승인 통통) */
   lift(dots: number): void {
     if (dots === this.lifted) return;
     this.lifted = dots;
@@ -174,18 +174,19 @@ export class Figure {
     const sitting = s !== null && this.seatedLoaded === s.dir && this.seatedPlanes[0].material.visible;
     this.mesh.visible = !sitting;
     this.seatedRoot.visible = sitting;
+    const lift = (this.lifted * DOT * this.scale) / UPRIGHT;
     if (sitting) {
       const o = seatedPlaneOffset(s.dir, this.scale);
       const { col, row } = seatedCell(s.index);
       for (const p of this.seatedPlanes) {
-        p.mesh.position.set(o.x, o.y, 0);
+        p.mesh.position.set(o.x, o.y + lift, 0);
         const u = SEATED_SOURCE[s.dir].mirror ? col + 1 : col; // 뒤집은 그림은 칸 오른쪽 끝에서 왼쪽으로 읽는다
         p.material.map?.offset.set(u / SEATED_ATLAS.cols, 1 - (row + 1) / SEATED_ATLAS.rows); // 위 기준 행 → 아래 기준 UV
       }
       return;
     }
     const o = planeOffset(this.dir, this.scale);
-    this.mesh.position.set(o.x, o.y + (this.lifted * DOT * this.scale) / UPRIGHT, 0);
+    this.mesh.position.set(o.x, o.y + lift, 0);
     const t = this.material.map;
     if (!t) return;
     const { col, row } = cellOf(this.dir, this.col);

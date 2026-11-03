@@ -109,6 +109,11 @@ test('Figure.sit: 그림이 오기 전엔 서 있고 false, 오면 세 판을 �
       assert.ok(Math.abs(map.repeat.x + 1 / 8) < 1e-12 && Math.abs(map.offset.x - 8 / 8) < 1e-12);
       assert.ok(Math.abs(m.position.x - on.x) < 1e-12 && Math.abs(m.position.y - on.y) < 1e-12);
     }
+    // 앉아서도 들썩(질문·승인 통통): 세 판이 함께 올라가고 0이면 제자리
+    f.lift(2);
+    for (const m of seated) assert.ok(Math.abs(m.position.y - (o.y + (2 * DOT) / UPRIGHT)) < 1e-9);
+    f.lift(0);
+    for (const m of seated) assert.ok(Math.abs(m.position.y - o.y) < 1e-12);
     f.show('SE', 'idle');
     assert.deepEqual(f.pickables(), [f.mesh]);
     assert.equal(f.mesh.visible, true);
