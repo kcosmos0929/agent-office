@@ -7,14 +7,14 @@ import { SEATED_ATLAS, SEATED_CYCLE_MS, SEATED_PARTS, SEATED_REST, canSit, seate
 
 const CHARACTERS = new URL('../../web/public/characters/', import.meta.url);
 
-test('앉은 그림 파일: 여덟 모습 seated-v26/<모습> 하나씩(옛 JP01 폴더로 물러서지 않음), 모두 세 장 × SE·NW가 같은 규격(512×960 RGBA)', () => {
-  assert.deepEqual(seatedFiles(LOOKS[0], 'SE', 'body'), ['seated-v26/JP01/SE/body.png']);
-  assert.deepEqual(seatedFiles(LOOKS[3], 'NW', 'farArm'), ['seated-v26/KR01/NW/farArm.png']);
+test('앉은 그림 파일: 여덟 모습 seated-v27/<모습> 하나씩(옛 JP01 폴더로 물러서지 않음), 모두 세 장 × SE·NW가 같은 규격(512×960 RGBA)', () => {
+  assert.deepEqual(seatedFiles(LOOKS[0], 'SE', 'body'), ['seated-v27/JP01/SE/body.png']);
+  assert.deepEqual(seatedFiles(LOOKS[3], 'NW', 'farArm'), ['seated-v27/KR01/NW/farArm.png']);
   assert.deepEqual(LOOKS.map(seatedLookId), ['JP01', 'JP02', 'JP03', 'KR01', 'KR02', 'KR03', 'EX1', 'EX2']);
   assert.deepEqual(seatedFiles({ hair: 'bob', outfit: 'jp-classic' }, 'SE', 'body'), []);
   // 개발실·회의실 방향(SW·NE)은 SE·NW 그림을 읽어 뒤집는다
-  assert.deepEqual(seatedFiles(LOOKS[3], 'NE', 'body'), ['seated-v26/KR01/NW/body.png']);
-  assert.deepEqual(seatedFiles(LOOKS[0], 'SW', 'nearArm'), ['seated-v26/JP01/SE/nearArm.png']);
+  assert.deepEqual(seatedFiles(LOOKS[3], 'NE', 'body'), ['seated-v27/KR01/NW/body.png']);
+  assert.deepEqual(seatedFiles(LOOKS[0], 'SW', 'nearArm'), ['seated-v27/JP01/SE/nearArm.png']);
   const header = (rel: string) => {
     const b = readFileSync(new URL(rel, CHARACTERS));
     return [b.readUInt32BE(16), b.readUInt32BE(20), b[24], b[25]]; // IHDR 폭·높이·비트 깊이·색 형식(6 = RGBA)
