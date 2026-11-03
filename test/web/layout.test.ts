@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { CHAIR_PULLBACK, DESKS, DESK_DEPTH, DEV_DESK, DEV_DESKS, IDLE_SPOTS, MEETING_CHAIRS, MEETING_TABLE, devChairPosition, meetingChairPosition, ROOMS, ROOM_DOORS, SPLIT_X, chairPosition, seatPosition, meetingSpot, waitingSpot, DOOR, pathTo, facingAt, forwardFrom, backwardFrom, segmentAt, type Point, BAND_LANE_Y, DEV_LANE_Y, REST_SPOTS, OVERFLOW_SPOTS, CORRIDOR, FLOOR_Z, devSpot, routeBetween, simplifyPath, EXTRA_REST_SPOTS, LOUNGE_SEATS, SOFA, SOFA_TABLE, BEAN_BAGS } from '../../web/src/office/layout.ts';
+import { CHAIR_PULLBACK, DESKS, DESK_DEPTH, DEV_DESK, DEV_DESKS, IDLE_SPOTS, MEETING_CHAIRS, MEETING_TABLE, devChairPosition, meetingChairPosition, ROOMS, ROOM_DOORS, SPLIT_X, chairPosition, seatPosition, meetingSpot, waitingSpot, DOOR, pathTo, facingAt, forwardFrom, backwardFrom, segmentAt, type Point, BAND_LANE_Y, DEV_LANE_Y, REST_SPOTS, OVERFLOW_SPOTS, CORRIDOR, FLOOR_Z, devSpot, routeBetween, simplifyPath, EXTRA_REST_SPOTS, LOUNGE_SEATS, LOUNGE_PULL, SOFA, SOFA_TABLE, BEAN_BAGS, VIEW_DIR } from '../../web/src/office/layout.ts';
 import { targetFps } from '../../web/src/office/fps.ts';
 
 const inside = (p: { x: number; y: number }, r: { x0: number; y0: number; x1: number; y1: number }) => p.x > r.x0 && p.x < r.x1 && p.y > r.y0 && p.y < r.y1;
@@ -268,16 +268,27 @@ test('휴게실 앉는 자리(LOUNGE_SEATS): 소파 양 끝·빈백 둘, 앉는 
   const inBox = (p: Point, b: { x0: number; y0: number; w: number; d: number }) => p.x > b.x0 && p.x < b.x0 + b.w && p.y > b.y0 && p.y < b.y0 + b.d;
   const [l, r, ...bags] = LOUNGE_SEATS;
   for (const s of [l, r]) {
-    assert.ok(inBox(s.sit.at, { x0: SOFA.x0 + 0.14, y0: SOFA.y0 + 0.16, w: SOFA.w - 0.28, d: SOFA.d - 0.18 }), '소파 좌판 위');
+    assert.ok(inBox(s.sit.at, { x0: SOFA.x0 + 0.14, y0: SOFA.y0 + 0.16, w: SOFA.w - 0.28, d: 0.1 }), '소파 좌판 뒤쪽(등받이 바로 앞)');
     assert.ok(s.at.y > SOFA.y0 + SOFA.d && s.at.y < SOFA_TABLE.y0, '소파와 탁자 사이에 섬');
   }
-  bags.forEach((s, i) => { assert.ok(Math.abs(s.sit.at.x - BEAN_BAGS[i].x) < 1e-9 && Math.abs(s.sit.at.y - BEAN_BAGS[i].y) < 0.32); assert.ok(s.at.y > BEAN_BAGS[i].y + 0.32); });
+  bags.forEach((s, i) => { assert.ok(Math.abs(s.sit.at.x - BEAN_BAGS[i].x) < 1e-9 && s.sit.at.y < BEAN_BAGS[i].y && s.sit.at.y > BEAN_BAGS[i].y - 0.32, '빈백 뒤쪽'); assert.ok(s.at.y > BEAN_BAGS[i].y + 0.32); });
   for (const s of LOUNGE_SEATS) {
     assert.equal(s.sit.dir, 'SW');
-    assert.ok(Math.hypot(s.at.x - s.sit.at.x, s.at.y - s.sit.at.y) <= 0.5, '서는 곳에서 앉는 점까지 0.5 이하');
+    assert.ok(Math.hypot(s.at.x - s.sit.at.x, s.at.y - s.sit.at.y) <= 0.75, '서는 곳에서 앉는 점까지 0.75 이하');
     // 가로 길(BAND_LANE_Y)에서 이 x로 올라오는 세로 길이 낮은 탁자를 지나지 않음
     assert.ok(s.at.x < SOFA_TABLE.x0 || s.at.x > SOFA_TABLE.x0 + SOFA_TABLE.w, JSON.stringify(s.at));
   }
   const all = REST_SPOTS.map((q) => q.at);
   for (const [i, p] of all.entries()) for (const q of all.slice(i + 1)) assert.ok(Math.hypot(p.x - q.x, p.y - q.y) >= 0.3, `${JSON.stringify(p)} ${JSON.stringify(q)}`);
+});
+
+test('휴게실 앉은 그림을 당겨도(LOUNGE_PULL) 그보다 앞에 서는 쉼·넘침 자리 사람과 화면에서 겹치지 않음', () => {
+  // 세로 판(보는 방향 수평 성분에 수직): 화면 가로 = (dx − dy)·√½, 앞뒤 = (dx + dy)·√½. 당긴 거리를 앞뒤로 옮기면 0.9·(2/(1.636·√2))
+  const ahead = LOUNGE_PULL * (2 / (Math.hypot(...VIEW_DIR) * Math.SQRT2));
+  const standers = [...REST_SPOTS.filter((r) => !r.sit).map((r) => r.at), ...OVERFLOW_SPOTS, ...EXTRA_REST_SPOTS];
+  for (const s of LOUNGE_SEATS) for (const p of standers) {
+    const dx = p.x - s.sit.at.x, dy = p.y - s.sit.at.y;
+    const front = (dx + dy) * Math.SQRT1_2, side = Math.abs(dx - dy) * Math.SQRT1_2;
+    if (front > 0 && front < ahead) assert.ok(side > 0.6, `${JSON.stringify(s.sit.at)} 앞 ${JSON.stringify(p)}: 가로 ${side.toFixed(2)}`);
+  }
 });
