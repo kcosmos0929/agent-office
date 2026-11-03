@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import type { Agent, Status } from '../../src/shared/types.ts';
 import { direct, frontOf, hashId, restAssignments } from '../../web/src/office/director.ts';
-import { DESKS, DOOR, OVERFLOW_SPOTS, REST_SPOTS, chairPosition, devChairPosition, devSpot, facingAt, meetingChairPosition, meetingSpot, seatPosition, waitingSpot } from '../../web/src/office/layout.ts';
+import { DESKS, DOOR, LOUNGE_SEATS, OVERFLOW_SPOTS, REST_SPOTS, chairPosition, devChairPosition, devSpot, facingAt, meetingChairPosition, meetingSpot, seatPosition, waitingSpot } from '../../web/src/office/layout.ts';
 import { dirFor, seatedDir } from '../../web/src/office/sprites/look.ts';
 
 function agent(id: string, status: Status, extra: Partial<Agent> = {}): Agent {
@@ -192,4 +192,21 @@ test('앉기(?seated) 회의실: 도우미 1~6번째는 의자에 손 멈춤으�
   }
   assert.equal(plans.get('a/s6')!.sit, null, '의자가 여섯뿐 — 7번째는 서 있다');
   assert.equal(direct([agent('a', 'running', { hat: 5, subagents: subs })], 1_000_000, false).get('a/s0')!.sit, null, '미리 보기가 꺼져 있으면 서 있다');
+});
+
+test('앉기(?seated) 휴게실: 쉬는 중이 소파·빈백 자리를 받으면 거기 앉아 쉬기(SW, Z 그대로), 서는 쉼 자리·앉기 꺼짐이면 서 있다', () => {
+  const ids = Array.from({ length: REST_SPOTS.length }, (_, i) => 'r' + i);
+  const agents = ids.map((id, i) => agent(id, 'idle', { hat: i % 8, seat: -1 }));
+  const plans = direct(agents, 1_000_000, true);
+  let sat = 0;
+  for (const a of agents) {
+    const p = plans.get(a.id)!;
+    const spot = REST_SPOTS.find((r) => r.at.x === p.spot.x && r.at.y === p.spot.y)!;
+    assert.ok(spot, '쉼 자리 하나씩');
+    assert.deepEqual(p.effects, ['zzz']);
+    if (spot.sit) { assert.deepEqual(p.sit, { at: spot.sit.at, dir: 'SW', mode: 'rest' }); sat++; }
+    else assert.equal(p.sit, null);
+  }
+  assert.equal(sat, LOUNGE_SEATS.length, '앉는 자리 넷이 모두 찬다');
+  for (const p of direct(agents, 1_000_000, false).values()) assert.equal(p.sit, null, '미리 보기가 꺼져 있으면 서 있다');
 });

@@ -110,7 +110,8 @@ function meetingSit(i: number, hat: number): Plan['sit'] {
 
 /**
  * 에이전트(주어진 순서)마다 계획을 짠다. 키는 agent.id, 도우미는 `${agent.id}/${sub.id}`.
- * 로비 자리·회의실 자리는 종류와 상관없이 순서대로 이어서 센다. seated(앱 기본 켜짐, `?seated=off`면 끔)면 책상·회의실 의자에 앉는다.
+ * 로비 자리·회의실 자리는 종류와 상관없이 순서대로 이어서 센다. seated(앱 기본 켜짐, `?seated=off`면 끔)면 책상·회의실 의자,
+ * 쉬는 중엔 휴게실 소파·빈백(쉼 자리가 앉는 자리일 때)에 앉는다.
  */
 export function direct(agents: Agent[], now: number, seated = false): Map<string, Plan> {
   const plans = new Map<string, Plan>();
@@ -132,7 +133,9 @@ export function direct(agents: Agent[], now: number, seated = false): Map<string
       plan = { spot: DOOR, facing: deskFacing, pose: 'walk', pace: 'free', effects: [], leave: true, agent: a, hat: a.hat, isSub: false, sit: null };
     } else if (a.status === 'idle') {
       const r = resters.get(a.id)!;
-      plan = { spot: r.at, facing: dirFor(r.face.x, r.face.y), pose: 'sleep', pace: 'free', effects: ['zzz'], leave: false, agent: a, hat: a.hat, isSub: false, sit: null };
+      // 소파·빈백 자리면 손을 무릎에 내린 쉬기 자세로 앉는다(머리 위 Z는 그대로 — 조는 모습)
+      const sit = seated && r.sit && canSit(lookFor(a.hat)) ? { at: r.sit.at, dir: r.sit.dir, mode: 'rest' as const } : null;
+      plan = { spot: r.at, facing: dirFor(r.face.x, r.face.y), pose: 'sleep', pace: 'free', effects: ['zzz'], leave: false, agent: a, hat: a.hat, isSub: false, sit };
     } else {
       const wave = a.status === 'permission' || a.status === 'question';
       plan = {

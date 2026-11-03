@@ -5,7 +5,7 @@ import { buildBackdrop, SLAB_H, type Backdrop } from './backdrop.ts';
 import { armchair, beanBag, bigPlant, binders, bookshelf, boxStack, coatRack, copier, deskLamp, fileCabinet, fridge, FURN, lowCabinet, kitchenCounter, lowTable, officeChair, podDesk, podDivider, printer, receptionDesk, screenStand, shredder, smallPlant, sofa, stool, storageShelf, supplyCabinet, toilet, trashBin, vendingMachine, washbasin, waterCooler, whiteboard } from './furniture.ts';
 import { buildRacks } from './rack.ts';
 import { SCREEN } from './screens.ts';
-import { ARIA_DESK, ARIA_DESK_XS, ARIA_DESK_Y, DEV_DESK, DEV_DESKS, DESK_DEPTH, FLOOR_X, DESK_WIDTH, DESKS, MEETING_TABLE, POD_X0, POD_YS, ROOMS, MEETING_CHAIRS, chairPosition, devChairPosition, meetingChairPosition } from './layout.ts';
+import { ARIA_DESK, ARIA_DESK_XS, ARIA_DESK_Y, DEV_DESK, DEV_DESKS, DESK_DEPTH, FLOOR_X, DESK_WIDTH, DESKS, MEETING_TABLE, BEAN_BAGS, SOFA, SOFA_TABLE, POD_X0, POD_YS, ROOMS, MEETING_CHAIRS, chairPosition, devChairPosition, meetingChairPosition } from './layout.ts';
 
 export const WALL_H = 3.0;
 
@@ -94,11 +94,11 @@ export function buildOffice(): OfficeScene {
 
   // 휴게실(앞쪽 오른쪽, 입구 복도에서 들어감): 자판기 + 러그(backdrop) 위 소파·낮은 테이블 + 뒷벽 책장 + 빈백 둘
   vendingMachine(g, 4.6, 15.1);
-  sofa(g, 5.85, 15.22, 2.2, 0.75);
-  lowTable(g, 6.45, 16.3, 1.0, 0.55);
+  sofa(g, SOFA.x0, SOFA.y0, SOFA.w, SOFA.d);
+  lowTable(g, SOFA_TABLE.x0, SOFA_TABLE.y0, SOFA_TABLE.w, SOFA_TABLE.d);
   bookshelf(g, 8.6, 15.08, 2.0);
-  beanBag(g, 9.0, 16.5, '#C9A04A');
-  beanBag(g, 10.1, 16.5, '#46666D');
+  beanBag(g, BEAN_BAGS[0].x, BEAN_BAGS[0].y, '#C9A04A');
+  beanBag(g, BEAN_BAGS[1].x, BEAN_BAGS[1].y, '#46666D');
 
   // 탕비실(휴게실 안쪽): 뒷벽 주방 카운터·냉장고 + 정수기 + 카페 테이블과 스툴 둘 + 휴지통
   kitchenCounter(g, 11.3, 15.12, 2.5);
