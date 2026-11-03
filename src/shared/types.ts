@@ -83,7 +83,13 @@ export type UsageWindow = { pct: number; resetsAt: number };
 export type Usage = { fiveHour: UsageWindow | null; sevenDay: UsageWindow | null; at: number };
 /** 연결 띠·npm run doctor용: 서버가 제대로 듣고 있나 */
 export type Health = { startedAt: number; lastHookAt: number | null; registry: RegistryHealth; sessions: number; hookless: number; lastCodexHookAt: number | null };
-export type Snapshot = { agents: Agent[]; usage: Usage | null; now: number; health: Health };
+/** 사무실 TV가 시계일 때 아랫줄: 문구 · 해 막대 · 비움(맥 설정 창 → 서버 config, 모든 화면 같게) */
+export type TvFoot = 'quote' | 'sun' | 'none';
+/**
+ * tvFoot은 상태(state)가 아니라 서버 설정 — http가 스냅샷 메시지에 붙인다. 판 = 서버를 켤 때마다 새 이름(tvFootInst)과
+ * 그 안에서 바뀔 때마다 1씩 오르는 번호(tvFootRev) — 화면은 같은 이름 안에서 더 큰 번호만 믿는다
+ */
+export type Snapshot = { agents: Agent[]; usage: Usage | null; now: number; health: Health; tvFoot?: TvFoot; tvFootRev?: number; tvFootInst?: string };
 
 /** Claude 앱 세션 목록 폴더 상태: 읽힘 / 폴더 없음 / 못 읽음 */
 export type RegistryHealth = 'ok' | 'missing' | 'error';

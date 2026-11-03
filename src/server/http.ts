@@ -3,6 +3,7 @@
 // 터널 전용 문(밖에서 보기, 설정했을 때만): 127.0.0.1의 따로 된 포트. 터널은 맥 안 주소로 들어오므로 이 문은 언제나 바깥으로 다룬다 —
 // 정해 둔 주소(Host)만, GET·WebSocket만, 보기 토큰 쿠키(so_view) 필수. 설계서 docs/specs/2026-10-27-외부-접속-VPS-설계.md
 import { spawn } from 'node:child_process';
+import { randomBytes } from 'node:crypto';
 import fs from 'node:fs';
 import http from 'node:http';
 import net from 'node:net';
@@ -11,7 +12,8 @@ import path from 'node:path';
 import type { Duplex } from 'node:stream';
 import QRCode from 'qrcode';
 import { WebSocketServer, WebSocket } from 'ws';
-import type { Config } from './config.ts';
+import { TV_FOOTS, type Config } from './config.ts';
+import type { TvFoot } from '../shared/types.ts';
 import type { OfficeState } from './state.ts';
 import { tokenMatches } from './token.ts';
 import { hookPaths, hookToEvents } from './collectors/claudeHook.ts';
@@ -181,9 +183,13 @@ export function startServer(opts: ServerOptions): Promise<RunningServer> {
   };
   /** 전용 문이 실제로 열렸나(설정했어도 포트가 사용 중이면 false) */
   let doorOpen = false;
+  /** TV 아랫줄 판: 켤 때마다 새 이름(inst), 그 안에서 바뀔 때마다 1씩 오르는 번호(rev). 화면은 같은 이름 안에서 더 큰 번호만 믿고 이름이 바뀌면
+   *  지금 연결을 따른다 — 시계와 상관없이 늦은 응답·스냅샷이 새 값을 덮지 않게 */
+  const tvFootInst = randomBytes(8).toString('hex');
+  let tvFootRev = 0;
 
   const send = (ws: WebSocket) => {
-    if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'snapshot', build: opts.build ?? null, ...state.snapshot(now()) }));
+    if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'snapshot', build: opts.build ?? null, ...state.snapshot(now()), tvFoot: config.tvFoot, tvFootRev, tvFootInst }));
   };
   const notify = () => {
     if (timer) return;
@@ -233,6 +239,28 @@ export function startServer(opts: ServerOptions): Promise<RunningServer> {
         // 켜는 순간 이미 떠 있던 Codex 승인 대기(🛡️·❗)도 지운다
         if (on && !was && state.dropCodexApprovals(now())) notify();
         return text(res, 204);
+      }
+      if (action === 'tv-foot') {
+        // 설정 창 TV 아랫줄: {foot: 'quote'|'sun'|'none'} → 저장된 뒤에만 반영하고 판을 올려 {rev}로 답하고, 모든 화면에 스냅샷으로 알린다
+        const raw = await readBody(req);
+        let foot: unknown;
+        try {
+          foot = raw === null ? undefined : (JSON.parse(raw) as { foot?: unknown }).foot;
+        } catch {
+          foot = undefined;
+        }
+        if (!TV_FOOTS.includes(foot as TvFoot)) return text(res, 400);
+        let saved: boolean;
+        try {
+          saved = opts.saveConfig ? opts.saveConfig({ tvFoot: foot as TvFoot }) : true;
+        } catch {
+          saved = false;
+        }
+        if (!saved) return text(res, 500);
+        config.tvFoot = foot as TvFoot;
+        tvFootRev += 1;
+        notify();
+        return json(res, { rev: tvFootRev, inst: tvFootInst });
       }
       if (action === 'remote-token') {
         // 밖에서 보기 토큰 새로 받기 → 옛 토큰으로 열려 있던 바깥 화면은 바로 끊는다
@@ -336,7 +364,7 @@ export function startServer(opts: ServerOptions): Promise<RunningServer> {
       case '/api/health':
         return json(res, state.snapshot(now()).health);
       case '/api/client-config':
-        return json(res, { softSound: config.softSound, loopback: local, codexAutoApprove: config.codexAutoApprove, build: opts.build ?? null });
+        return json(res, { softSound: config.softSound, loopback: local, codexAutoApprove: config.codexAutoApprove, tvFoot: config.tvFoot, tvFootRev, tvFootInst, build: opts.build ?? null });
       case '/api/lan-info': {
         if (!local) return text(res, 404);
         const ip = lanAddress();

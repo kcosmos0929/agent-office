@@ -14,7 +14,7 @@ export function connect(onSnapshot: (s: Snapshot, build: string | null) => void,
     ws.onmessage = (m) => {
       const data = JSON.parse(String(m.data)) as { type: string; build?: string | null } & Snapshot;
       if (data.type !== 'snapshot') return;
-      onSnapshot({ agents: data.agents, usage: data.usage, now: data.now, health: data.health }, data.build ?? null);
+      onSnapshot({ agents: data.agents, usage: data.usage, now: data.now, health: data.health, tvFoot: data.tvFoot, tvFootRev: data.tvFootRev, tvFootInst: data.tvFootInst }, data.build ?? null);
     };
     ws.onclose = () => {
       onStatus(false);

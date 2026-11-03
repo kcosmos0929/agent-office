@@ -25,9 +25,13 @@ export type StateOptions = {
   codexAutoApprove?: () => boolean;
   /** 세션이 만진 경로 → 프로젝트 이름표(모르면 null). 없으면 시작 폴더로만 정함 */
   resolveWork?: (p: string, cwd: string) => string | null;
+  /** 빈 자리·모습 중 하나를 고를 무작위 수(0 이상 1 미만, 기본 Math.random) — 테스트에서 고정 */
+  random?: () => number;
 };
 
 const SLOTS = 8;
+/** 종류별 책상 수(web/src/office/layout.ts의 DESKS·DEV_DESKS와 같게) — 자리를 무작위로 고를 범위. 넘치면 로비에서 기다림 */
+export const DESKS_BY_KIND: Record<AgentKind, number> = { claude: 8, codex: 3 };
 /** 나를 기다리는 상태(❗·❓, 그리고 ❗가 되기 전의 🛡️) */
 const WAITS = new Set<Status>(['permission', 'approving', 'question']);
 const APPROVAL_DELAY_MS = 5_000;
@@ -322,13 +326,24 @@ export class OfficeState {
     return [...this.entries.values()].filter((x) => x.engaged).map((x) => x.agent);
   }
 
+  /** 모습(모자 번호): 보이는 세션이 안 쓰는 것 중 무작위. 8개가 다 쓰이면 겹쳐서 준다 */
+  private pickHat(used: Agent[]): number {
+    return pickFree(used.map((x) => x.hat), SLOTS, this.opts.random) ?? used.length % SLOTS;
+  }
+
+  /** 자리는 종류별로 따로 매긴다(Codex는 개발실 책상) — 그 종류의 빈 책상 중 무작위, 다 찼으면 지금처럼 다음 빈 번호(로비) 또는 -1 */
+  private pickSeat(used: Agent[], kind: AgentKind): number {
+    const seats = used.filter((x) => x.kind === kind).map((x) => x.seat);
+    return pickFree(seats, DESKS_BY_KIND[kind], this.opts.random) ?? firstFree(seats, -1);
+  }
+
   /** 처음 일을 시작한 순간 보드에 올리고, 그때 비어 있는 모자·자리를 준다(열기만 한 세션이 자리를 막지 않게) */
   private engage(entry: Entry): void {
     if (entry.engaged) return;
     const used = this.visible();
     const a = entry.agent;
-    a.hat = firstFree(used.map((x) => x.hat), used.length % SLOTS);
-    a.seat = firstFree(used.filter((x) => x.kind === a.kind).map((x) => x.seat), -1);
+    a.hat = this.pickHat(used);
+    a.seat = this.pickSeat(used, a.kind);
     entry.engaged = true;
     entry.autoGone = false;
   }
@@ -483,8 +498,6 @@ export class OfficeState {
 
   private newEntry(sessionId: string, cwd: string, since: number, now: number, kind: AgentKind = 'claude'): Entry {
     const used = this.visible();
-    // 자리는 종류별로 따로 매긴다(Codex는 3단계 개발실 자리) — 모자 색은 세션 구분용이라 같이 쓴다
-    const sameKind = used.filter((a) => a.kind === kind);
     const agent: Agent = {
       id: `${kind}:${sessionId}`,
       kind,
@@ -496,8 +509,8 @@ export class OfficeState {
       detail: null,
       since,
       lastEventAt: now,
-      hat: firstFree(used.map((a) => a.hat), used.length % SLOTS),
-      seat: firstFree(sameKind.map((a) => a.seat), -1),
+      hat: this.pickHat(used),
+      seat: this.pickSeat(used, kind),
       subagents: [],
       hookless: false,
       context: null,
@@ -771,6 +784,13 @@ export class OfficeState {
 }
 
 /** 0..SLOTS-1 중 안 쓰는 가장 작은 수, 다 쓰면 fallback */
+/** 0 ≤ i < n 중 안 쓴 번호 하나를 무작위로(사용자 결정 2026-10-28 — 늘 0번 책상·JP01부터 차지 않게). 다 찼으면 null */
+function pickFree(used: number[], n: number, random: () => number = Math.random): number | null {
+  const free: number[] = [];
+  for (let i = 0; i < n; i++) if (!used.includes(i)) free.push(i);
+  return free.length ? free[Math.min(free.length - 1, Math.floor(random() * free.length))] : null;
+}
+
 function firstFree(used: number[], fallback: number): number {
   for (let i = 0; i < SLOTS; i++) if (!used.includes(i)) return i;
   return fallback;
