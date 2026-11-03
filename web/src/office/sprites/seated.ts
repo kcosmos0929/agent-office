@@ -21,11 +21,12 @@ export type SeatedPart = (typeof SEATED_PARTS)[number];
 /** 아틀라스: 8열 × 10행(512×960), 칸 64×96 — 위 9행 = 일하는 칸 0~71, 10번째 행 = 쉬기 칸 72~74 */
 export const SEATED_ATLAS = { cols: 8, rows: 10 } as const;
 /**
- * 앉은 그림 폴더: seated-v28/<모습> = 여덟 모습(v25) + 쉬기 행(v26) + 앞모습 뒷머리를 먼 팔 장에서 몸 장 뒤로(v27 — 팔 장은
- * 카메라 쪽으로 당겨 그려서 먼 팔 장의 뒷머리가 얼굴을 덮었다) + 앞모습 바지 먼 다리를 진하게·속을 채움(v28 — 휴게실에서 다리가 다 보임).
+ * 앉은 그림 폴더: seated-v29/<모습> = 여덟 모습(v25) + 쉬기 행(v26) + 앞모습 뒷머리를 먼 팔 장에서 몸 장 뒤로(v27 — 팔 장은
+ * 카메라 쪽으로 당겨 그려서 먼 팔 장의 뒷머리가 얼굴을 덮었다) + 앞모습 바지 먼 다리를 진하게·속을 채움(v28 — 휴게실에서 다리가 다 보임)
+ * + 앞모습 치마 무릎 위를 생성 키트 9 그림으로(v29 — 소매가 무릎 위 손까지 이어지고 치마 밑단이 무릎을 덮음).
  * 옛 JP01 폴더(v24·v23)로 물러서기는 없앴다 — 9행 그림이라 10행 칸 배치와 맞지 않는다.
  */
-export const SEATED_BASE = 'seated-v28';
+export const SEATED_BASE = 'seated-v29';
 export function seatedFiles(look: Look, seatedDir: SeatedDir, part: SeatedPart): string[] {
   const id = seatedLookId(look);
   if (!id) return [];
