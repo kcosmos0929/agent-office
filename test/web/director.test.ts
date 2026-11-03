@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import type { Agent, Status } from '../../src/shared/types.ts';
 import { direct, frontOf, hashId, restAssignments } from '../../web/src/office/director.ts';
-import { DESKS, DOOR, LOUNGE_SEATS, OVERFLOW_SPOTS, REST_SPOTS, chairPosition, devChairPosition, devSpot, facingAt, meetingChairPosition, meetingSpot, seatPosition, waitingSpot } from '../../web/src/office/layout.ts';
+import { DESKS, DOOR, LOUNGE_PULL, LOUNGE_SEATS, OVERFLOW_SPOTS, REST_SPOTS, chairPosition, devChairPosition, devSpot, facingAt, meetingChairPosition, meetingSpot, seatPosition, waitingSpot } from '../../web/src/office/layout.ts';
 import { dirFor, seatedDir } from '../../web/src/office/sprites/look.ts';
 
 function agent(id: string, status: Status, extra: Partial<Agent> = {}): Agent {
@@ -204,7 +204,7 @@ test('앉기(?seated) 휴게실: 쉬는 중이 소파·빈백 자리를 받으�
     const spot = REST_SPOTS.find((r) => r.at.x === p.spot.x && r.at.y === p.spot.y)!;
     assert.ok(spot, '쉼 자리 하나씩');
     assert.deepEqual(p.effects, ['zzz']);
-    if (spot.sit) { assert.deepEqual(p.sit, { at: spot.sit.at, dir: 'SW', mode: 'rest' }); sat++; }
+    if (spot.sit) { assert.deepEqual(p.sit, { at: spot.sit.at, dir: 'SW', mode: 'rest', pull: LOUNGE_PULL }); sat++; }
     else assert.equal(p.sit, null);
   }
   assert.equal(sat, LOUNGE_SEATS.length, '앉는 자리 넷이 모두 찬다');

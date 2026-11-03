@@ -19,8 +19,8 @@ export type Plan = {
   agent: Agent | null;
   hat: number;
   isSub: boolean;
-  /** 자리에 닿으면 의자에 앉는다(의자 가운데 바닥점·방향·움직임). 서 있으면 null */
-  sit: { at: Point; dir: SeatedDir; mode: SeatedMode } | null;
+  /** 자리에 닿으면 의자에 앉는다(의자 가운데 바닥점·방향·움직임, pull = 그림을 카메라 쪽으로 당기는 거리 — 휴게실 소파·빈백). 서 있으면 null */
+  sit: { at: Point; dir: SeatedDir; mode: SeatedMode; pull?: number } | null;
 };
 
 /** FNV-1a 32비트(부호 없음) — 세션 id로 쉬는 시간·자리를 정하는 고정 해시 */
@@ -134,7 +134,7 @@ export function direct(agents: Agent[], now: number, seated = false): Map<string
     } else if (a.status === 'idle') {
       const r = resters.get(a.id)!;
       // 소파·빈백 자리면 손을 무릎에 내린 쉬기 자세로 앉는다(머리 위 Z는 그대로 — 조는 모습)
-      const sit = seated && r.sit && canSit(lookFor(a.hat)) ? { at: r.sit.at, dir: r.sit.dir, mode: 'rest' as const } : null;
+      const sit = seated && r.sit && canSit(lookFor(a.hat)) ? { at: r.sit.at, dir: r.sit.dir, mode: 'rest' as const, pull: r.sit.pull } : null;
       plan = { spot: r.at, facing: dirFor(r.face.x, r.face.y), pose: 'sleep', pace: 'free', effects: ['zzz'], leave: false, agent: a, hat: a.hat, isSub: false, sit };
     } else {
       const wave = a.status === 'permission' || a.status === 'question';

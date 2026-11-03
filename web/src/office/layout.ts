@@ -50,12 +50,18 @@ export const SOFA = { x0: 5.85, y0: 15.22, w: 2.2, d: 0.75 };
 export const SOFA_TABLE = { x0: 6.45, y0: 16.3, w: 1.0, d: 0.55 };
 export const BEAN_BAGS: readonly Point[] = [{ x: 9.0, y: 16.5 }, { x: 10.1, y: 16.5 }];
 /**
+ * 휴게실에 앉은 그림을 카메라 쪽으로 당기는 거리(월드, 보는 방향 — 화면 위치는 그대로). 앉는 점은 좌판 가운데라 그보다 앞의
+ * 소파 앞면·빈백 앞 모서리(보는 방향으로 0.5 남짓 앞)가 다리·엉덩이를 덮는다(사용자: "몸이 파묻히는 것 같다"). 소파 앞 낮은 탁자는
+ * 그보다 더 앞(왼쪽 자리 기준 1.0)이라 그대로 다리를 가린다.
+ */
+export const LOUNGE_PULL = 0.6;
+/**
  * 쉬는 동안 앉는 자리(2026-11-03, 6단계): 소파 양 끝 + 빈백 둘. at = 다가가 서는 곳(바로 앞), sit = 앉는 점(좌판 가운데 바닥)·방향.
  * 좌판 높이가 사무 의자(0.34)와 같아(소파 0.34, 빈백 0.36) 앉은 그림을 그대로 쓴다. 소파 가운데는 낮은 탁자에 막혀 다가갈 길이 없어 뺐다.
  */
-export const LOUNGE_SEATS: readonly { at: Point; sit: { at: Point; dir: SeatedDir } }[] = [
-  ...[SOFA.x0 + 0.45, SOFA.x0 + SOFA.w - 0.45].map((x) => ({ at: { x, y: 16.15 }, sit: { at: { x, y: SOFA.y0 + 0.46 }, dir: 'SW' as const } })),
-  ...BEAN_BAGS.map((b) => ({ at: { x: b.x, y: b.y + 0.55 }, sit: { at: { x: b.x, y: b.y + 0.08 }, dir: 'SW' as const } })),
+export const LOUNGE_SEATS: readonly { at: Point; sit: { at: Point; dir: SeatedDir; pull: number } }[] = [
+  ...[SOFA.x0 + 0.45, SOFA.x0 + SOFA.w - 0.45].map((x) => ({ at: { x, y: 16.15 }, sit: { at: { x, y: SOFA.y0 + 0.46 }, dir: 'SW' as const, pull: LOUNGE_PULL } })),
+  ...BEAN_BAGS.map((b) => ({ at: { x: b.x, y: b.y + 0.08 + 0.47 }, sit: { at: { x: b.x, y: b.y + 0.08 }, dir: 'SW' as const, pull: LOUNGE_PULL } })),
 ];
 
 /** 사무실 → 오른쪽 방 문(벽 x=SPLIT_X의 틈): 가운데 y와 폭 */
@@ -109,7 +115,7 @@ export const BAND_LANE_Y = 17.55;
 export const DEV_LANE_Y = 3.6;
 
 /** 쉬는 자리: 자리와 보는 방향, 앉는 자리면 sit(앉기 켜짐일 때 거기 앉는다). 왼쪽부터 자판기·소파 둘·책장·빈백 둘·커피머신·카페 테이블 */
-export type RestSpot = { at: Point; face: Point; sit?: { at: Point; dir: SeatedDir } };
+export type RestSpot = { at: Point; face: Point; sit?: { at: Point; dir: SeatedDir; pull: number } };
 export const REST_SPOTS: readonly RestSpot[] = [
   { at: IDLE_SPOTS.vending, face: { x: 0, y: -1 } },
   ...LOUNGE_SEATS.slice(0, 2).map((s) => ({ at: s.at, face: { x: 0, y: -1 }, sit: s.sit })),

@@ -109,6 +109,14 @@ test('Figure.sit: 그림이 오기 전엔 서 있고 false, 오면 세 판을 �
       assert.ok(Math.abs(map.repeat.x + 1 / 8) < 1e-12 && Math.abs(map.offset.x - 8 / 8) < 1e-12);
       assert.ok(Math.abs(m.position.x - on.x) < 1e-12 && Math.abs(m.position.y - on.y) < 1e-12);
     }
+    // 휴게실(pull): 세 판 묶음을 보는 방향으로 당긴다 — 화면 위치는 그대로, 앞 가구에 덜 가림. 책상 자리(pull 0)는 제자리
+    const root = seated[0].parent!.parent!.parent!;
+    const y0 = root.position.y;
+    f.sit('SE', 39, 0.6);
+    const v = new THREE.Vector3(...VIEW_DIR).normalize().multiplyScalar(0.6);
+    assert.ok(Math.abs(root.position.x - v.x) < 1e-9 && Math.abs(root.position.z - v.z) < 1e-9 && Math.abs(root.position.y - (y0 + v.y)) < 1e-9);
+    f.sit('SE', 39);
+    assert.ok(Math.abs(root.position.x) < 1e-12 && Math.abs(root.position.z) < 1e-12 && Math.abs(root.position.y - y0) < 1e-12);
     // 앉아서도 들썩(질문·승인 통통): 세 판이 함께 올라가고 0이면 제자리
     f.lift(2);
     for (const m of seated) assert.ok(Math.abs(m.position.y - (o.y + (2 * DOT) / UPRIGHT)) < 1e-9);
