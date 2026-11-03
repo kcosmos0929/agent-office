@@ -10,7 +10,7 @@ export function seatedLookId(look: Look): SeatedLookId | null {
   const i = LOOKS.findIndex((l) => l.hair === look.hair && l.outfit === look.outfit);
   return i < 0 ? null : SEATED_LOOK_IDS[i];
 }
-/** 앉은 그림이 있는 모습: 여덟 모습 모두(seated-v25, 2026-10-28). JP01 그림을 본보기로 머리·옷을 옮기고 다리는 이미지 생성 */
+/** 앉은 그림이 있는 모습: 여덟 모습 모두(seated-v25 2026-10-28, v26 = 쉬기 행 추가). JP01 그림을 본보기로 머리·옷을 옮기고 다리는 이미지 생성 */
 export function canSit(look: Look): boolean {
   return seatedLookId(look) !== null;
 }
@@ -18,29 +18,28 @@ export function canSit(look: Look): boolean {
 /** 세 장 모두 같은 칸 배치. 어깨 둘레 소매(cap)는 body에 있고, 팔 두 장만 카메라 쪽으로 당긴다 */
 export const SEATED_PARTS = ['body', 'nearArm', 'farArm'] as const;
 export type SeatedPart = (typeof SEATED_PARTS)[number];
-/** 아틀라스: 8열 × 9행(512×864), 칸 64×96 */
-export const SEATED_ATLAS = { cols: 8, rows: 9 } as const;
+/** 아틀라스: 8열 × 10행(512×960), 칸 64×96 — 위 9행 = 일하는 칸 0~71, 10번째 행 = 쉬기 칸 72~74 */
+export const SEATED_ATLAS = { cols: 8, rows: 10 } as const;
 /**
- * 앉은 그림 폴더 후보(앞부터 읽는다): seated-v25/<모습> = 여덟 모습(뒷모습 머리·등판·다리 새로).
- * JP01만 옛 폴더로 물러설 수 있다: v24 = 서기 v18 옷·외곽선·펌프스를 맞춘 것, v23(되돌리려면 앞 항목을 지운다)
+ * 앉은 그림 폴더: seated-v26/<모습> = 여덟 모습(v25) + 쉬기 행.
+ * 옛 JP01 폴더(v24·v23)로 물러서기는 없앴다 — 9행 그림이라 10행 칸 배치와 맞지 않는다.
  */
-export const SEATED_BASE = 'seated-v25';
-export const SEATED_JP01_FALLBACK = ['seated-v24', 'seated-v23'] as const;
+export const SEATED_BASE = 'seated-v26';
 export function seatedFiles(look: Look, seatedDir: SeatedDir, part: SeatedPart): string[] {
   const id = seatedLookId(look);
   if (!id) return [];
   const dir = SEATED_SOURCE[seatedDir].dir; // SW·NE는 SE·NW 그림을 뒤집어 쓴다
-  const main = `${SEATED_BASE}/${id}/${dir}/${part}.png`;
-  return id === 'JP01' ? [main, ...SEATED_JP01_FALLBACK.map((v) => `${v}/${dir}/${part}.png`)] : [main];
+  return [`${SEATED_BASE}/${id}/${dir}/${part}.png`];
 }
 
-/** work = 손(타이핑)+상체+눈, upper = 손 멈춤+상체+눈(읽기·생각용 임시 대용 — 전용 자세 아님) */
-export type SeatedMode = 'work' | 'upper';
-/** 상태 → 앉는 방식. 실행·고침은 타이핑, 읽기·생각류는 손 멈춤, 나머지(대기·끝남·멈춤·쉼)는 서 있는다(null) */
+/** work = 손(타이핑)+상체+눈, upper = 손 멈춤+상체+눈(읽기·생각용 임시 대용 — 전용 자세 아님), rest = 손을 무릎에 내린 쉬기+눈 */
+export type SeatedMode = 'work' | 'upper' | 'rest';
+/** 상태 → 앉는 방식. 실행·고침은 타이핑, 읽기·생각류는 손 멈춤, 끝남은 쉬기, 나머지(대기·멈춤·쉼)는 서 있는다(null) */
 export function seatedMode(status: Status): SeatedMode | null {
   switch (status) {
     case 'running': case 'editing': return 'work';
     case 'reading': case 'thinking': case 'approving': case 'delegating': case 'compacting': return 'upper';
+    case 'done': return 'rest';
     default: return null;
   }
 }
@@ -49,6 +48,8 @@ export function seatedMode(status: Status): SeatedMode | null {
 export function seatedIndex(hand: number, body: number, eye: number): number {
   return hand * 9 + body * 3 + eye;
 }
+/** 쉬기 칸 = 72 + 눈 — 일하는 칸 다음(10번째 행). 상체 움직임 없이 눈만 깜빡인다 */
+export const SEATED_REST = 72;
 
 /** 손 125ms × 8, 상체 [0,1,2,1,0] 500ms씩, 눈은 3초부터 4초마다 반 70 → 감음 90 → 반 70ms. 공동 반복 20초 */
 export const SEATED_CYCLE_MS = 20_000;
@@ -58,9 +59,10 @@ function eyeAt(t: number): number {
   const p = (t - 3000) % 4000;
   return p < 70 ? 1 : p < 160 ? 2 : p < 230 ? 1 : 0;
 }
-/** 시작한 지 elapsedMs 지난 때의 칸 번호(원본 timeline.mjs sample()과 같은 값) */
+/** 시작한 지 elapsedMs 지난 때의 칸 번호(work·upper는 원본 timeline.mjs sample()과 같은 값) */
 export function seatedFrame(mode: SeatedMode, elapsedMs: number): number {
   const t = ((elapsedMs % SEATED_CYCLE_MS) + SEATED_CYCLE_MS) % SEATED_CYCLE_MS;
+  if (mode === 'rest') return SEATED_REST + eyeAt(t);
   const hand = mode === 'work' ? Math.floor(t / 125) % 8 : 0;
   return seatedIndex(hand, BODY_LEVELS[Math.floor(t / 500) % BODY_LEVELS.length], eyeAt(t));
 }
@@ -72,7 +74,7 @@ export function seatedCell(index: number): { col: number; row: number } {
 
 /**
  * 앉기: 기본으로 켜짐(움직임, 2026-10-28 — 여덟 모습 앉은 그림과 개발실·회의실 자리가 생겨서).
- * `?seated=off`면 늘 서 있고(예전 화면), `?seated=still`이면 첫 칸(정지 v21과 같은 그림)에 멈춘다.
+ * `?seated=off`면 늘 서 있고(예전 화면), `?seated=still`이면 방식마다 첫 칸(일하기는 정지 v21과 같은 그림)에 멈춘다.
  */
 export type SeatedPreview = 'off' | 'still' | 'motion';
 export function seatedPreview(search: string): SeatedPreview {

@@ -67,7 +67,7 @@ test('Figure.sit: 그림이 오기 전엔 서 있고 false, 오면 세 판을 �
     onload: (() => void) | null = null;
     onerror: (() => void) | null = null;
     width = 512;
-    height = 864;
+    height = 960;
     set src(_: string) {
       setTimeout(() => this.onload?.());
     }
@@ -86,8 +86,8 @@ test('Figure.sit: 그림이 오기 전엔 서 있고 false, 오면 세 판을 �
     const o = seatedPlaneOffset('SE');
     for (const m of seated) {
       const map = (m.material as THREE.MeshBasicMaterial).map!;
-      assert.ok(Math.abs(map.offset.x - 7 / 8) < 1e-12 && Math.abs(map.offset.y - (1 - 5 / 9)) < 1e-12);
-      assert.ok(Math.abs(map.repeat.x - 1 / 8) < 1e-12 && Math.abs(map.repeat.y - 1 / 9) < 1e-12);
+      assert.ok(Math.abs(map.offset.x - 7 / 8) < 1e-12 && Math.abs(map.offset.y - (1 - 5 / 10)) < 1e-12);
+      assert.ok(Math.abs(map.repeat.x - 1 / 8) < 1e-12 && Math.abs(map.repeat.y - 1 / 10) < 1e-12);
       assert.ok(Math.abs(m.position.x - o.x) < 1e-12 && Math.abs(m.position.y - o.y) < 1e-12);
     }
     // 사람마다 칸 위치를 따로 가진다(같은 그림의 offset을 함께 바꾸지 않는다)

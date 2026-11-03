@@ -268,7 +268,7 @@ export class Cast {
       else actor.figure.show(actor.rest, 'idle');
       // 책상에 닿았고 앉는 상태면 의자 가운데로 옮겨 앉는다(사람마다 위상을 달리한 같은 시계). 앉은 그림을 불러오는 동안은 서 있는 자리에 선다
       const seat = walking ? null : actor.sit;
-      const sitting = seat !== null && actor.figure.sit(seat.dir, this.seated === 'still' ? 0 : seatedFrame(seat.mode, now + (hashId(id) % SEATED_CYCLE_MS)));
+      const sitting = seat !== null && actor.figure.sit(seat.dir, seatedFrame(seat.mode, this.seated === 'still' ? 0 : now + (hashId(id) % SEATED_CYCLE_MS)));
       const stage = sitting ? seat.at : actor.at;
       actor.group.position.set(stage.x, 0.04, stage.y);
       // 승인·질문 대기는 폴짝(손 흔드는 그림이 오기 전까지), 쉬는 중엔 Z
