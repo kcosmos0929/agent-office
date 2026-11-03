@@ -115,23 +115,25 @@ export function buildBackdrop(g: THREE.Group): Backdrop {
   g.add(texBlock(-0.25, 0, 0.25, FZ, 0, WALL_H, P.wall.cut, 'px', speckle(P.wall.side[0], P.wall.side[1])));
   g.add(block(0, 0, FX, 0.04, 0, 0.12, P.wall.baseboard));
 
-  // 통창(왼쪽 벽 전체): 허리 높이 창턱 + 큰 유리(밖 풍경은 조명과 상관없이 밝게) + 세로 창틀 + 위 가로 창틀
+  // 통창(왼쪽 벽, 사무실 구간만): 허리 높이 창턱 + 큰 유리(밖 풍경은 조명과 상관없이 밝게) + 세로 창틀 + 위 가로 창틀.
+  // 앞쪽 띠의 창고·화장실(z FRONT_Y~FZ)은 창 없이 벽(사용자 요청, 2026-10-28)
   const SILL = 0.72;
   const HEAD = WALL_H - 0.2;
+  const WZ = FRONT_Y;
   const glassMats: THREE.Material[] = Array(6).fill(plain(P.frame));
-  const cityW = FZ * DENSITY;
+  const cityW = WZ * DENSITY;
   const cityH = Math.round((HEAD - SILL) * DENSITY);
   const cityMat = new THREE.MeshBasicMaterial({ map: cityView(cityW, cityH) });
   glassMats[FACE.px] = cityMat;
-  const glass = new THREE.Mesh(new THREE.BoxGeometry(0.03, HEAD - SILL, FZ), glassMats);
-  glass.position.set(0.015, (SILL + HEAD) / 2, FZ / 2);
+  const glass = new THREE.Mesh(new THREE.BoxGeometry(0.03, HEAD - SILL, WZ), glassMats);
+  glass.position.set(0.015, (SILL + HEAD) / 2, WZ / 2);
   g.add(glass);
   g.add(block(0, 0, 0.04, FZ, 0, 0.12, P.wall.baseboard));
-  g.add(block(0, 0, 0.14, FZ, SILL - 0.06, 0.06, P.frame));
-  g.add(block(0, 0, 0.07, FZ, HEAD, 0.06, P.frame));
-  g.add(block(0, 0, 0.06, FZ, HEAD - 0.4, 0.04, P.frame));
-  for (let i = 0; i <= FZ / 1.25; i++) {
-    const z = Math.min(FZ - 0.06, Math.max(0, i * 1.25 - 0.03));
+  g.add(block(0, 0, 0.14, WZ, SILL - 0.06, 0.06, P.frame));
+  g.add(block(0, 0, 0.07, WZ, HEAD, 0.06, P.frame));
+  g.add(block(0, 0, 0.06, WZ, HEAD - 0.4, 0.04, P.frame));
+  for (let i = 0; i <= WZ / 1.25; i++) {
+    const z = Math.min(WZ - 0.06, Math.max(0, i * 1.25 - 0.03));
     g.add(block(0, z, 0.07, 0.06, SILL, HEAD - SILL, P.frame));
   }
 
