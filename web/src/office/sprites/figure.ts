@@ -124,6 +124,11 @@ export class Figure {
     return this.seatedRoot.visible;
   }
 
+  /** 앉은 그림 한 방향을 미리 불러 둔다(앉으러 걸어가는 동안 — 내려앉는 순간 그림이 없어 서는 자리로 튀지 않게). 보이는 것은 그대로 */
+  preloadSeated(dir: SeatedDir): void {
+    if (this.seatedLoaded !== dir) this.loadSeated(dir);
+  }
+
   /** 지금 보이는 판들(누르기 판정용) */
   pickables(): THREE.Mesh[] {
     return this.seatedRoot.visible ? this.seatedPlanes.map((p) => p.mesh) : [this.mesh];

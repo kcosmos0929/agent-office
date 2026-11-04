@@ -14,6 +14,7 @@ import type { OfficeScene } from './scene.ts';
 import { Figure } from './sprites/figure.ts';
 import { dirFor, faceFor, headTop, lookFor, PACE_FPS, STEP, WALK_FRAMES, type Dir, type Pace } from './sprites/look.ts';
 import { SEATED_CYCLE_MS, seatedFrame, type SeatedPreview } from './sprites/seated.ts';
+import { sitMotionAt, type SitMotion } from './sitMotion.ts';
 
 const SUB_SCALE = 0.8; // 도우미는 매니저와 같은 옷, 조금 작게
 
@@ -46,6 +47,10 @@ type Actor = {
   at: Point;
   /** 자리에 닿으면 앉는 의자(계획) */
   sit: Plan['sit'];
+  /** 지금 앉아 있는 의자(그림 쪽). 계획의 의자와 다르면 일어서거나 앉는다. null = 서 있음 */
+  onSeat: Plan['sit'];
+  /** 앉는·일어서는 중(sitMotion — 그동안 걷기는 멈춘다). sit = 앉는(일어서는) 의자 */
+  motion: (SitMotion & { sit: NonNullable<Plan['sit']> }) | null;
   pace: Pace;
   /** 걷기 시계: 흐른 시간으로 넘길 장수를 정하고, 넘긴 장수만큼만 움직인다(발과 이동이 같은 시계) */
   clock: number;
@@ -141,6 +146,8 @@ export class Cast {
       actor.path = [actor.target];
       this.place(actor, actor.target);
       this.resetClock(actor);
+      actor.motion = null; // 바로 세우니 앉을 사람은 바로 앉는다
+      actor.onSeat = actor.sit;
     }
     if (notify) this.onChange();
   }
@@ -244,7 +251,8 @@ export class Cast {
     if (this.agents) this.follow(this.planAll(this.agents));
     const now = this.clock();
     for (const [id, actor] of this.actors) {
-      if (actor.path.length > 1) {
+      this.settleSeat(actor, t); // 떠날 길이 생겼으면 먼저 일어선다(걷기는 다 일어선 뒤)
+      if (actor.path.length > 1 && !actor.onSeat && !actor.motion) {
         actor.clock += dt;
         const n = Math.floor(actor.clock * PACE_FPS[actor.pace]) - actor.steps;
         actor.steps += n;
@@ -268,24 +276,37 @@ export class Cast {
           }
         }
       }
-      const walking = actor.path.length > 1;
-      if (!walking && actor.leaving) {
+      if (actor.leaving && actor.path.length <= 1 && !actor.motion) {
         this.remove(id, actor);
         continue;
       }
+      this.settleSeat(actor, t); // 방금 자리에 닿았으면 같은 프레임에 앉기 시작(서 있는 한 프레임 없이)
+      const walking = actor.path.length > 1 && !actor.onSeat && !actor.motion;
       if (!walking) this.resetClock(actor);
       actor.pose = walking ? (actor.pace === 'free' ? 'stroll' : 'walk') : actor.restPose;
-      // 업무 자세 그림이 없는 상태는 머무를 땐 서기 그림
+      const move = actor.motion ? sitMotionAt(actor.motion, t) : null;
+      let stage = actor.at;
+      let lift = 0;
       if (walking) actor.figure.show(actor.dir, (actor.phase + actor.steps) % WALK_FRAMES);
-      else actor.figure.show(actor.rest, 'idle');
-      // 책상에 닿았고 앉는 상태면 의자 가운데로 옮겨 앉는다(사람마다 위상을 달리한 같은 시계). 앉은 그림을 불러오는 동안은 서 있는 자리에 선다
-      const seat = walking ? null : actor.sit;
-      const sitting = seat !== null && actor.figure.sit(seat.dir, seatedFrame(seat.mode, this.seated === 'still' ? 0 : now + (hashId(id) % SEATED_CYCLE_MS)), seat.pull ?? 0);
-      const stage = sitting ? seat.at : actor.at;
+      else if (move && move.stage !== 'seat') {
+        // 앉고 일어서기: 의자까지(에서) 걷는 한두 걸음, 의자 앞에 서서 앉을 방향 보기
+        const k = move.stage === 'walk' ? actor.phase + (move.back ? -move.step : move.step) : 0;
+        actor.figure.show(move.dir, move.stage === 'walk' ? ((k % WALK_FRAMES) + WALK_FRAMES) % WALK_FRAMES : 'idle');
+        stage = move.at;
+      } else {
+        // 업무 자세 그림이 없는 상태는 머무를 땐 서기 그림. 내려앉는 중에 앉은 그림이 아직 안 왔으면 의자 앞에 앉을 방향으로 서 있는다
+        const seat = move ? actor.motion!.sit : actor.onSeat;
+        actor.figure.show(move ? seat!.dir : actor.rest, 'idle');
+        if (move) stage = seat!.at;
+        // 앉아 있으면 의자 가운데로 옮겨 앉는다(사람마다 위상을 달리한 같은 시계). 앉은 그림을 불러오는 동안은 서 있는 자리에 선다
+        if (seat && actor.figure.sit(seat.dir, seatedFrame(seat.mode, this.seated === 'still' ? 0 : now + (hashId(id) % SEATED_CYCLE_MS)), seat.pull ?? 0)) stage = seat.at;
+        // 내려앉기·일어서기 들썩, 승인·질문 대기는 폴짝(서 있어도 앉아 있어도)
+        lift = move ? move.lift : actor.effects.includes('wave') ? hopDots(t, this.reduced) : 0;
+      }
       actor.group.position.set(stage.x, 0.04, stage.y);
-      // 승인·질문 대기는 폴짝(손 흔드는 그림이 오기 전까지), 쉬는 중엔 Z
-      actor.figure.lift(!walking && actor.effects.includes('wave') ? hopDots(t, this.reduced) : 0);
-      if (actor.zzz) actor.zzz.visible = !walking && actor.effects.includes('zzz');
+      actor.figure.lift(lift);
+      // 쉬는 중엔 Z(앉고 일어서는 동안은 숨김)
+      if (actor.zzz) actor.zzz.visible = !walking && !actor.motion && actor.effects.includes('zzz');
       if (actor.burstRing) this.drawBurst(actor, t);
       if (actor.ring?.visible) (actor.ring.material as THREE.MeshBasicMaterial).opacity = 0.35 + 0.65 * Math.abs(Math.sin((t / 1400) * Math.PI));
     }
@@ -304,8 +325,35 @@ export class Cast {
     (ring.material as THREE.MeshBasicMaterial).opacity = b.opacity;
   }
 
+  /**
+   * 앉고 일어서기: 계획의 의자(자리에 닿았을 때만)와 지금 앉은 의자를 맞춘다 — 다르면 일어서거나 앉기 시작하고, 끝난 전환은 정리한다.
+   * 같은 의자면 앉는 방식(타자·손 멈춤·쉬기)만 바꾼다. 동작 줄이기면 전처럼 바로 앉고 바로 선다. 전환 중엔 끝날 때까지 그대로 둔다
+   */
+  private settleSeat(actor: Actor, t: number): void {
+    if (actor.motion && sitMotionAt(actor.motion, t) === null) {
+      actor.onSeat = actor.motion.kind === 'down' ? actor.motion.sit : null;
+      actor.motion = null;
+    }
+    if (actor.motion) return;
+    const want = actor.path.length > 1 ? null : actor.sit;
+    const here = actor.onSeat;
+    if (here && want && here.at.x === want.at.x && here.at.y === want.at.y) {
+      actor.onSeat = want;
+      return;
+    }
+    if (this.reduced || (!here && !want)) {
+      actor.onSeat = want;
+      return;
+    }
+    const sit = here ?? want!;
+    // 앉으러 갈 땐 걸어온 빠르기 그대로, 일어설 땐 짧게 물러나니 일 걸음(빠름) — 개발실 뒷걸음 14걸음이 1.75초가 되지 않게
+    actor.motion = { kind: here ? 'up' : 'down', start: t, stand: actor.at, seat: sit.at, dir: sit.dir, pace: here ? 'work' : actor.pace, sit };
+    if (!here) actor.figure.preloadSeated(sit.dir); // 내려앉을 때 앉은 그림이 와 있게(처음 앉는 방향이면 걸어가는 동안 불러온다)
+  }
+
   poses(): Pose[] {
-    return [...this.actors.values()].map((a) => (a.path.length > 1 ? (a.pace === 'free' ? 'stroll' : 'walk') : a.pose));
+    // 앉고 일어서는 동안은 걷기처럼 자주 그린다(걸음·들썩이 끊기지 않게)
+    return [...this.actors.values()].map((a) => (a.motion ? 'walk' : a.path.length > 1 ? (a.pace === 'free' ? 'stroll' : 'walk') : a.pose));
   }
 
   /** 클릭한 캐릭터의 에이전트(하위 에이전트면 null) */
@@ -358,7 +406,7 @@ export class Cast {
     }
     const route = this.first ? [dest] : pathTo(dest);
     const actor: Actor = {
-      group, figure, label, plate, bubble, ring, burstRing, burstAt: null, prev: undefined, sparkles: new Map(), zzz, effects: plan.effects, route, target: dest, path: [route[0]], at: route[0], sit: plan.sit, pace: plan.pace,
+      group, figure, label, plate, bubble, ring, burstRing, burstAt: null, prev: undefined, sparkles: new Map(), zzz, effects: plan.effects, route, target: dest, path: [route[0]], at: route[0], sit: plan.sit, onSeat: this.first ? plan.sit : null, motion: null, pace: plan.pace,
       clock: 0, steps: 0, phase: 0, dir: 'SE', rest: plan.facing, leaving: false, agent: null, hat, isSub, pose: 'stand', restPose: plan.pose,
     };
     this.actors.set(id, actor);
