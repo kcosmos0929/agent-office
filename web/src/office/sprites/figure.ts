@@ -35,8 +35,8 @@ export class Figure {
   /** 앉은 세 판(몸·가까운 팔·먼 팔)을 담는 묶음 — 앉을 때만 보인다 */
   private readonly seatedRoot = new THREE.Group();
   private readonly seatedPlanes: SeatedPlane[];
-  /** 앉은 방향(그림을 불러 둔 방향)과 칸 번호. 서 있으면 null */
-  private seated: { dir: SeatedDir; index: number } | null = null;
+  /** 앉은 방향(그림을 불러 둔 방향)과 칸 번호, 세 판을 카메라 쪽으로 당기는 거리. 서 있으면 null */
+  private seated: { dir: SeatedDir; index: number; pull: number } | null = null;
   private seatedLoaded: SeatedDir | null = null;
   /** 이 그림의 모습 — 모습이 바뀌면 배우가 그림을 새로 만들어 바꿔 끼운다(cast.ts reshape) */
   readonly look: Look;
@@ -112,9 +112,13 @@ export class Figure {
     this.apply();
   }
 
-  /** 앉은 그림: 방향(SE·SW 얼굴, NW·NE 등 — SW·NE는 SE·NW 그림 좌우 뒤집기)과 칸 번호(seatedFrame). 그림을 다 불러오기 전엔 서 있는 그림 그대로이고 false */
-  sit(dir: SeatedDir, index: number): boolean {
-    this.seated = { dir, index };
+  /**
+   * 앉은 그림: 방향(SE·SW 얼굴, NW·NE 등 — SW·NE는 SE·NW 그림 좌우 뒤집기)과 칸 번호(seatedFrame).
+   * pull(월드)만큼 세 판을 카메라 쪽으로 당겨 앞의 가구에 덜 가리게 한다(화면 위치는 그대로, 휴게실 소파·빈백).
+   * 그림을 다 불러오기 전엔 서 있는 그림 그대로이고 false
+   */
+  sit(dir: SeatedDir, index: number, pull = 0): boolean {
+    this.seated = { dir, index, pull };
     if (this.seatedLoaded !== dir) this.loadSeated(dir);
     this.apply();
     return this.seatedRoot.visible;
@@ -177,6 +181,8 @@ export class Figure {
     const lift = (this.lifted * DOT * this.scale) / UPRIGHT;
     if (sitting) {
       const o = seatedPlaneOffset(s.dir, this.scale);
+      this.seatedRoot.position.copy(TOWARD_CAMERA).multiplyScalar(s.pull * this.scale);
+      this.seatedRoot.position.y -= FLOOR_TOP;
       const { col, row } = seatedCell(s.index);
       for (const p of this.seatedPlanes) {
         p.mesh.position.set(o.x, o.y + lift, 0);

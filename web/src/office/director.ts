@@ -19,8 +19,8 @@ export type Plan = {
   agent: Agent | null;
   hat: number;
   isSub: boolean;
-  /** 자리에 닿으면 의자에 앉는다(의자 가운데 바닥점·방향·움직임). 서 있으면 null */
-  sit: { at: Point; dir: SeatedDir; mode: SeatedMode } | null;
+  /** 자리에 닿으면 의자에 앉는다(의자 가운데 바닥점·방향·움직임, pull = 그림을 카메라 쪽으로 당기는 거리 — 휴게실 소파·빈백). 서 있으면 null */
+  sit: { at: Point; dir: SeatedDir; mode: SeatedMode; pull?: number } | null;
 };
 
 /** FNV-1a 32비트(부호 없음) — 세션 id로 쉬는 시간·자리를 정하는 고정 해시 */
@@ -91,7 +91,7 @@ function deskEffects(status: Agent['status']): Effect[] {
 }
 
 /**
- * 자기 책상에서 앉는가: 앉는 상태이고 앉은 그림이 있는 모습(seated-v27: 여덟 모습 모두)일 때.
+ * 자기 책상에서 앉는가: 앉는 상태이고 앉은 그림이 있는 모습(seated-v29: 여덟 모습 모두)일 때.
  * Claude 0~7 = 사무실 의자(SE·NW), Codex 0~2 = 개발실 의자(NE — 사무실과 다른 대각선이라 NW 그림을 뒤집어 쓴다).
  */
 function sitAt(a: Agent): Plan['sit'] {
@@ -110,7 +110,8 @@ function meetingSit(i: number, hat: number): Plan['sit'] {
 
 /**
  * 에이전트(주어진 순서)마다 계획을 짠다. 키는 agent.id, 도우미는 `${agent.id}/${sub.id}`.
- * 로비 자리·회의실 자리는 종류와 상관없이 순서대로 이어서 센다. seated(앱 기본 켜짐, `?seated=off`면 끔)면 책상·회의실 의자에 앉는다.
+ * 로비 자리·회의실 자리는 종류와 상관없이 순서대로 이어서 센다. seated(앱 기본 켜짐, `?seated=off`면 끔)면 책상·회의실 의자,
+ * 쉬는 중엔 휴게실 소파·빈백(쉼 자리가 앉는 자리일 때)에 앉는다.
  */
 export function direct(agents: Agent[], now: number, seated = false): Map<string, Plan> {
   const plans = new Map<string, Plan>();
@@ -132,7 +133,9 @@ export function direct(agents: Agent[], now: number, seated = false): Map<string
       plan = { spot: DOOR, facing: deskFacing, pose: 'walk', pace: 'free', effects: [], leave: true, agent: a, hat: a.hat, isSub: false, sit: null };
     } else if (a.status === 'idle') {
       const r = resters.get(a.id)!;
-      plan = { spot: r.at, facing: dirFor(r.face.x, r.face.y), pose: 'sleep', pace: 'free', effects: ['zzz'], leave: false, agent: a, hat: a.hat, isSub: false, sit: null };
+      // 소파·빈백 자리면 손을 무릎에 내린 쉬기 자세로 앉는다(머리 위 Z는 그대로 — 조는 모습)
+      const sit = seated && r.sit && canSit(lookFor(a.hat)) ? { at: r.sit.at, dir: r.sit.dir, mode: 'rest' as const, pull: r.sit.pull } : null;
+      plan = { spot: r.at, facing: dirFor(r.face.x, r.face.y), pose: 'sleep', pace: 'free', effects: ['zzz'], leave: false, agent: a, hat: a.hat, isSub: false, sit };
     } else {
       const wave = a.status === 'permission' || a.status === 'question';
       plan = {

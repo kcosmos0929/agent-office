@@ -1,6 +1,8 @@
 // 오피스 배치(격자 단위). 바닥 15×18, x는 화면 오른쪽 아래로, y는 왼쪽 아래로.
 // three.js에선 x → X, y → Z, 높이 → Y. 왼쪽 벽(x=0)은 통창, 뒷벽(y=0)엔 TV.
 
+import type { SeatedDir } from './sprites/look.ts';
+
 export type Point = { x: number; y: number };
 export type Room = { x0: number; y0: number; x1: number; y1: number; label: string };
 
@@ -36,14 +38,36 @@ export const ROOMS: Record<'claude' | 'codex' | 'aria' | 'meeting' | 'storage' |
 export const DOOR: Point = { x: (CORRIDOR.x0 + CORRIDOR.x1) / 2, y: FLOOR_Z };
 /** 앞쪽 띠의 문(벽의 틈): 복도 → 창고·화장실(x=CORRIDOR.x0), 복도 → 휴게실(x=CORRIDOR.x1), 휴게실 → 탕비실(x=PANTRY_X). 가운데 y와 폭 */
 export const BAND_DOORS = { storage: { y: 15.7, w: 0.8 }, restroom: { y: 17.2, w: 0.8 }, lounge: { y: 17.3, w: 0.9 }, pantry: { y: 17.3, w: 0.9 } };
-/** 쉬는 동안 갈 만한 지점(나중에 '쉬는 동안 산책'이 쓸 자리) */
-export const IDLE_SPOTS: Record<'vending' | 'sofa' | 'bookshelf' | 'coffee' | 'pantryTable', Point> = {
+/** 쉬는 동안 서서 머무는 지점 */
+export const IDLE_SPOTS: Record<'vending' | 'bookshelf' | 'coffee' | 'pantryTable', Point> = {
   vending: { x: 4.95, y: 16.1 },
-  sofa: { x: 5.45, y: 16.3 },
   bookshelf: { x: 9.6, y: 15.75 },
   coffee: { x: 11.6, y: 16.1 },
   pantryTable: { x: 12.85, y: 17.6 },
 };
+/** 휴게실 소파(등받이가 뒷벽 쪽 y0, 앉으면 +y를 봄 — 얼굴이 보이는 SW)·그 앞 낮은 탁자·빈백 둘(등받이 -y). 장면도 이 값으로 놓는다 */
+export const SOFA = { x0: 5.85, y0: 15.22, w: 2.2, d: 0.75 };
+/** 낮은 탁자: 소파 앞면(15.97)에서 0.73 앞. 소파 왼쪽 자리 사람의 발(앞쪽 끝에 앉아 바닥에 닿음)이 화면에서 탁자 위에 올라서 보이지 않게
+ * 0.4 앞으로 옮겼다(2026-11-04) — 발 바로 아래 탁자 뒷모서리가 화면에서 0.21 아래(테스트). */
+export const SOFA_TABLE = { x0: 6.45, y0: 16.7, w: 1.0, d: 0.55 };
+export const BEAN_BAGS: readonly Point[] = [{ x: 9.0, y: 16.5 }, { x: 10.1, y: 16.5 }];
+/**
+ * 휴게실에 앉은 그림을 카메라 쪽으로 당기는 거리(월드, 보는 방향 — 화면 위치는 그대로). 앉는 점이 좌판 앞 끝이라(LOUNGE_SEATS) 그보다 앞의
+ * 가구는 좌판 앞면뿐(0.03 이내) — 평평한 그림에 그린 무릎·정강이가 앞면에 묻히지 않을 만큼만. 0.3·0.5가 같은 화면이라 그 사이.
+ * (등받이 앞에 앉던 때는 좌판이 0.8 남짓 앞이라 0.9였다.) 넘침 자리에 선 사람과는 화면에서 겹치지 않는다(테스트).
+ */
+export const LOUNGE_PULL = 0.4;
+/**
+ * 쉬는 동안 앉는 자리(2026-11-03, 6단계): 소파 양 끝 + 빈백 둘. at = 다가가 서는 곳(바로 앞), sit = 앉는 점(바닥)·방향.
+ * 앉는 점은 좌판 앞 끝 — 등을 떼고 앞쪽에 앉는다(2026-11-04, 사용자 "등을 안 기대고 앉으면?"). 앉은 그림은 사무 의자에 맞춰 발이 앉는 점
+ * 바닥에 놓이므로, 등받이 바로 앞에 앉히면 발이 깊은 좌판(소파 0.55·빈백 0.5) 아래라 화면에서 앞면에 떠 보였다. 앞 끝에 앉히면 엉덩이는
+ * 좌판 앞부분, 발은 앞 바닥. 그림이 원래 등을 곧게 세운 자세라 맞는다. (좌판 가운데는 좌판 윗면이 허리까지 와 파묻혀 보였다 — 그땐 발이 좌판 아래)
+ * 좌판 높이가 사무 의자(0.34)와 같아(소파 0.34, 빈백 0.36) 앉은 그림을 그대로 쓴다. 소파 가운데는 낮은 탁자에 막혀 다가갈 길이 없어 뺐다.
+ */
+export const LOUNGE_SEATS: readonly { at: Point; sit: { at: Point; dir: SeatedDir; pull: number } }[] = [
+  ...[SOFA.x0 + 0.45, SOFA.x0 + SOFA.w - 0.45].map((x) => ({ at: { x, y: 16.15 }, sit: { at: { x, y: SOFA.y0 + SOFA.d - 0.02 }, dir: 'SW' as const, pull: LOUNGE_PULL } })),
+  ...BEAN_BAGS.map((b) => ({ at: { x: b.x, y: b.y + 0.55 }, sit: { at: { x: b.x, y: b.y + 0.32 }, dir: 'SW' as const, pull: LOUNGE_PULL } })),
+];
 
 /** 사무실 → 오른쪽 방 문(벽 x=SPLIT_X의 틈): 가운데 y와 폭 */
 export const ROOM_DOORS = { codex: { y: 3.3, w: 1 }, aria: { y: 7.0, w: 1 }, meeting: { y: 10.5, w: 1 } };
@@ -95,12 +119,13 @@ export const BAND_LANE_Y = 17.55;
 /** 개발실 안 가로 길(의자 등받이 y 약 3.3 뒤, 개발실 문 y 2.8~3.8 안) */
 export const DEV_LANE_Y = 3.6;
 
-/** 쉬는 자리: 자리와 보는 방향(자판기·소파·책장·커피머신·카페 테이블 순, IDLE_SPOTS 좌표) */
-export type RestSpot = { at: Point; face: Point };
+/** 쉬는 자리: 자리와 보는 방향, 앉는 자리면 sit(앉기 켜짐일 때 거기 앉는다). 왼쪽부터 자판기·소파 둘·책장·빈백 둘·커피머신·카페 테이블 */
+export type RestSpot = { at: Point; face: Point; sit?: { at: Point; dir: SeatedDir; pull: number } };
 export const REST_SPOTS: readonly RestSpot[] = [
   { at: IDLE_SPOTS.vending, face: { x: 0, y: -1 } },
-  { at: IDLE_SPOTS.sofa, face: { x: 1, y: 0 } },
+  ...LOUNGE_SEATS.slice(0, 2).map((s) => ({ at: s.at, face: { x: 0, y: -1 }, sit: s.sit })),
   { at: IDLE_SPOTS.bookshelf, face: { x: 0, y: -1 } },
+  ...LOUNGE_SEATS.slice(2).map((s) => ({ at: s.at, face: { x: 0, y: -1 }, sit: s.sit })),
   { at: IDLE_SPOTS.coffee, face: { x: 0, y: -1 } },
   { at: IDLE_SPOTS.pantryTable, face: { x: 0, y: -1 } },
 ];
@@ -108,7 +133,7 @@ export const REST_SPOTS: readonly RestSpot[] = [
 export const OVERFLOW_SPOTS: readonly Point[] = [{ x: 6.1, y: 17.05 }, { x: 8.0, y: 17.05 }, { x: 9.55, y: 17.4 }];
 /** 넘침 자리도 찼을 때 서는 자리(가구·가로 길 y 17.55를 피한 휴게실 앞줄·탕비실). 이 너머는 처음부터 다시 쓴다 */
 export const EXTRA_REST_SPOTS: readonly Point[] = [
-  { x: 5.1, y: 17.05 }, { x: 7.1, y: 17.05 }, { x: 8.1, y: 16.6 },
+  { x: 5.1, y: 17.05 }, { x: 8.1, y: 16.6 }, // (7.1, 17.05)는 앞으로 옮긴 낮은 탁자 자리라 뺐다(2026-11-04)
   { x: 5.4, y: 17.85 }, { x: 6.4, y: 17.85 }, { x: 7.4, y: 17.85 }, { x: 8.4, y: 17.85 }, { x: 9.4, y: 17.85 }, { x: 10.4, y: 17.85 },
   { x: 11.5, y: 17.05 }, { x: 11.5, y: 16.6 }, { x: 12.6, y: 16.1 }, { x: 13.4, y: 16.1 }, { x: 14.0, y: 16.7 }, { x: 14.0, y: 17.15 },
   { x: 11.6, y: 17.85 }, { x: 12.6, y: 17.85 }, { x: 13.6, y: 17.85 },
