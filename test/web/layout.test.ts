@@ -263,15 +263,15 @@ test('회의실 의자 여섯: 회의실 안·테이블 밖, 0~2는 테이블 �
   }
 });
 
-test('휴게실 앉는 자리(LOUNGE_SEATS): 소파 양 끝·빈백 둘, 앉는 점은 좌판 위, 다가가는 길(가로 길에서 세로로)은 탁자·소파를 지나지 않음', () => {
+test('휴게실 앉는 자리(LOUNGE_SEATS): 소파 양 끝·빈백 둘, 앉는 점은 좌판 앞 끝, 다가가는 길(가로 길에서 세로로)은 탁자·소파를 지나지 않음', () => {
   assert.equal(LOUNGE_SEATS.length, 4);
   const inBox = (p: Point, b: { x0: number; y0: number; w: number; d: number }) => p.x > b.x0 && p.x < b.x0 + b.w && p.y > b.y0 && p.y < b.y0 + b.d;
   const [l, r, ...bags] = LOUNGE_SEATS;
   for (const s of [l, r]) {
-    assert.ok(inBox(s.sit.at, { x0: SOFA.x0 + 0.14, y0: SOFA.y0 + 0.16, w: SOFA.w - 0.28, d: 0.1 }), '소파 좌판 뒤쪽(등받이 바로 앞)');
+    assert.ok(inBox(s.sit.at, { x0: SOFA.x0 + 0.14, y0: SOFA.y0 + SOFA.d - 0.1, w: SOFA.w - 0.28, d: 0.1 }), '소파 좌판 앞 끝(등을 떼고 앞쪽에)');
     assert.ok(s.at.y > SOFA.y0 + SOFA.d && s.at.y < SOFA_TABLE.y0, '소파와 탁자 사이에 섬');
   }
-  bags.forEach((s, i) => { assert.ok(Math.abs(s.sit.at.x - BEAN_BAGS[i].x) < 1e-9 && s.sit.at.y < BEAN_BAGS[i].y && s.sit.at.y > BEAN_BAGS[i].y - 0.32, '빈백 뒤쪽'); assert.ok(s.at.y > BEAN_BAGS[i].y + 0.32); });
+  bags.forEach((s, i) => { assert.ok(Math.abs(s.sit.at.x - BEAN_BAGS[i].x) < 1e-9 && s.sit.at.y > BEAN_BAGS[i].y + 0.22 && s.sit.at.y <= BEAN_BAGS[i].y + 0.32, '빈백 앞 끝'); assert.ok(s.at.y > BEAN_BAGS[i].y + 0.32); });
   for (const s of LOUNGE_SEATS) {
     assert.equal(s.sit.dir, 'SW');
     assert.ok(Math.hypot(s.at.x - s.sit.at.x, s.at.y - s.sit.at.y) <= 0.75, '서는 곳에서 앉는 점까지 0.75 이하');
@@ -282,8 +282,31 @@ test('휴게실 앉는 자리(LOUNGE_SEATS): 소파 양 끝·빈백 둘, 앉는 
   for (const [i, p] of all.entries()) for (const q of all.slice(i + 1)) assert.ok(Math.hypot(p.x - q.x, p.y - q.y) >= 0.3, `${JSON.stringify(p)} ${JSON.stringify(q)}`);
 });
 
+test('서서 머무는 쉼·넘침 자리는 소파·낮은 탁자 위가 아님(몸 반폭 0.15 띄움)', () => {
+  const near = (p: Point, b: { x0: number; y0: number; w: number; d: number }) => p.x > b.x0 - 0.15 && p.x < b.x0 + b.w + 0.15 && p.y > b.y0 - 0.15 && p.y < b.y0 + b.d + 0.15;
+  for (const p of [...REST_SPOTS.map((r) => r.at), ...OVERFLOW_SPOTS, ...EXTRA_REST_SPOTS]) {
+    assert.ok(!near(p, SOFA_TABLE), `탁자 ${JSON.stringify(p)}`);
+    assert.ok(!near(p, SOFA) || p.y > SOFA.y0 + SOFA.d, `소파 ${JSON.stringify(p)}`);
+  }
+});
+
+test('휴게실 소파에 앞쪽으로 앉은 사람의 발(앉는 점 바닥)이 화면에서 낮은 탁자 윗면에 올라서 보이지 않음', () => {
+  // 화면 위쪽 = 월드 위(y)를 보는 방향에 수직으로 세운 것. 발과 같은 화면 가로(x − z가 같음)의 탁자 뒷모서리(윗면 높이)가 발보다 충분히 아래
+  const n = Math.hypot(...VIEW_DIR), v = VIEW_DIR.map((c) => c / n), k = v[1];
+  const raw = [-k * v[0], 1 - k * v[1], -k * v[2]], m = Math.hypot(...raw), u = raw.map((c) => c / m);
+  const up = (x: number, h: number, z: number) => u[0] * x + u[1] * h + u[2] * z;
+  const TOP = 0.37; // lowTable 윗판 위(0.32 + 0.05)
+  for (const s of LOUNGE_SEATS.slice(0, 2)) {
+    const { x, y } = s.sit.at;
+    const ex = x - y + SOFA_TABLE.y0; // 같은 화면 가로의 뒷모서리 점
+    if (ex < SOFA_TABLE.x0 || ex > SOFA_TABLE.x0 + SOFA_TABLE.w) continue; // 탁자가 그 줄에 없음
+    const gap = up(x, 0, y) - up(ex, TOP, SOFA_TABLE.y0);
+    assert.ok(gap > 0.18, `${JSON.stringify(s.sit.at)}: 탁자 뒷모서리가 발보다 ${gap.toFixed(3)} 아래`);
+  }
+});
+
 test('휴게실 앉은 그림을 당겨도(LOUNGE_PULL) 그보다 앞에 서는 쉼·넘침 자리 사람과 화면에서 겹치지 않음', () => {
-  // 세로 판(보는 방향 수평 성분에 수직): 화면 가로 = (dx − dy)·√½, 앞뒤 = (dx + dy)·√½. 당긴 거리를 앞뒤로 옮기면 0.9·(2/(1.636·√2))
+  // 세로 판(보는 방향 수평 성분에 수직): 화면 가로 = (dx − dy)·√½, 앞뒤 = (dx + dy)·√½. 당긴 거리를 앞뒤로 옮기면 LOUNGE_PULL·(2/(1.636·√2))
   const ahead = LOUNGE_PULL * (2 / (Math.hypot(...VIEW_DIR) * Math.SQRT2));
   const standers = [...REST_SPOTS.filter((r) => !r.sit).map((r) => r.at), ...OVERFLOW_SPOTS, ...EXTRA_REST_SPOTS];
   for (const s of LOUNGE_SEATS) for (const p of standers) {

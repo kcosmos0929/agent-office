@@ -106,7 +106,7 @@ export function buildBackdrop(g: THREE.Group): Backdrop {
   g.add(texBlock(CORRIDOR.x0, FRONT_Y, PANTRY_X - CORRIDOR.x0, FZ - FRONT_Y, 0, 0.04, P.planks.seam, 'py', wood));
   g.add(texBlock(pantry.x0, pantry.y0, pantry.x1 - pantry.x0, pantry.y1 - pantry.y0, 0, 0.04, pg, 'py', tiles(pa, pb, pg, ps)));
   const [rf, rb, ra] = P.rug;
-  g.add(rugBlock(5.6, 15.3, 2.7, 1.75, rug(rf, rb, ra), rb));
+  g.add(rugBlock(5.6, 15.3, 2.7, 2.15, rug(rf, rb, ra), rb)); // 소파 + 낮은 탁자(앞 끝 17.25) + 0.2
   const [mc, md] = P.carpet;
   g.add(texBlock(8.9, 10.6, 5.0, 3.6, 0.04, 0.015, mc, 'py', carpet(mc, md)));
 
