@@ -2,6 +2,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { loadConfig, saveConfigPatch } from './config.ts';
+import { resolvePack } from './artPack.ts';
 import { buildId } from './build.ts';
 import { startServer } from './http.ts';
 import { makeCodexTitleReader } from './collectors/codexTitles.ts';
@@ -62,9 +63,13 @@ async function main(): Promise<void> {
   }
 
   const staticDir = path.join(REPO_ROOT, 'dist', 'web');
+  // 그림 묶음: 설정 charactersDir가 유효하면 그 그림, 아니면 레포의 대체 그림(시작할 때 한 번 판정)
+  const pack = resolvePack(config.charactersDir);
+  if (pack.kind === 'ok') console.log(`[synthetic-office] 그림 묶음 — ${pack.dir}`);
+  if (pack.kind === 'invalid') console.warn(`[synthetic-office] 그림 묶음을 못 써요(${pack.reason}) — 대체 그림`);
   // 밖에서 보기(터널 전용 문)는 config.remotePublicHost를 넣었을 때만 열린다
   const remote = config.remotePublicHost ? { viewerToken: loadOrCreateViewerToken(home), rotateViewerToken: () => rotateViewerToken(home) } : {};
-  const server = await startServer({ config, token, state, staticDir, build: buildId(staticDir), codexTitle: makeCodexTitleReader(codexSessionIndex()), saveConfig: (patch) => saveConfigPatch(home, patch), ...remote });
+  const server = await startServer({ config, token, state, staticDir, build: buildId(staticDir), codexTitle: makeCodexTitleReader(codexSessionIndex()), saveConfig: (patch) => saveConfigPatch(home, patch), charactersDir: pack.kind === 'ok' ? pack.dir : null, ...remote });
   const endpoint = homeFiles(home).endpoint;
   fs.writeFileSync(endpoint, JSON.stringify({ port: server.port, token, pid: process.pid }) + '\n', { mode: 0o600 });
   fs.chmodSync(endpoint, 0o600);

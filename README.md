@@ -15,8 +15,25 @@
 |---|---|---|
 | `restMinutes` | 10 | 차례가 끝난(✅) 뒤 이만큼 지나면 😴 쉬는 중 |
 | `leaveMinutes` | 120 | 차례가 끝난 뒤 이만큼 지나면 👋 자동 퇴근, 그 10분 뒤(`goneMinutes`) 화면에서 숨김(지우지 않아 다시 일하면 돌아옴). `restMinutes`보다 작게 적어도 `restMinutes`로 올려 쓴다 |
+| `charactersDir` | `null` | 캐릭터 그림 묶음 폴더(`pack.json`이 있는 곳, `~/` 가능). 없으면 레포의 대체 그림. 아래 「그림 묶음」 |
 
 예전 `idleMinutes`는 더 읽지 않는다.
+
+## 그림 묶음
+캐릭터 그림은 한 폴더(그림 묶음)로 읽는다. 레포에는 대체 그림(`web/public/characters/`, 만든 방법은 그 폴더의 `SOURCE.md`)이 들어 있고, 다른 그림을 쓰려면 같은 모양의 폴더를 만들어 `charactersDir`로 가리킨 뒤 서버를 다시 켠다. 그 폴더가 없거나 모양이 틀리면 대체 그림으로 돌아가고 `npm run doctor`의 「그림 묶음」 줄에 이유가 나온다. 묶음 폴더에 없는 파일은 대체 그림으로 채우지 않는다(모양이 섞이지 않게).
+
+```
+pack.json                                          {"format": 1, "name": "…"}
+parts/hair/<hair>/{hairBack,head}/<dir>.png        576×96 — 64×96 칸 9개(걷기 0~7, 서기 8)
+parts/face/<hair>/<face>/<dir>.png                 576×96
+parts/outfit/<outfit>/<layer>/<dir>.png            576×96, layer = farArm farLeg nearLeg bottom torso nearArm accessory
+seated/<lookId>/{SE,NW}/{body,nearArm,farArm}.png  512×960 — 8열×10행(일하기 0~71, 쉬기 72~74)
+```
+
+`<dir>` = SE·SW·NE·NW, `<hair>` = bun·bob·pony·longbob, `<face>` = neutral·soft·happy·focused, `<outfit>` = jp-classic·jp-vest·jp-suit·kr-blazer·kr-cardigan·kr-shirt, `<lookId>` = JP01·JP02·JP03·KR01·KR02·KR03·EX1·EX2 — 모두 312장, RGBA PNG. 칸 배치·기준점은 `web/src/office/sprites/look.ts`·`seated.ts`가 정본이다. 모양 검사: `ART_PACK_DIR=<묶음 폴더> node --test test/web/artPack.test.ts`.
+
+## 라이선스
+코드와 대체 그림(`web/public/characters/`)은 MIT(`LICENSE`). 픽셀 글꼴 갈무리는 SIL Open Font License 1.1(`web/src/fonts/OFL.txt`).
 
 ## 오피스 화면 동작
 - **Codex**: Codex 세션도 개발실에 나타난다(책상 0~2번, 자리가 없거나 쉬면 로비). 일하는 책상 옆 서버랙 불빛이 짝으로 깜빡이고 실행 중이면 빨라진다.

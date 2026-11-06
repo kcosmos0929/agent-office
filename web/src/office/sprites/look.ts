@@ -1,12 +1,14 @@
-// 도트 캐릭터(v15) 계산: 세션 모습·상태별 표정·화면 방향·걷기 보폭·판 크기. three.js 없는 순수 함수(테스트 대상).
+// 도트 캐릭터 계산: 세션 모습·상태별 표정·화면 방향·걷기 보폭·판 크기. three.js 없는 순수 함수(테스트 대상).
 import type { Status } from '../../../../src/shared/types.ts';
 import { FIT, VIEW_DIR } from '../layout.ts';
 
 export type Dir = 'SE' | 'SW' | 'NE' | 'NW';
-/** 아틀라스 행 순서(v15 layout.json) */
+/** 아틀라스 행 순서(서기·걷기 부품 시트) */
 export const DIRS: readonly Dir[] = ['SE', 'SW', 'NE', 'NW'];
 export type Hair = 'bun' | 'bob' | 'pony' | 'longbob';
+export const HAIRS: readonly Hair[] = ['bun', 'bob', 'pony', 'longbob'];
 export type Outfit = 'jp-classic' | 'jp-vest' | 'jp-suit' | 'kr-blazer' | 'kr-cardigan' | 'kr-shirt';
+export const OUTFITS: readonly Outfit[] = ['jp-classic', 'jp-vest', 'jp-suit', 'kr-blazer', 'kr-cardigan', 'kr-shirt'];
 export type Face = 'neutral' | 'soft' | 'happy' | 'focused';
 export const FACES: readonly Face[] = ['neutral', 'soft', 'happy', 'focused'];
 export type Look = { hair: Hair; outfit: Outfit };
@@ -18,7 +20,7 @@ export const IDLE_COL = 8;
 export const COLS = 9;
 /** 발 기준점(칸 안 도트 좌표) — 그림 왼쪽 위가 아니라 이 점을 바닥 위치에 맞춘다 */
 export const ANCHOR: Record<Dir, readonly [number, number]> = { SE: [34, 88.5], NE: [34, 88.5], SW: [29, 88.5], NW: [29, 88.5] };
-/** 앉은 그림(v16~)의 기준점: 의자 가운데 바닥점(월드 y 0, 바닥판 윗면 0.04 아님). 좌판 높이는 그림에 들어 있다 */
+/** 앉은 그림의 기준점: 의자 가운데 바닥점(월드 y 0, 바닥판 윗면 0.04 아님). 좌판 높이는 그림에 들어 있다 */
 export type SeatedDir = 'SE' | 'SW' | 'NE' | 'NW';
 export const SEATED_ANCHOR: Record<SeatedDir, readonly [number, number]> = { SE: [34, 85], NW: [29, 85], SW: [29, 85], NE: [34, 85] };
 /** 앉은 그림 파일이 있는 방향: SW = SE 좌우 뒤집기, NE = NW 좌우 뒤집기(서기 그림과 같은 규칙) — 개발실·회의실 의자는 사무실과 다른 대각선 */
@@ -41,27 +43,9 @@ export function partPath(layer: Layer, look: Look, face: Face, dir: Dir): string
   return `parts/outfit/${look.outfit}/${layer}/${dir}.png`;
 }
 
-/** 부품 묶음 폴더: 기본은 v15. 다시 그린 옷·머리만 새 버전 폴더에서 읽는다(되돌리려면 이 표에서 지운다) */
-export const PART_BASE = 'v15';
-/**
- * v18 = 외곽선·신발·다리·치마 몸매 디테일(JP01 2026-10-27, 나머지 다섯 옷 10-28).
- * v19 = 그 위에 뒷모습(NE·NW)만 새로: 이미지 생성 뒷모습을 옷 색으로 옮기고 등 솔기 규칙을 맞춤(2026-10-28). 앞모습(SE·SW)은 v18과 같다.
- */
-export const OUTFIT_VERSION: Partial<Record<Outfit, string>> = {
-  'jp-classic': 'v19',
-  'jp-vest': 'v19',
-  'jp-suit': 'v19',
-  'kr-blazer': 'v19',
-  'kr-cardigan': 'v19',
-  'kr-shirt': 'v19',
-};
-/** 머리·얼굴 v19 = 뒷모습(NE·NW) 머리를 이미지 생성 그림으로: 뒤에서는 머리가 몸 위라 모두 head 층, hairBack NE·NW는 빔(2026-10-28) */
-export const HAIR_VERSION: Partial<Record<Hair, string>> = { bun: 'v19', bob: 'v19', pony: 'v19', longbob: 'v19' };
-/** 부품 파일 후보(characters/ 기준, 앞부터 읽는다): 새 버전 옷·머리면 그것, 못 읽으면 v15 */
+/** 부품 파일 후보(그림 묶음 characters/ 기준). 묶음은 버전 폴더 없이 한 모양이라 후보는 하나 */
 export function partFiles(layer: Layer, look: Look, face: Face, dir: Dir): string[] {
-  const rel = partPath(layer, look, face, dir);
-  const version = rel.startsWith('parts/outfit/') ? OUTFIT_VERSION[look.outfit] : HAIR_VERSION[look.hair];
-  return version ? [`${version}/${rel}`, `${PART_BASE}/${rel}`] : [`${PART_BASE}/${rel}`];
+  return [partPath(layer, look, face, dir)];
 }
 
 /** 모자 번호(hat 0~7) → 모습: 0~5 = 정리된 6종(JP01~KR03)의 머리·옷, 6·7 = 겹치지 않는 다른 조합 */

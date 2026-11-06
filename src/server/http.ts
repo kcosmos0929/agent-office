@@ -49,6 +49,8 @@ export type ServerOptions = {
   rotateViewerToken?: () => string;
   /** 터널 전용 문 포트(테스트는 0). 없으면 config.remotePort */
   remoteListenPort?: number;
+  /** 그림 묶음 폴더(유효하다고 판정된 절대 경로). 있으면 /characters/ 를 여기서 보낸다(없는 파일은 404, 대체 그림과 섞지 않음) */
+  charactersDir?: string | null;
 };
 
 /** remotePort = 터널 전용 문이 연 포트(안 열었으면 null) */
@@ -330,6 +332,21 @@ export function startServer(opts: ServerOptions): Promise<RunningServer> {
       rel = decodeURIComponent(url.pathname);
     } catch {
       return text(res, 400);
+    }
+    if (opts.charactersDir && rel.startsWith('/characters/')) {
+      // 실제 경로(심볼릭 링크를 따라간 뒤)로 묶음 안인지 본다 — 묶음 안 링크가 밖을 가리키면 404
+      let packFile: string;
+      try {
+        const packRoot = fs.realpathSync(opts.charactersDir);
+        const asked = path.resolve(packRoot, '.' + rel.slice('/characters'.length));
+        if (!asked.startsWith(packRoot + path.sep)) return text(res, 404);
+        packFile = fs.realpathSync(asked);
+        if (!packFile.startsWith(packRoot + path.sep) || !fs.statSync(packFile).isFile()) return text(res, 404);
+      } catch {
+        return text(res, 404);
+      }
+      res.writeHead(200, { 'content-type': MIME[path.extname(packFile)] ?? 'application/octet-stream' });
+      return void fs.createReadStream(packFile).pipe(res);
     }
     let file = path.resolve(root, '.' + (rel === '/' ? '/index.html' : rel));
     if (file !== root && !file.startsWith(root + path.sep)) return text(res, 404);

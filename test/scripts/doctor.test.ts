@@ -3,13 +3,14 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { peekConfig } from '../../src/server/config.ts';
 import { exitCode, formatReport, runChecks, type DoctorEnv } from '../../scripts/lib/doctorChecks.ts';
 import { mergeClaudeSettings } from '../../scripts/lib/settingsMerge.ts';
 import { mergeCodexHooks } from '../../scripts/lib/codexHooksMerge.ts';
 
 const REPO = path.resolve(import.meta.dirname, '..', '..');
 const TOKEN = 'e'.repeat(64);
-const NAMES = ['서버 응답', 'endpoint.json', '훅 등록 (14개)', '설치된 스크립트 = 레포', '자동 켜기 (launchd)', '마지막 훅', 'Codex 훅 등록 (12개)', '마지막 Codex 훅', '세션 목록 폴더', '위키 허브', '화면 파일'];
+const NAMES = ['서버 응답', 'endpoint.json', '훅 등록 (14개)', '설치된 스크립트 = 레포', '자동 켜기 (launchd)', '마지막 훅', 'Codex 훅 등록 (12개)', '마지막 Codex 훅', '세션 목록 폴더', '위키 허브', '화면 파일', '그림 묶음'];
 
 /** 모두 정상인 가짜 설치: 데이터 폴더·settings·레포·세션 목록·위키 허브 1개 */
 function setup() {
@@ -42,7 +43,7 @@ function setup() {
   fs.writeFileSync(path.join(hubDir, '00 x 허브.md'), '---\nproject: x\nproject_path: /Users/seop/developer/x/\n---\n');
   const urls: string[] = [];
   const env: DoctorEnv = {
-    home, settingsFile, repoRoot, registryDir, wikiPath, codexDir, codexHooksFile,
+    home, settingsFile, repoRoot, registryDir, wikiPath, codexDir, codexHooksFile, charactersDir: null,
     isAlive: () => true,
     launchdRunning: () => true,
     getText: async (url) => { urls.push(url); return url.endsWith('/healthz') ? 'ok' : null; },
@@ -53,11 +54,11 @@ function setup() {
 
 const byName = (checks: Awaited<ReturnType<typeof runChecks>>, name: string) => checks.find((c) => c.name === name)!;
 
-test('모두 정상 → ✓ 11개(이 순서), 종료 코드 0, 서버는 endpoint.json 포트로', async () => {
+test('모두 정상 → ✓ 12개(이 순서), 종료 코드 0, 서버는 endpoint.json 포트로', async () => {
   const { env, urls } = setup();
   const checks = await runChecks(env);
   assert.deepEqual(checks.map((c) => c.name), NAMES);
-  assert.deepEqual(checks.map((c) => c.level), Array(11).fill('ok'));
+  assert.deepEqual(checks.map((c) => c.level), Array(12).fill('ok'));
   assert.equal(byName(checks, '마지막 Codex 훅').hint, '5분 전');
   assert.equal(exitCode(checks), 0);
   assert.ok(urls.includes('http://127.0.0.1:5001/healthz'));
@@ -163,4 +164,19 @@ test('Codex Interrupt 훅 빠짐 → ✗(안내에 Interrupt), lastCodexHookAt n
   const last = byName(checks, '마지막 Codex 훅');
   assert.equal(last.level, 'warn');
   assert.match(last.hint ?? '', /신뢰/);
+});
+
+test('그림 묶음: 설정 없으면 ✓ 대체 그림, 유효하면 ✓ 경로, 무효면 ⚠ 이유', async () => {
+  const { env, root } = setup();
+  assert.deepEqual(byName(await runChecks(env), '그림 묶음'), { level: 'ok', name: '그림 묶음', hint: '대체 그림' });
+  const pack = path.join(root, 'pack');
+  fs.mkdirSync(pack);
+  fs.writeFileSync(path.join(pack, 'pack.json'), '{"format": 1}');
+  assert.deepEqual(byName(await runChecks({ ...env, charactersDir: pack }), '그림 묶음'), { level: 'ok', name: '그림 묶음', hint: pack });
+  const bad = byName(await runChecks({ ...env, charactersDir: path.join(root, 'nope') }), '그림 묶음');
+  assert.equal(bad.level, 'warn');
+  assert.ok(bad.hint && bad.hint.length > 0);
+  // 설정 파일에 문자열이 아닌 값 → peekConfig를 거쳐도 ⚠(조용히 대체 그림 ✓가 되지 않게)
+  fs.writeFileSync(path.join(env.home, 'config.json'), JSON.stringify({ charactersDir: 42 }));
+  assert.equal(byName(await runChecks({ ...env, charactersDir: peekConfig(env.home).charactersDir }), '그림 묶음').level, 'warn');
 });

@@ -22,6 +22,7 @@ const checks = await runChecks({
   repoRoot: REPO_ROOT,
   registryDir: claudeSessionsDir(),
   wikiPath: peekConfig(home).wikiPath,
+  charactersDir: peekConfig(home).charactersDir,
   codexDir: CODEX_DIR,
   codexHooksFile: CODEX_HOOKS,
   isAlive: pidAlive,

@@ -7,6 +7,7 @@ import { homeFiles } from '../../src/server/paths.ts';
 import { loadProjects } from '../../src/server/projects.ts';
 import { CODEX_HOOK_EVENTS } from './codexHooksMerge.ts';
 import { HOOK_EVENTS, MARK } from './settingsMerge.ts';
+import { resolvePack } from '../../src/server/artPack.ts';
 
 export type CheckLevel = 'ok' | 'warn' | 'fail';
 export type Check = { level: CheckLevel; name: string; hint: string | null };
@@ -24,6 +25,8 @@ export type DoctorEnv = {
   /** 실패하면 null */
   getText: (url: string) => Promise<string | null>;
   getJson: (url: string) => Promise<unknown | null>;
+  /** config.json의 charactersDir 값 그대로(판정은 resolvePack) */
+  charactersDir: unknown;
 };
 
 const ICON: Record<CheckLevel, string> = { ok: '✓', warn: '⚠', fail: '✗' };
@@ -124,6 +127,15 @@ function registryCheck(dir: string): Check {
   }
 }
 
+/** 그림 묶음: 설정 없으면 대체 그림(정상), 유효하면 경로, 설정했는데 못 쓰면 ⚠ 이유 */
+function packCheck(charactersDir: unknown): Check {
+  const name = '그림 묶음';
+  const pack = resolvePack(charactersDir);
+  if (pack.kind === 'none') return check('ok', name, '대체 그림');
+  if (pack.kind === 'ok') return check('ok', name, pack.dir);
+  return check('warn', name, `${pack.reason} — 지금은 대체 그림`);
+}
+
 export async function runChecks(env: DoctorEnv): Promise<Check[]> {
   const endpointFile = homeFiles(env.home).endpoint;
   const ep = readJson(endpointFile);
@@ -146,6 +158,7 @@ export async function runChecks(env: DoctorEnv): Promise<Check[]> {
     fs.existsSync(path.join(env.repoRoot, 'dist', 'web', 'index.html'))
       ? check('ok', '화면 파일')
       : check('fail', '화면 파일', '없어요 — npm run build:web'),
+    packCheck(env.charactersDir),
   ];
 }
 

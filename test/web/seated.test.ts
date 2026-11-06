@@ -1,32 +1,19 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { existsSync, readFileSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import type { Status } from '../../src/shared/types.ts';
 import { LOOKS } from '../../web/src/office/sprites/look.ts';
 import { SEATED_ATLAS, SEATED_CYCLE_MS, SEATED_PARTS, SEATED_REST, canSit, seatedCell, seatedFiles, seatedFrame, seatedIndex, seatedLookId, seatedMode, seatedPreview } from '../../web/src/office/sprites/seated.ts';
 
-const CHARACTERS = new URL('../../web/public/characters/', import.meta.url);
-
-test('앉은 그림 파일: 여덟 모습 seated-v29/<모습> 하나씩(옛 JP01 폴더로 물러서지 않음), 모두 세 장 × SE·NW가 같은 규격(512×960 RGBA)', () => {
-  assert.deepEqual(seatedFiles(LOOKS[0], 'SE', 'body'), ['seated-v29/JP01/SE/body.png']);
-  assert.deepEqual(seatedFiles(LOOKS[3], 'NW', 'farArm'), ['seated-v29/KR01/NW/farArm.png']);
+test('앉은 그림 파일: 여덟 모습 seated/<모습> 하나씩, SW·NE는 SE·NW 그림을 읽어 뒤집는다', () => {
+  assert.deepEqual(seatedFiles(LOOKS[0], 'SE', 'body'), ['seated/JP01/SE/body.png']);
+  assert.deepEqual(seatedFiles(LOOKS[3], 'NW', 'farArm'), ['seated/KR01/NW/farArm.png']);
   assert.deepEqual(LOOKS.map(seatedLookId), ['JP01', 'JP02', 'JP03', 'KR01', 'KR02', 'KR03', 'EX1', 'EX2']);
   assert.deepEqual(seatedFiles({ hair: 'bob', outfit: 'jp-classic' }, 'SE', 'body'), []);
-  // 개발실·회의실 방향(SW·NE)은 SE·NW 그림을 읽어 뒤집는다
-  assert.deepEqual(seatedFiles(LOOKS[3], 'NE', 'body'), ['seated-v29/KR01/NW/body.png']);
-  assert.deepEqual(seatedFiles(LOOKS[0], 'SW', 'nearArm'), ['seated-v29/JP01/SE/nearArm.png']);
-  const header = (rel: string) => {
-    const b = readFileSync(new URL(rel, CHARACTERS));
-    return [b.readUInt32BE(16), b.readUInt32BE(20), b[24], b[25]]; // IHDR 폭·높이·비트 깊이·색 형식(6 = RGBA)
-  };
+  assert.deepEqual(seatedFiles(LOOKS[3], 'NE', 'body'), ['seated/KR01/NW/body.png']);
+  assert.deepEqual(seatedFiles(LOOKS[0], 'SW', 'nearArm'), ['seated/JP01/SE/nearArm.png']);
   let n = 0;
-  for (const look of LOOKS) for (const dir of ['SE', 'NW'] as const) for (const part of SEATED_PARTS) {
-    for (const f of seatedFiles(look, dir, part)) {
-      assert.ok(existsSync(new URL(f, CHARACTERS)), f);
-      assert.deepEqual(header(f), [512, 960, 8, 6], f);
-      n++;
-    }
-  }
+  for (const look of LOOKS) for (const dir of ['SE', 'NW'] as const) for (const part of SEATED_PARTS) n += seatedFiles(look, dir, part).length;
   assert.equal(n, 8 * 2 * 3);
 });
 

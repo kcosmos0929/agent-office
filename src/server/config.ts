@@ -26,6 +26,9 @@ export type Config = {
   remotePort: number;
   /** 사무실 TV가 시계일 때 아랫줄(설정 창). 모르는 값이면 quote */
   tvFoot: TvFoot;
+  /** 그림 묶음 폴더(pack.json이 있는 곳, ~/ 가능). null이면 레포의 대체 그림. 바꾸면 서버 다시 켜기.
+   *  config.json에 적힌 값 그대로(문자열이 아니어도) — 판정·경고는 resolvePack이 한다 */
+  charactersDir: unknown;
   projectNames: Record<string, string>;
 };
 
@@ -45,6 +48,7 @@ function defaults(): Config {
     remotePublicHost: null,
     remotePort: 4311,
     tvFoot: 'quote',
+    charactersDir: null,
     projectNames: { ...DEFAULT_PROJECT_NAMES },
   };
 }
@@ -69,7 +73,8 @@ export function peekConfig(home: string): Config {
   try {
     const user = JSON.parse(fs.readFileSync(file, 'utf8')) as Partial<Config>;
     const tvFoot = TV_FOOTS.includes(user.tvFoot as TvFoot) ? (user.tvFoot as TvFoot) : base.tvFoot;
-    return { ...base, ...user, tvFoot, projectNames: { ...base.projectNames, ...(user.projectNames ?? {}) } };
+    const charactersDir = user.charactersDir ?? null;
+    return { ...base, ...user, tvFoot, charactersDir, projectNames: { ...base.projectNames, ...(user.projectNames ?? {}) } };
   } catch {
     console.warn('[synthetic-office] config.json을 읽지 못해 기본값을 씁니다');
     return base;

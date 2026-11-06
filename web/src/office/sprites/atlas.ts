@@ -25,7 +25,7 @@ export function atlasFor(look: Look, face: Face): Promise<THREE.CanvasTexture> {
 
 const seated = new Map<string, Promise<THREE.Texture>>();
 
-/** 후보를 앞부터 읽고, 못 읽으면 경고 후 다음(seated-v26부터는 후보가 하나) */
+/** 후보를 앞부터 읽고, 못 읽으면 경고 후 다음(지금은 후보가 하나) */
 function loadSeatedImage(files: readonly string[]): Promise<HTMLImageElement> {
   const [first, ...rest] = files;
   if (first === undefined) return Promise.reject(new Error('앉은 그림이 없는 모습'));

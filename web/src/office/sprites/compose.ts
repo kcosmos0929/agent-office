@@ -1,4 +1,4 @@
-// 부품(v15, 다시 그린 옷은 새 버전 폴더)을 레이어 순서로 합쳐 (모습, 표정)마다 576×384 아틀라스 캔버스를 만든다(행 SE/SW/NE/NW, 열 0~7 걷기·8 서기).
+// 그림 묶음의 부품(parts/…)을 레이어 순서로 합쳐 (모습, 표정)마다 576×384 아틀라스 캔버스를 만든다(행 SE/SW/NE/NW, 열 0~7 걷기·8 서기).
 // three.js 없이 캔버스만 써서 목록형 아바타도 같이 쓴다. 한 번 만든 건 캐시.
 import { CELL, COLS, DIRS, IDLE_COL, LAYERS, partFiles, type Face, type Look } from './look.ts';
 
@@ -22,7 +22,7 @@ function loadImage(rel: string): Promise<HTMLImageElement> {
   return p;
 }
 
-/** 후보를 앞부터 읽고, 못 읽으면 다음 후보(새 버전 옷 → v15) */
+/** 후보를 앞부터 읽고, 못 읽으면 다음 후보(지금은 후보가 하나) */
 function loadPart(files: readonly string[]): Promise<HTMLImageElement> {
   const [first, ...rest] = files;
   if (rest.length === 0) return loadImage(first);

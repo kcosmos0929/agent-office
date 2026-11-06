@@ -91,7 +91,7 @@ function deskEffects(status: Agent['status']): Effect[] {
 }
 
 /**
- * 자기 책상에서 앉는가: 앉는 상태이고 앉은 그림이 있는 모습(seated-v29: 여덟 모습 모두)일 때.
+ * 자기 책상에서 앉는가: 앉는 상태이고 앉은 그림이 있는 모습(여덟 모습 모두)일 때.
  * Claude 0~7 = 사무실 의자(SE·NW), Codex 0~2 = 개발실 의자(NE — 사무실과 다른 대각선이라 NW 그림을 뒤집어 쓴다).
  */
 function sitAt(a: Agent): Plan['sit'] {
